@@ -1,9 +1,8 @@
 import { Application, extend, useApplication } from '@pixi/react';
-import { Container, Graphics, FederatedPointerEvent, Ticker, Sprite, Texture, BlurFilter, DisplacementFilter } from 'pixi.js';
-import { useCallback, useEffect, useRef, memo, useMemo } from 'react';
+import { Container, Graphics, FederatedPointerEvent, Ticker, Sprite, BlurFilter, DisplacementFilter } from 'pixi.js';
+import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
-import type { Galaxy, StarSystem } from '../game/types';
 import {
   GALAXY_RADIUS,
   NEBULA_STEPS,
@@ -23,32 +22,11 @@ import {
   NEBULA_DISPLACEMENT_SCALE,
   CORE_COLORS,
 } from '../game/constants';
+import { createDisplacementTexture } from './textures';
+import { HyperlaneLayer } from './HyperlaneLayer';
+import { StarNode } from './StarNode';
 
 extend({ Container, Graphics, Sprite });
-
-function createDisplacementTexture(size = 512, lowRes = 64): Texture {
-  const tmp = document.createElement('canvas');
-  tmp.width = lowRes;
-  tmp.height = lowRes;
-  const tCtx = tmp.getContext('2d')!;
-  const img = tCtx.createImageData(lowRes, lowRes);
-  for (let i = 0; i < img.data.length; i += 4) {
-    img.data[i]     = Math.random() * 255;
-    img.data[i + 1] = Math.random() * 255;
-    img.data[i + 2] = 0;
-    img.data[i + 3] = 255;
-  }
-  tCtx.putImageData(img, 0, 0);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(tmp, 0, 0, size, size);
-  return Texture.from(canvas);
-}
 
 export function GalaxyStage() {
   return (
@@ -81,7 +59,6 @@ function GalaxyWorld() {
     worldRef.current.scale.set(camera.current.scale);
   }, [app, isInitialised]);
 
-
   useEffect(() => {
     if (!isInitialised) return;
     const stage = app.stage;
@@ -98,15 +75,12 @@ function GalaxyWorld() {
 
     const onMove = (event: FederatedPointerEvent) => {
       if (!isDragging.current || !worldRef.current) return;
-
       const deltaX = event.globalX - dragStart.current.x;
       const deltaY = event.globalY - dragStart.current.y;
-
-      if (!hasDragged.current && (Math.abs(deltaX) > DRAG_THRESHOLD_PX || Math.abs(deltaY) > DRAG_THRESHOLD_PX)) hasDragged.current = true;
-
+      if (!hasDragged.current && (Math.abs(deltaX) > DRAG_THRESHOLD_PX || Math.abs(deltaY) > DRAG_THRESHOLD_PX))
+        hasDragged.current = true;
       camera.current.x = cameraStart.current.x + deltaX;
       camera.current.y = cameraStart.current.y + deltaY;
-
       worldRef.current.position.set(camera.current.x, camera.current.y);
     };
 
@@ -125,20 +99,14 @@ function GalaxyWorld() {
       event.preventDefault();
       if (!worldRef.current) return;
       const zoomFactor = event.deltaY < 0 ? CAMERA_ZOOM_FACTOR : 1 / CAMERA_ZOOM_FACTOR;
-
       const mouseX = event.clientX;
       const mouseY = event.clientY;
-
-      // World-space coordinates under the mouse before zoom — used to re-anchor
-      // the view after scaling so the point under the cursor stays fixed.
+      // World-space point under cursor — re-anchored after scaling to keep it fixed.
       const worldX = (mouseX - camera.current.x) / camera.current.scale;
       const worldY = (mouseY - camera.current.y) / camera.current.scale;
-
       camera.current.scale = Math.max(CAMERA_MIN_SCALE, Math.min(CAMERA_MAX_SCALE, camera.current.scale * zoomFactor));
-
       camera.current.x = mouseX - worldX * camera.current.scale;
       camera.current.y = mouseY - worldY * camera.current.scale;
-
       worldRef.current.position.set(camera.current.x, camera.current.y);
       worldRef.current.scale.set(camera.current.scale);
     };
@@ -156,6 +124,7 @@ function GalaxyWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
+
     const nebulaContainer = new Container();
     const nebulaGfx = new Graphics();
 
@@ -202,7 +171,6 @@ function GalaxyWorld() {
       const offsetY = ((Math.random() + Math.random()) / 2 - 0.5) * 2 * CORE_ELLIPSE_Y;
       const particleRadius = 20 + Math.random() * 60;
       const coreColor = CORE_COLORS[Math.floor(Math.random() * CORE_COLORS.length)];
-
       coreGfx.circle(offsetX, offsetY, particleRadius);
       coreGfx.fill({ color: coreColor, alpha: 0.012 + Math.random() * 0.018 });
     }
@@ -210,7 +178,7 @@ function GalaxyWorld() {
     nebulaGfx.blendMode = 'screen';
     coreGfx.blendMode = 'screen';
     nebulaGfx.filters = [new BlurFilter({ strength: 0.75 })];
-    coreGfx.filters = [new BlurFilter({ strength: 0.75, blendMode: 'add'})];
+    coreGfx.filters = [new BlurFilter({ strength: 0.75, blendMode: 'add' })];
 
     const dispTexture = createDisplacementTexture();
     const dispSprite = new Sprite(dispTexture);
@@ -238,8 +206,7 @@ function GalaxyWorld() {
     }
     brightGfx.fill({ color: 0xffffff });
 
-    // Background stars are fixed to the screen (not the world) so they don't
-    // scroll with the galaxy when the user pans.
+    // Background stars are fixed to the screen so they don't scroll with the galaxy.
     const bgContainer = new Container();
     bgContainer.position.set(app.screen.width / 2, app.screen.height / 2);
     bgContainer.addChild(dimGfx);
@@ -251,22 +218,14 @@ function GalaxyWorld() {
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
-
       nebulaContainer.alpha = 1 + Math.sin(elapsedSecs * 0.6) * 0.25;
-      dispSprite.x = Math.sin(elapsedSecs * 0.04 * 1.5) * 120;
-      dispSprite.y = Math.cos(elapsedSecs * 0.03 * 1.5) * 120;
+      dispSprite.x = Math.sin(elapsedSecs * 0.06) * 120;
+      dispSprite.y = Math.cos(elapsedSecs * 0.045) * 120;
       dispSprite.rotation = elapsedSecs * 0.008;
-
       const displacement = NEBULA_DISPLACEMENT_SCALE * camera.current.scale;
       dispFilter.scale.x = displacement;
       dispFilter.scale.y = displacement;
-
-      // Dim stars pulse between alpha 0.25 and 0.80 at 1.5 Hz (1.5 cycles per second).
-      // Math.abs(Math.sin()) keeps alpha positive — it bounces 0→1→0→1 instead of going negative.
       dimGfx.alpha = 0.25 + Math.abs(Math.sin(elapsedSecs * 1.5)) * 0.55;
-
-      // Bright stars pulse faster (2.0 Hz) and between a higher range (0.5 to 1.0),
-      // so they twinkle more noticeably than the dim stars.
       brightGfx.alpha = 0.5 + Math.abs(Math.sin(elapsedSecs * 2.0 + 1.0)) * 0.5;
     };
 
@@ -290,88 +249,3 @@ function GalaxyWorld() {
     </pixiContainer>
   );
 }
-
-const HyperlaneLayer = memo(function HyperlaneLayer({ galaxy }: { galaxy: Galaxy }) {
-  const draw = useCallback(
-    (gfx: Graphics) => {
-      gfx.clear();
-
-      for (const lane of galaxy.hyperlanes) {
-        const fromSystem = galaxy.systems[lane.from];
-        const toSystem = galaxy.systems[lane.to];
-        gfx.moveTo(fromSystem.x, fromSystem.y);
-        gfx.lineTo(toSystem.x, toSystem.y);
-      }
-
-      gfx.stroke({ color: 0xFFFFFF, width: 1.2, alpha: 0.1 });
-    },
-    [galaxy],
-  );
-
-  return <pixiGraphics draw={draw} eventMode="none" />;
-});
-
-const StarNode = memo(function StarNode({
-  system,
-  onSelect,
-}: {
-  system: StarSystem;
-  onSelect: (id: number | null) => void;
-}) {
-  const isSelected = useUIStore((s) => s.selectedSystemId === system.id);
-
-  const glowTexture = useMemo(() => {
-    const outerRadius = system.size * 2.2;
-    const diameter = Math.ceil(outerRadius * 2);
-    const canvas = document.createElement('canvas');
-    canvas.width = diameter;
-    canvas.height = diameter;
-    const ctx = canvas.getContext('2d')!;
-    const center = diameter / 2;
-
-    // Decompose the star's hex colour into r, g, b channels for the gradient rgba() strings.
-    const red   = (system.color >> 16) & 0xff;
-    const green = (system.color >> 8)  & 0xff;
-    const blue  =  system.color        & 0xff;
-
-    const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-    gradient.addColorStop(0,    'rgba(255,255,255,1)');
-    gradient.addColorStop(0.25, 'rgba(255,255,255,1)');
-    gradient.addColorStop(0.45, `rgba(${red},${green},${blue},1)`);
-    gradient.addColorStop(0.82, `rgba(${red},${green},${blue},0.2)`);
-    gradient.addColorStop(1,    `rgba(${red},${green},${blue},0)`);
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, diameter, diameter);
-
-    return Texture.from(canvas);
-  }, [system.color, system.size]);
-
-  useEffect(() => () => { glowTexture.destroy(true); }, [glowTexture]);
-
-  const drawRing = useCallback(
-    (gfx: Graphics) => {
-      gfx.clear();
-      if (isSelected) {
-        gfx.circle(0, 0, system.size + 7);
-        gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
-        gfx.circle(0, 0, system.size + 11);
-        gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
-      }
-    },
-    [system.size, isSelected],
-  );
-
-  return (
-    <pixiContainer
-      x={system.x}
-      y={system.y}
-      eventMode="static"
-      cursor="pointer"
-      onClick={() => onSelect(system.id)}
-    >
-      <pixiSprite texture={glowTexture} anchor={0.5} />
-      <pixiGraphics draw={drawRing} eventMode="none" />
-    </pixiContainer>
-  );
-});

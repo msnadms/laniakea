@@ -107,7 +107,7 @@ export const NEBULA_SKIP_CHANCE = 0;
 export const NEBULA_PARTICLES_PER_STEP = 1000;
 
 // Controls how wide each blob cloud is relative to GALAXY_RADIUS.
-export const NEBULA_SPREAD = 0.19;
+export const NEBULA_SPREAD = 0.21;
 
 // Controls how large each blob is.
 export const NEBULA_RADIUS_MULTIPLIER = 0.25;

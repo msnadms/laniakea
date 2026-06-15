@@ -33,8 +33,8 @@ function mulberry32(seed: number): Rng {
 
 const STAR_COLORS: Record<StarType, number> = {
   G: 0xffe27a,
-  K: 0xffaa55,
-  M: 0xff7070,
+  K: 0xddaa77,
+  M: 0xcc9999,
   F: 0xfff5dd,
   A: 0xc8e0ff,
 };
