@@ -66,20 +66,20 @@ export const BACKGROUND_STAR_AREA_Y = 4000;
 
 // ─── Nebula ──────────────────────────────────────────────────────────────────
 
-// Colours blended across all nebula arm particles (purple, rose-red, indigo-blue).
+// Colours blended across all nebula arm particles.
 export const NEBULA_COLORS = [0x8822cc, 0xcc3366, 0x4422bb];
 
 // How many blob positions are sampled along each arm (before random skipping).
-export const NEBULA_STEPS = 16;
+export const NEBULA_STEPS = 22;
 
 // Probability (0–1) that any given step position is skipped, creating gaps.
 export const NEBULA_SKIP_CHANCE = 0;
 
 // Number of particles drawn per blob position.
-export const NEBULA_PARTICLES_PER_STEP = 500;
+export const NEBULA_PARTICLES_PER_STEP = 1000;
 
 // Controls how wide each blob cloud is relative to GALAXY_RADIUS.
-export const NEBULA_SPREAD = 0.18;
+export const NEBULA_SPREAD = 0.19;
 
 // Controls how large each blob is.
 export const NEBULA_RADIUS_MULTIPLIER = 0.25;
@@ -90,7 +90,9 @@ export const NEBULA_CLOUD_OFFSET = 150;
 // ─── Galactic core glow ──────────────────────────────────────────────────────
 
 // Number of particles in the central white-gold core glow.
-export const CORE_PARTICLE_COUNT = 300;
+export const CORE_PARTICLE_COUNT = 500;
+
+export const CORE_COLORS = [0xfff8e8, 0xffe8c0]
 
 // Half-width and half-height of the ellipse the core particles scatter within.
 export const CORE_ELLIPSE_X = 180;

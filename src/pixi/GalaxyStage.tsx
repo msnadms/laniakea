@@ -24,6 +24,7 @@ import {
   DRAG_THRESHOLD_PX,
   NEBULA_RADIUS_MULTIPLIER,
   NEBULA_CLOUD_OFFSET,
+  CORE_COLORS,
 } from '../game/constants';
 
 extend({ Container, Graphics, Sprite });
@@ -161,10 +162,12 @@ function GalaxyWorld() {
           const offsetX = ((Math.random() + Math.random()) / 2 - 0.5) * 2 * spread;
           const offsetY = ((Math.random() + Math.random()) / 2 - 0.5) * 2 * spread * GALAXY_ELLIPSE;
           const particleRadius = spread * (0.15 + Math.random() * 0.45) * blobScale;
-          const nebulaColor = NEBULA_COLORS[Math.floor(Math.random() * NEBULA_COLORS.length)];
+          const colorList = Math.random() < stepFraction + 0.15 ? NEBULA_COLORS : CORE_COLORS;
+          const nebulaColor = colorList[Math.floor(Math.random() * colorList.length)];
 
           nebulaGfx.circle(cloudX + offsetX, cloudY + offsetY, particleRadius);
-          nebulaGfx.fill({ color: nebulaColor, alpha: 0.014 + Math.random() * 0.024 });
+          const alpha = 0.014 + Math.random() * 0.024;
+          nebulaGfx.fill({ color: nebulaColor, alpha: alpha });
         }
       }
     }
@@ -174,7 +177,7 @@ function GalaxyWorld() {
       const offsetX = ((Math.random() + Math.random()) / 2 - 0.5) * 2 * CORE_ELLIPSE_X;
       const offsetY = ((Math.random() + Math.random()) / 2 - 0.5) * 2 * CORE_ELLIPSE_Y;
       const particleRadius = 20 + Math.random() * 60;
-      const coreColor = Math.random() < 0.5 ? 0xfff8e8 : 0xffe8c0;
+      const coreColor = CORE_COLORS[Math.floor(Math.random() * CORE_COLORS.length)]
 
       coreGfx.circle(offsetX, offsetY, particleRadius);
       coreGfx.fill({ color: coreColor, alpha: 0.012 + Math.random() * 0.018 });
@@ -315,8 +318,6 @@ const StarNode = memo(function StarNode({
   );
 
   return (
-    // A Container groups the sprite and the selection ring at the star's world position.
-    // eventMode="static" lets the container receive clicks even in transparent areas.
     <pixiContainer
       x={system.x}
       y={system.y}
