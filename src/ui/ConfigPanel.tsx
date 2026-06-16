@@ -7,14 +7,19 @@ export function ConfigPanel() {
   const [expanded, setExpanded] = useState(false);
   const showHyperlanes = useUIStore((s) => s.showHyperlanes);
   const toggleHyperlanes = useUIStore((s) => s.toggleHyperlanes);
+  const view = useUIStore((s) => s.view);
+  const setView = useUIStore((s) => s.setView);
   const seed = useGameStore((s) => s.galaxy.seed);
-  const regenerate = useGameStore((s) => s.regenerate);
+  const regenerateGalaxy = useGameStore((s) => s.regenerateGalaxy);
+  const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
   const [seedInput, setSeedInput] = useState('');
 
   function handleSeedSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     const parsed = parseInt(seedInput, 10);
-    regenerate(isNaN(parsed) ? undefined : parsed);
+    view == 'galaxy' ? 
+      regenerateGalaxy(isNaN(parsed) ? undefined : parsed) :
+      regenerateSupercluster(isNaN(parsed) ? undefined : parsed);
     setSeedInput('');
   }
 
@@ -32,18 +37,38 @@ export function ConfigPanel() {
 
       {expanded && (
         <div className="config-body">
-          <label className="config-row">
-            <span className="config-row-label">Hyperlanes</span>
-            <input
-              type="checkbox"
-              className="config-toggle-checkbox"
-              checked={showHyperlanes}
-              onChange={toggleHyperlanes}
-            />
-            <div className={`config-toggle ${showHyperlanes ? 'on' : 'off'}`} aria-hidden="true">
-              <div className="config-toggle-thumb" />
+          <div className="config-row config-row--view">
+            <span className="config-row-label">View</span>
+            <div className="config-view-toggle">
+              <button
+                className={`config-view-btn${view === 'galaxy' ? ' active' : ''}`}
+                onClick={() => setView('galaxy')}
+              >
+                Galaxy
+              </button>
+              <button
+                className={`config-view-btn${view === 'supercluster' ? ' active' : ''}`}
+                onClick={() => setView('supercluster')}
+              >
+                Cluster
+              </button>
             </div>
-          </label>
+          </div>
+
+          {view === 'galaxy' && (
+            <label className="config-row">
+              <span className="config-row-label">Hyperlanes</span>
+              <input
+                type="checkbox"
+                className="config-toggle-checkbox"
+                checked={showHyperlanes}
+                onChange={toggleHyperlanes}
+              />
+              <div className={`config-toggle ${showHyperlanes ? 'on' : 'off'}`} aria-hidden="true">
+                <div className="config-toggle-thumb" />
+              </div>
+            </label>
+          )}
 
           <div className="config-row config-row--seed">
             <span className="config-row-label">Seed</span>

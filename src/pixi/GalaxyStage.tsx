@@ -1,5 +1,5 @@
 import { Application, extend, useApplication } from '@pixi/react';
-import { Container, Graphics, FederatedPointerEvent, Ticker, Sprite, BlurFilter, DisplacementFilter } from 'pixi.js';
+import { Container, Graphics, Ticker, Sprite, BlurFilter, DisplacementFilter } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
@@ -13,10 +13,6 @@ import {
   CORE_ELLIPSE_X,
   CORE_ELLIPSE_Y,
   CAMERA_INITIAL_SCALE,
-  CAMERA_MIN_SCALE,
-  CAMERA_MAX_SCALE,
-  CAMERA_ZOOM_FACTOR,
-  DRAG_THRESHOLD_PX,
   NEBULA_RADIUS_MULTIPLIER,
   NEBULA_CLOUD_OFFSET,
   NEBULA_DISPLACEMENT_SCALE,
@@ -26,6 +22,7 @@ import { createDisplacementTexture } from './textures';
 import { createRng } from '../game/galaxyGen';
 import { HyperlaneLayer } from './HyperlaneLayer';
 import { StarNode } from './StarNode';
+import { useCamera } from './useCamera';
 
 extend({ Container, Graphics, Sprite });
 
@@ -46,85 +43,13 @@ function GalaxyWorld() {
   const config = galaxy.config;
 
   const worldRef = useRef<Container>(null);
-  const camera = useRef({ x: 0, y: 0, scale: CAMERA_INITIAL_SCALE });
-  const isDragging = useRef(false);
-  const hasDragged = useRef(false);
-  const dragStart = useRef({ x: 0, y: 0 });
-  const cameraStart = useRef({ x: 0, y: 0 });
-
-  useEffect(() => {
-    if (!isInitialised || !worldRef.current) return;
-    camera.current.x = app.screen.width / 2;
-    camera.current.y = app.screen.height / 2;
-    worldRef.current.position.set(camera.current.x, camera.current.y);
-    worldRef.current.scale.set(camera.current.scale);
-  }, [app, isInitialised]);
-
-  useEffect(() => {
-    if (!isInitialised) return;
-    const stage = app.stage;
-
-    stage.eventMode = 'static';
-    stage.hitArea = app.screen;
-
-    const onDown = (event: FederatedPointerEvent) => {
-      isDragging.current = true;
-      hasDragged.current = false;
-      dragStart.current = { x: event.globalX, y: event.globalY };
-      cameraStart.current = { x: camera.current.x, y: camera.current.y };
-    };
-
-    const onMove = (event: FederatedPointerEvent) => {
-      if (!isDragging.current || !worldRef.current) return;
-      const deltaX = event.globalX - dragStart.current.x;
-      const deltaY = event.globalY - dragStart.current.y;
-      if (!hasDragged.current && (Math.abs(deltaX) > DRAG_THRESHOLD_PX || Math.abs(deltaY) > DRAG_THRESHOLD_PX))
-        hasDragged.current = true;
-      camera.current.x = cameraStart.current.x + deltaX;
-      camera.current.y = cameraStart.current.y + deltaY;
-      worldRef.current.position.set(camera.current.x, camera.current.y);
-    };
-
-    const onUp = (event: FederatedPointerEvent) => {
-      if (!hasDragged.current && event.target === stage) selectSystem(null);
-      isDragging.current = false;
-    };
-
-    stage.on('pointerdown', onDown);
-    stage.on('pointermove', onMove);
-    stage.on('pointerup', onUp);
-    const onUpOutside = () => { isDragging.current = false; };
-    stage.on('pointerupoutside', onUpOutside);
-
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      if (!worldRef.current) return;
-      const zoomFactor = event.deltaY < 0 ? CAMERA_ZOOM_FACTOR : 1 / CAMERA_ZOOM_FACTOR;
-      const mouseX = event.clientX;
-      const mouseY = event.clientY;
-      // World-space point under cursor — re-anchored after scaling to keep it fixed.
-      const worldX = (mouseX - camera.current.x) / camera.current.scale;
-      const worldY = (mouseY - camera.current.y) / camera.current.scale;
-      camera.current.scale = Math.max(CAMERA_MIN_SCALE, Math.min(CAMERA_MAX_SCALE, camera.current.scale * zoomFactor));
-      camera.current.x = mouseX - worldX * camera.current.scale;
-      camera.current.y = mouseY - worldY * camera.current.scale;
-      worldRef.current.position.set(camera.current.x, camera.current.y);
-      worldRef.current.scale.set(camera.current.scale);
-    };
-    app.canvas.addEventListener('wheel', onWheel, { passive: false });
-
-    return () => {
-      stage.off('pointerdown', onDown);
-      stage.off('pointermove', onMove);
-      stage.off('pointerup', onUp);
-      stage.off('pointerupoutside', onUpOutside);
-      app.canvas.removeEventListener('wheel', onWheel);
-    };
-  }, [app, isInitialised, selectSystem]);
+  const camera = useCamera(worldRef, CAMERA_INITIAL_SCALE, () => selectSystem(null));
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
+    const stage = app.stage;
+    const renderer = app.renderer;
 
     const nebulaContainer = new Container();
     const nebulaGfx = new Graphics();
@@ -236,15 +161,14 @@ function GalaxyWorld() {
     bgContainer.addChild(brightGfx);
 
     world.addChildAt(nebulaContainer, 0);
-    app.stage.addChildAt(bgContainer, 0);
+    stage.addChildAt(bgContainer, 0);
 
     const onResize = () => bgContainer.position.set(app.screen.width / 2, app.screen.height / 2);
-    app.renderer.on('resize', onResize);
+    renderer.on('resize', onResize);
 
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
-      nebulaContainer.alpha = 0.875 + Math.sin(elapsedSecs * 0.6) * 0.125;
       dispSprite.x = Math.sin(elapsedSecs * 0.06) * 120;
       dispSprite.y = Math.cos(elapsedSecs * 0.045) * 120;
       dispSprite.rotation = elapsedSecs * 0.008;
@@ -259,9 +183,9 @@ function GalaxyWorld() {
 
     return () => {
       Ticker.shared.remove(tick);
-      app.renderer.off('resize', onResize);
+      renderer.off('resize', onResize);
       world.removeChild(nebulaContainer);
-      app.stage.removeChild(bgContainer);
+      stage.removeChild(bgContainer);
       nebulaContainer.destroy({ children: true });
       dispTexture.destroy(true);
       bgContainer.destroy({ children: true });

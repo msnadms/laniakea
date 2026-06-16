@@ -1,13 +1,18 @@
 import { create } from 'zustand';
-import type { Galaxy } from '../game/types';
+import type { Galaxy, SuperclusterData } from '../game/types';
 import { generateGalaxy } from '../game/galaxyGen';
+import { generateSupercluster } from '../game/superclusters';
 
 interface GameState {
   galaxy: Galaxy;
-  regenerate: (seed?: number) => void;
+  supercluster: SuperclusterData;
+  regenerateGalaxy: (seed?: number) => void;
+  regenerateSupercluster: (seed?: number) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
   galaxy: generateGalaxy(),
-  regenerate: (seed) => set({ galaxy: generateGalaxy(seed) }),
+  supercluster: generateSupercluster(),
+  regenerateGalaxy: (seed) => set({ galaxy: generateGalaxy(seed) }),
+  regenerateSupercluster: (seed) => set({ supercluster: generateSupercluster(seed) })
 }));

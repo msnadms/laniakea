@@ -94,7 +94,7 @@ export const NEBULA_COLORS = [
 ];
 
 // How many blob positions are sampled along each arm (before random skipping).
-export const NEBULA_STEPS = 30;
+export const NEBULA_STEPS = 50;
 
 // Probability (0–1) that any given step position is skipped, creating gaps.
 export const NEBULA_SKIP_CHANCE = 0;

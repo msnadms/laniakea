@@ -33,3 +33,31 @@ export interface Galaxy {
   config: GalaxyConfig;
   seed: number;
 }
+
+export interface SuperclusterAttractor {
+  x: number;
+  y: number;
+  strength: number;
+  name: string;
+}
+
+export interface SuperclusterFilament {
+  from: number;
+  to: number;
+}
+
+export interface SuperclusterDot {
+  x: number;
+  y: number;
+  brightness: number;
+  seed: number;
+}
+
+export interface SuperclusterData {
+  name: string;
+  attractors: SuperclusterAttractor[];
+  filaments: SuperclusterFilament[];
+  dots: SuperclusterDot[];
+  backgroundStars: BackgroundStar[];
+  seed: number;
+}
