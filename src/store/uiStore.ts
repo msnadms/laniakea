@@ -1,11 +1,9 @@
 import { create } from 'zustand';
 import type { AddressComponent, AddressComponentType } from '../game/types';
 
-export type AppView = 'galaxy' | 'supercluster';
+export type AppView = 'system' | 'galaxy' | 'supercluster';
 
 interface UIState {
-  selectedSystemId: number | null;
-  selectSystem: (id: number | null) => void;
   showHyperlanes: boolean;
   toggleHyperlanes: () => void;
   showAttractorLabels: boolean;
@@ -33,9 +31,7 @@ function upsertAddress(address: AddressComponent[], component: AddressComponent)
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  selectedSystemId: null,
-  selectSystem: (id) => set({ selectedSystemId: id }),
-  showHyperlanes: true,
+  showHyperlanes: false,
   toggleHyperlanes: () => set((s) => ({ showHyperlanes: !s.showHyperlanes })),
   showAttractorLabels: true,
   toggleAttractorLabels: () => set((s) => ({ showAttractorLabels: !s.showAttractorLabels })),

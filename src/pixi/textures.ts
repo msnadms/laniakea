@@ -46,9 +46,37 @@ export function createDisplacementSetup(container: Container, initialScale: numb
       dispFilter.scale.y = filterScale;
     },
     destroy() {
+      dispFilter.destroy();
       dispTexture.destroy(true);
     },
   };
+}
+
+export function createSunTexture(color: number): Texture {
+  const SIZE = 512;
+  const center = SIZE / 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d')!;
+
+  const red   = (color >> 16) & 0xff;
+  const green = (color >> 8)  & 0xff;
+  const blue  =  color        & 0xff;
+
+  const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+  gradient.addColorStop(0,    'rgba(255,255,255,1)');
+  gradient.addColorStop(0.1,  'rgba(255,255,255,0.9)');
+  gradient.addColorStop(0.25, `rgba(${red},${green},${blue},1)`);
+  gradient.addColorStop(0.5,  `rgba(${red},${green},${blue},0.35)`);
+  gradient.addColorStop(0.75, `rgba(${red},${green},${blue},0.08)`);
+  gradient.addColorStop(1,    `rgba(${red},${green},${blue},0)`);
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  return Texture.from(canvas);
 }
 
 export function createStarTexture(color: number, size: number): Texture {

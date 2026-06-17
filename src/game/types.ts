@@ -2,6 +2,14 @@ import type { GalaxyConfig } from "./galaxyConfig";
 
 export type StarType = 'G' | 'K' | 'M' | 'F' | 'A';
 
+export const STAR_TYPE_LABELS: Record<StarType, string> = {
+  G: 'G-class (Yellow Dwarf)',
+  K: 'K-class (Orange Dwarf)',
+  M: 'M-class (Red Dwarf)',
+  F: 'F-class (Yellow-White)',
+  A: 'A-class (White)',
+};
+
 export interface StarSystem {
   id: number;
   x: number;
@@ -11,6 +19,7 @@ export interface StarSystem {
   color: number;
   size: number;
   arm: number | null;
+  seed: number;
 }
 
 export interface Hyperlane {

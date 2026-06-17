@@ -6,10 +6,11 @@ import { useUIStore } from '../store/uiStore';
 import { buildAddressComponent, type SuperclusterDot } from '../game/types';
 import { useCamera } from './useCamera';
 import { createDisplacementSetup } from './textures';
-import { SC_CAMERA_INITIAL_SCALE, SC_WORLD_HALF, SC_WORLD_HALF_MLY, SC_ATTRACTOR_LABEL_MAX_DIST } from '../game/constants';
+import { SC_CAMERA_INITIAL_SCALE, SC_WORLD_HALF, SC_WORLD_HALF_MLY, SC_ATTRACTOR_LABEL_MAX_DIST, OBS_UNIVERSE_RADIUS } from '../game/constants';
 import { ScaleBar } from './ScaleBar';
 import { createRng } from '../game/galaxyGen';
 import { createPointerLabel } from './labels';
+import { BackgroundStars } from './BackgroundStars';
 
 const BRIGHTNESS_TIERS = [
   { min: 0.80, radius: 3.5, color: 0xffee00, alpha: 1.00 },
@@ -32,6 +33,7 @@ function SuperclusterWorld() {
 
   const scData = useGameStore((s) => s.supercluster);
   const regenerateGalaxy = useGameStore((s) => s.regenerateGalaxy);
+  const markDotVisited = useGameStore((s) => s.markDotVisited);
   const setView = useUIStore((s) => s.setView);
   const pushAddress = useUIStore((s) => s.pushAddress);
   const removeAddressType = useUIStore((s) => s.removeAddressType);
@@ -43,31 +45,10 @@ function SuperclusterWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
-    const stage = app.stage;
-    const renderer = app.renderer;
     const rng = createRng(scData.seed);
-    const [x, y, z] = [rng() * 1_000_000_000, rng() * 1_000_000_000, rng() * 1_000_000_000];
+    const obsUniverseCoords = () => rng() * OBS_UNIVERSE_RADIUS * 2 - OBS_UNIVERSE_RADIUS;
+    const [x, y, z] = [obsUniverseCoords(), obsUniverseCoords(), obsUniverseCoords()];
     pushAddress(buildAddressComponent(scData.name, x, y, z, 'supercluster'))
-
-    // Background starfield (fixed to screen, not panning with world)
-    const dimGfx = new Graphics();
-    const brightGfx = new Graphics();
-
-    for (const star of scData.backgroundStars) {
-      if (star.brightness <= 0.7) dimGfx.circle(star.x, star.y, 0.6);
-      else brightGfx.circle(star.x, star.y, 1.0);
-    }
-    dimGfx.fill({ color: 0xffffff });
-    brightGfx.fill({ color: 0xffffff });
-
-    const bgContainer = new Container();
-    bgContainer.position.set(app.screen.width / 2, app.screen.height / 2);
-    bgContainer.addChild(dimGfx);
-    bgContainer.addChild(brightGfx);
-    stage.addChildAt(bgContainer, 0);
-
-    const onResize = () => bgContainer.position.set(app.screen.width / 2, app.screen.height / 2);
-    renderer.on('resize', onResize);
 
     const buckets: SuperclusterDot[][] = BRIGHTNESS_TIERS.map(() => []);
     const visitedDots: SuperclusterDot[] = [];
@@ -100,25 +81,19 @@ function SuperclusterWorld() {
 
     world.addChild(scContainer);
 
-    // Starfield pulse animation
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
-      dimGfx.alpha = 0.25 + Math.abs(Math.sin(elapsedSecs * 1.5)) * 0.55;
-      brightGfx.alpha = 0.5 + Math.abs(Math.sin(elapsedSecs * 2.0 + 1.0)) * 0.5;
       disp.update(elapsedSecs, Math.max(camera.current.scale * 10 - 5, 0));
     };
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
-      renderer.off('resize', onResize);
       world.removeChild(scContainer);
-      stage.removeChild(bgContainer);
       scContainer.destroy({ children: true });
       blurFilter.destroy();
       disp.destroy();
-      bgContainer.destroy({ children: true });
     };
   }, [scData, app, isInitialised]);
 
@@ -171,7 +146,7 @@ function SuperclusterWorld() {
       }
       const maxDist = 15 / camera.current.scale;
       if (nearestDist > maxDist) return;
-      nearest.visited = true;
+      markDotVisited(nearest.seed);
       regenerateGalaxy(nearest.seed);
 
       let nearestAttractorDist = Infinity;
@@ -192,10 +167,11 @@ function SuperclusterWorld() {
 
     stage.on('pointertap', onTap);
     return () => { stage.off('pointertap', onTap); };
-  }, [scData, app, isInitialised, regenerateGalaxy, setView, pushAddress, removeAddressType]);
+  }, [scData, app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType]);
 
   return (
     <>
+      <BackgroundStars stars={scData.backgroundStars} />
       <pixiContainer ref={worldRef} visible={isReady} />
       <ScaleBar
         camera={camera}

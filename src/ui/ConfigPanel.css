@@ -25,6 +25,16 @@
   border-color: rgba(60, 110, 160, 0.7);
 }
 
+.config-header--disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.config-header--disabled:hover {
+  color: #6a90b0;
+  border-color: rgba(40, 80, 120, 0.5);
+}
+
 .config-icon {
   font-size: 13px;
 }

@@ -1,6 +1,6 @@
 import { Application, extend, useApplication } from '@pixi/react';
 import { Container, Graphics, Ticker, Sprite, BlurFilter } from 'pixi.js';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import {
@@ -26,6 +26,7 @@ import { StarNode } from './StarNode';
 import { useCamera } from './useCamera';
 import { ScaleBar } from './ScaleBar';
 import { buildAddressComponent } from '../game/types';
+import { BackgroundStars } from './BackgroundStars';
 
 extend({ Container, Graphics, Sprite });
 
@@ -41,21 +42,25 @@ function GalaxyWorld() {
   const { app, isInitialised } = useApplication();
 
   const galaxy = useGameStore((s) => s.galaxy);
-  const selectSystem = useUIStore((s) => s.selectSystem);
-  const selectedSystemId = useUIStore((s) => s.selectedSystemId);
+  const activeSystem = useGameStore((s) => s.system);
+  const setSystem = useGameStore((s) => s.setSystem);
   const pushAddress = useUIStore((s) => s.pushAddress);
   const popAddress = useUIStore((s) => s.popAddress);
   const showHyperlanes = useUIStore((s) => s.showHyperlanes);
+  const setView = useUIStore((s) => s.setView);
   const config = galaxy.config;
 
-  const handleSelectSystem = (id: number | null) => {
-    if (selectedSystemId !== null) popAddress();
+  const handleSelectSystem = useCallback((id: number | null) => {
+    if (activeSystem !== null) popAddress();
     if (id !== null) {
-      const system = galaxy.systems[id];
-      pushAddress(buildAddressComponent(system.name, system.x, system.y, 0, 'system'))
+      const sys = galaxy.systems[id];
+      pushAddress(buildAddressComponent(sys.name, sys.x, sys.y, 0, 'system'));
+      setSystem(sys);
+      setView('system');
+    } else {
+      setSystem(null);
     }
-    selectSystem(id);
-  };
+  }, [activeSystem, galaxy, pushAddress, popAddress, setSystem, setView]);
 
   const worldRef = useRef<Container>(null);
   const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, () => handleSelectSystem(null));
@@ -69,8 +74,6 @@ function GalaxyWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
-    const stage = app.stage;
-    const renderer = app.renderer;
 
     const nebulaContainer = new Container();
     const nebulaGfx = new Graphics();
@@ -91,14 +94,17 @@ function GalaxyWorld() {
         const cloudX = Math.cos(angle) * radius;
         const cloudY = Math.sin(angle) * radius * config.galaxyEllipse;
 
+        const taperT = Math.max(0, (stepFraction - 0.90) / 0.10);
+        const taper = Math.pow(1 - taperT, 1.5);
+
         let blobScale = NEBULA_RADIUS_MULTIPLIER;
-        let cloudsPerStep = NEBULA_PARTICLES_PER_STEP;
+        let cloudsPerStep = Math.max(1, Math.round(NEBULA_PARTICLES_PER_STEP * taper));
         if (Math.abs(cloudX) < NEBULA_CLOUD_OFFSET && Math.abs(cloudY) < NEBULA_CLOUD_OFFSET * config.galaxyEllipse) {
           blobScale = 1.5;
           cloudsPerStep = 20;
         }
 
-        const spread = GALAXY_RADIUS * NEBULA_SPREAD * (0.35 + stepFraction);
+        const spread = GALAXY_RADIUS * NEBULA_SPREAD * (0.35 + stepFraction) * (0.5 + 0.5 * taper);
 
         for (let p = 0; p < cloudsPerStep; p++) {
           const offsetX = ((rng() + rng()) / 2 - 0.5) * 2 * spread;
@@ -109,7 +115,7 @@ function GalaxyWorld() {
             ? (rng() > Math.pow(stepFraction, 2) + 0.15 ? config.innerNebulaColors : config.nebulaColors)
             : CORE_COLORS;
           const nebulaColor = colorList[Math.floor(rng() * colorList.length)];
-          const alpha = (0.014 + rng() * 0.024) * Math.max(1 - stepFraction, 0.5);
+          const alpha = (0.014 + rng() * 0.024) * Math.max(1 - stepFraction, 0.5) * taper;
 
           let batch = nebulaBatches.get(nebulaColor);
           if (!batch) { 
@@ -147,60 +153,39 @@ function GalaxyWorld() {
 
     nebulaGfx.blendMode = 'screen';
     coreGfx.blendMode = 'screen';
-    nebulaGfx.filters = [new BlurFilter({ strength: 0.75 })];
-    coreGfx.filters = [new BlurFilter({ strength: 0.75, blendMode: 'add' })];
+    const nebulaBlur = new BlurFilter({ strength: 0.75 });
+    const coreBlur = new BlurFilter({ strength: 0.75, blendMode: 'add' });
+    nebulaGfx.filters = [nebulaBlur];
+    coreGfx.filters = [coreBlur];
 
     const disp = createDisplacementSetup(nebulaContainer, NEBULA_DISPLACEMENT_SCALE);
 
     nebulaContainer.addChild(coreGfx);
     nebulaContainer.addChild(nebulaGfx);
 
-    const dimGfx = new Graphics();
-    for (const star of galaxy.backgroundStars) {
-      if (star.brightness <= 0.7) dimGfx.circle(star.x, star.y, 0.6);
-    }
-    dimGfx.fill({ color: 0xffffff });
-
-    const brightGfx = new Graphics();
-    for (const star of galaxy.backgroundStars) {
-      if (star.brightness > 0.7) brightGfx.circle(star.x, star.y, 1.0);
-    }
-    brightGfx.fill({ color: 0xffffff });
-
-    const bgContainer = new Container();
-    bgContainer.position.set(app.screen.width / 2, app.screen.height / 2);
-    bgContainer.addChild(dimGfx);
-    bgContainer.addChild(brightGfx);
-
     world.addChildAt(nebulaContainer, 0);
-    stage.addChildAt(bgContainer, 0);
-
-    const onResize = () => bgContainer.position.set(app.screen.width / 2, app.screen.height / 2);
-    renderer.on('resize', onResize);
 
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
       disp.update(elapsedSecs, NEBULA_DISPLACEMENT_SCALE * camera.current.scale);
-      dimGfx.alpha = 0.25 + Math.abs(Math.sin(elapsedSecs * 1.5)) * 0.55;
-      brightGfx.alpha = 0.5 + Math.abs(Math.sin(elapsedSecs * 2.0 + 1.0)) * 0.5;
     };
 
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
-      renderer.off('resize', onResize);
       world.removeChild(nebulaContainer);
-      stage.removeChild(bgContainer);
+      nebulaBlur.destroy();
+      coreBlur.destroy();
       nebulaContainer.destroy({ children: true });
       disp.destroy();
-      bgContainer.destroy({ children: true });
     };
   }, [galaxy, app, isInitialised]);
 
   return (
     <>
+      <BackgroundStars stars={galaxy.backgroundStars} />
       <pixiContainer ref={worldRef} visible={isReady}>
         {showHyperlanes && <HyperlaneLayer galaxy={galaxy} />}
         {galaxy.systems.map((system) => (

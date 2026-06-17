@@ -4,7 +4,7 @@
 // Increasing this makes the galaxy larger and stars more spread out.
 export const GALAXY_RADIUS = 720;
 // Real-world scale: how many light years GALAXY_RADIUS represents.
-export const GALAXY_RADIUS_LY = 50000;
+export const GALAXY_RADIUS_LY = 25000;
 
 // How many radians the spiral rotates from centre to edge.
 // Higher = tighter/more wound spiral. Used in both star gen and nebula placement.
@@ -78,21 +78,21 @@ export const BACKGROUND_STAR_AREA_Y = 4000;
 
 // Colours used in inner arm nebula (matching hot blue/white A and F stars).
 export const INNER_NEBULA_COLORS = [
-  [0x3366ff, 0x6644cc, 0x4488ee], // sapphire blue / violet
-  [0x2255ff, 0x4433bb, 0x7766ff], // deep indigo
+  [0x3366ff, 0x5533bb, 0x4488ee], // sapphire blue / violet
+  [0x2255ff, 0x4433bb, 0x5550aa], // deep indigo
   [0x22aaff, 0x3355dd, 0x44bbee], // azure / cyan-blue
-  [0x8844ff, 0x5522cc, 0xaa66ff], // violet
-  [0x4466ff, 0x88aaff, 0x2244cc], // electric blue
+  [0x6633bb, 0x5522cc, 0x7744bb], // violet
+  [0x4466ff, 0x5577aa, 0x2244cc], // electric blue
 ];
 
 // Colours blended across outer arm nebula particles.
 export const NEBULA_COLORS = [
-    [0x8822cc, 0xcc3366, 0x4422bb], // Purplish red
-    [0x8822cc, 0x3366cc, 0x4422bb], // Purplish blue
+    [0x661899, 0x882244, 0x4422bb], // Purplish red
+    [0x661899, 0x3366cc, 0x4422bb], // Purplish blue
     [0xdd4411, 0xcc7722, 0xaa2200], // Ember orange
-    [0x5544dd, 0x2211aa, 0x8866ff], // Deep indigo
+    [0x5544dd, 0x2211aa, 0x5544aa], // Deep indigo
     [0xcc8822, 0xdd5511, 0xbbaa00], // Golden amber
-    [0xaa2288, 0x5511cc, 0xdd1166], // Violet crimson
+    [0x771166, 0x5511cc, 0x991144], // Violet crimson
 ];
 
 // How many blob positions are sampled along each arm (before random skipping).
@@ -153,6 +153,9 @@ export const SC_FILAMENT_DOTS_PER_EDGE = 500;
 
 // Base scatter width for filament dots as a fraction of SC_WORLD_HALF.
 export const SC_FILAMENT_SCATTER = 0.025;
+
+// 46 billion light years
+export const OBS_UNIVERSE_RADIUS = 46_000_000_000;
 
 // ─── Camera ──────────────────────────────────────────────────────────────────
 

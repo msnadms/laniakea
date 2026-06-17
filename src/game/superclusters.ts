@@ -53,6 +53,7 @@ function makeClusterName(rng: Rng): string {
   return `${root}${ending}${suffix}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function todaySeed(): number {
   const d = new Date();
   return d.getDate() * 1_000_000 + (d.getMonth() + 1) * 10_000 + d.getFullYear();

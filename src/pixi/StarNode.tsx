@@ -1,6 +1,6 @@
 import { memo, useMemo, useEffect, useCallback } from 'react';
 import { Graphics } from 'pixi.js';
-import { useUIStore } from '../store/uiStore';
+import { useGameStore } from '../store/gameStore';
 import type { StarSystem } from '../game/types';
 import { createStarTexture } from './textures';
 
@@ -11,7 +11,7 @@ export const StarNode = memo(function StarNode({
   system: StarSystem;
   onSelect: (id: number | null) => void;
 }) {
-  const isSelected = useUIStore((s) => s.selectedSystemId === system.id);
+  const isSelected = useGameStore((s) => s.system?.id === system.id);
 
   const glowTexture = useMemo(
     () => createStarTexture(system.color, system.size),

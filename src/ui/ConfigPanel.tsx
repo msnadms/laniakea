@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import './ConfigPanel.css';
@@ -13,6 +13,11 @@ export function ConfigPanel() {
   const scSeed = useGameStore((s) => s.supercluster.seed);
   const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
   const [seedInput, setSeedInput] = useState('');
+  const inSystem = view === 'system';
+
+  useEffect(() => {
+    if (inSystem) setExpanded(false);
+  }, [inSystem]);
 
   function handleSeedSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,15 +29,15 @@ export function ConfigPanel() {
   return (
     <div className="config-panel">
       <button
-        className="config-header"
-        onClick={() => setExpanded((e) => !e)}
+        className={`config-header${inSystem ? ' config-header--disabled' : ''}`}
+        onClick={() => { if (!inSystem) setExpanded((e) => !e); }}
         title="Settings"
       >
         <span className="config-icon">⚙</span>
         <span className="config-label">Settings</span>
-        <span className="config-chevron">{expanded ? '▲' : '▼'}</span>
+        {!inSystem && <span className="config-chevron">{expanded ? '▲' : '▼'}</span>}
       </button>
-
+      
       {expanded && (
         <div className="config-body">
           {view === 'galaxy' && (

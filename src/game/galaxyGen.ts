@@ -156,6 +156,7 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
       color: STAR_COLORS[starType],
       size: lerp(minSize * STAR_SIZE_MULTIPLIER, maxSize * STAR_SIZE_MULTIPLIER, rng()) * sizeScale,
       arm: armIndices[id],
+      seed: (seed ^ (id * 2654435761)) >>> 0,
     };
   });
 
