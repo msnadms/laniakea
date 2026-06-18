@@ -7,10 +7,21 @@ import {
   SC_CLUSTER_SIGMA, SC_FILAMENT_DOTS_PER_EDGE, SC_FILAMENT_SCATTER,
 } from './constants';
 
-const CLUSTER_ROOTS = ['Vel', 'Kor', 'Dra', 'Lyx', 'Aur', 'Per', 'Cen', 'Vir', 'Com', 'For', 'Boo', 'Sag', 'Pav', 'Hydr', 'Phe'];
-const CLUSTER_ENDINGS = ['ara', 'eth', 'um', 'ius', 'is', 'ax', 'on', 'el', 'an', 'or'];
-const CLUSTER_SUFFIXES = [' Cluster', ' Wall', ' Void', ' Nexus', ' Complex', ' Cloud'];
-const GALAXY_SUFFIXES = [' Galaxy', ' Spiral', ' System', ' Expanse', ' Domain'];
+const CLUSTER_ROOTS = [
+  'Vel', 'Kor', 'Dra', 'Lyx', 'Aur', 'Per', 'Cen', 'Vir', 'Com', 'For',
+  'Boo', 'Sag', 'Pav', 'Hydr', 'Phe', 'Oph', 'Tal', 'Rel', 'Nyx', 'Sar',
+  'Eld', 'Vor', 'Kyth', 'Mal', 'Ren', 'Set', 'Ul', 'Wyr', 'Zan', 'Bel',
+  'Cas', 'Del', 'Esh', 'Fal', 'Gyr', 'Hal', 'Ist', 'Jon', 'Kal', 'Lon',
+];
+const CLUSTER_ENDINGS = ['ara', 'eth', 'um', 'ius', 'is', 'ax', 'on', 'el', 'an', 'or', 'yn', 'id', 'ath', 'esh', 'ix', 'oc', 'ur', 'al'];
+const CLUSTER_SUFFIXES = [
+  ' Cluster', ' Wall', ' Void', ' Nexus', ' Complex', ' Cloud',
+  ' Group', ' Chain', ' Reach', ' Expanse', ' Drift', ' Basin',
+];
+const GALAXY_SUFFIXES = [
+  ' Galaxy', ' Spiral', ' System', ' Expanse', ' Domain',
+  ' Arm', ' Drift', ' Halo', ' Nebula', ' Veil',
+];
 
 const SC_NAME_ROOTS = [
   'Virgo', 'Coma', 'Perseus', 'Pisces', 'Hydra', 'Centaurus', 'Boötes',
@@ -18,10 +29,15 @@ const SC_NAME_ROOTS = [
   'Eridanus', 'Phoenix', 'Libra', 'Cetus', 'Columba', 'Vela', 'Norma',
   'Ara', 'Lupus', 'Corona', 'Caelum', 'Horologium', 'Microscopium',
   'Telescopium', 'Tucana', 'Crater', 'Corvus', 'Capricornus', 'Lepus',
+  'Draco', 'Ursa', 'Cygnus', 'Lyra', 'Orion', 'Taurus', 'Gemini',
+  'Cancer', 'Scorpius', 'Sagittarius', 'Aquila', 'Cassiopeia', 'Andromeda',
+  'Triangulum', 'Auriga', 'Puppis', 'Pictor', 'Dorado', 'Reticulum',
+  'Volans', 'Musca', 'Circinus', 'Apus', 'Octans', 'Mensa', 'Chamaeleon',
 ];
 const SC_NAME_SUFFIXES = [
   ' Supercluster', ' Supercluster', ' Supercluster Complex',
   ' Great Wall', ' Wall', ' Filament', ' Sheet', ' Attractor Region',
+  ' Void', ' Basin', ' Overdensity', ' Bridge', ' Strand',
 ];
 
 function makeSupercusterName(rng: Rng): string {

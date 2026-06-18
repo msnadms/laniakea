@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import './ConfigPanel.css';
@@ -9,15 +9,12 @@ export function ConfigPanel() {
   const toggleHyperlanes = useUIStore((s) => s.toggleHyperlanes);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
   const toggleAttractorLabels = useUIStore((s) => s.toggleAttractorLabels);
+  const showOrbitRings = useUIStore((s) => s.showOrbitRings);
+  const toggleOrbitRings = useUIStore((s) => s.toggleOrbitRings);
   const view = useUIStore((s) => s.view);
   const scSeed = useGameStore((s) => s.supercluster.seed);
   const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
   const [seedInput, setSeedInput] = useState('');
-  const inSystem = view === 'system';
-
-  useEffect(() => {
-    if (inSystem) setExpanded(false);
-  }, [inSystem]);
 
   function handleSeedSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,13 +26,13 @@ export function ConfigPanel() {
   return (
     <div className="config-panel">
       <button
-        className={`config-header${inSystem ? ' config-header--disabled' : ''}`}
-        onClick={() => { if (!inSystem) setExpanded((e) => !e); }}
+        className="config-header"
+        onClick={() => setExpanded((e) => !e)}
         title="Settings"
       >
         <span className="config-icon">⚙</span>
         <span className="config-label">Settings</span>
-        {!inSystem && <span className="config-chevron">{expanded ? '▲' : '▼'}</span>}
+        <span className="config-chevron">{expanded ? '▲' : '▼'}</span>
       </button>
       
       {expanded && (
@@ -65,6 +62,21 @@ export function ConfigPanel() {
                 onChange={toggleAttractorLabels}
               />
               <div className={`config-toggle ${showAttractorLabels ? 'on' : 'off'}`} aria-hidden="true">
+                <div className="config-toggle-thumb" />
+              </div>
+            </label>
+          )}
+
+          {view === 'system' && (
+            <label className="config-row">
+              <span className="config-row-label">Orbit Rings</span>
+              <input
+                type="checkbox"
+                className="config-toggle-checkbox"
+                checked={showOrbitRings}
+                onChange={toggleOrbitRings}
+              />
+              <div className={`config-toggle ${showOrbitRings ? 'on' : 'off'}`} aria-hidden="true">
                 <div className="config-toggle-thumb" />
               </div>
             </label>

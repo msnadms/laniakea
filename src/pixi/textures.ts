@@ -79,6 +79,37 @@ export function createSunTexture(color: number): Texture {
   return Texture.from(canvas);
 }
 
+export function createNebulaGlowTexture(color: number): Texture {
+  const SIZE = 512;
+  const center = SIZE / 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d')!;
+
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8)  & 0xff;
+  const b =  color        & 0xff;
+
+  // warm-white hot core fading to star color
+  const wr = Math.min(255, Math.round(r + (255 - r) * 0.55));
+  const wg = Math.min(255, Math.round(g + (255 - g) * 0.55));
+  const wb = Math.min(255, Math.round(b + (255 - b) * 0.55));
+
+  const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
+  grad.addColorStop(0,    `rgba(${wr},${wg},${wb},0.7)`);
+  grad.addColorStop(0.1,  `rgba(${r},${g},${b},0.5)`);
+  grad.addColorStop(0.3,  `rgba(${r},${g},${b},0.18)`);
+  grad.addColorStop(0.55, `rgba(${r},${g},${b},0.06)`);
+  grad.addColorStop(0.8,  `rgba(${r},${g},${b},0.01)`);
+  grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  return Texture.from(canvas);
+}
+
 export function createStarTexture(color: number, size: number): Texture {
   const RS = 4;
   const outerRadius = size * 2.2 * RS;

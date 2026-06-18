@@ -21,6 +21,7 @@ export interface StarSystem {
   arm: number | null;
   seed: number;
   visited: boolean;
+  planets?: Planet[];
 }
 
 export interface Hyperlane {
@@ -74,6 +75,22 @@ export interface SuperclusterData {
   dots: SuperclusterDot[];
   backgroundStars: BackgroundStar[];
   seed: number;
+}
+
+export interface Resource {
+  type: 'exotic' | 'alloys' | 'nutrients'
+  count: number;
+}
+
+export interface Moon {
+  name: string;
+  resources: Resource[];
+}
+
+export interface Planet {
+  name: string;
+  resources: Resource[];
+  moons: Moon[];
 }
 
 export type AddressComponentType = 'universe' | 'supercluster' | 'attractor' | 'galaxy' | 'system'

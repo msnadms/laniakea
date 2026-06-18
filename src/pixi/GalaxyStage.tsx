@@ -181,7 +181,7 @@ function GalaxyWorld() {
       nebulaContainer.destroy({ children: true });
       disp.destroy();
     };
-  }, [galaxy, app, isInitialised]);
+  }, [galaxy.seed, config, app, isInitialised]);
 
   return (
     <>

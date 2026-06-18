@@ -8,6 +8,8 @@ interface UIState {
   toggleHyperlanes: () => void;
   showAttractorLabels: boolean;
   toggleAttractorLabels: () => void;
+  showOrbitRings: boolean;
+  toggleOrbitRings: () => void;
   view: AppView;
   setView: (view: AppView) => void;
   address: AddressComponent[];
@@ -35,6 +37,8 @@ export const useUIStore = create<UIState>((set) => ({
   toggleHyperlanes: () => set((s) => ({ showHyperlanes: !s.showHyperlanes })),
   showAttractorLabels: true,
   toggleAttractorLabels: () => set((s) => ({ showAttractorLabels: !s.showAttractorLabels })),
+  showOrbitRings: false,
+  toggleOrbitRings: () => set((s) => ({ showOrbitRings: !s.showOrbitRings })),
   view: 'supercluster',
   setView: (view) => set({ view }),
   address: [obsUniverse],

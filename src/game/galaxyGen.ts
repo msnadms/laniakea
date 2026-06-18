@@ -76,14 +76,35 @@ function pickStarType(rng: Rng, armFraction: number | null, isDisk: boolean): St
   return 'M';
 }
 
-const PREFIXES = ['Ker', 'Sol', 'Vel', 'Tor', 'Ax', 'Cet', 'Dra', 'El', 'For', 'Gav', 'Hel', 'Ix', 'Jen', 'Kor', 'Lys', 'Mal', 'Nyx', 'Ora'];
-const SUFFIXES = [' Prime', ' Major', ' Minor', ' Alpha', ' Beta', ' Centauri', '', '', ''];
+const STAR_PREFIXES = [
+  'Ker', 'Sol', 'Vel', 'Tor', 'Ax', 'Cet', 'Dra', 'El', 'For', 'Gav',
+  'Hel', 'Ix', 'Jen', 'Kor', 'Lys', 'Mal', 'Nyx', 'Ora', 'Pyr', 'Que',
+  'Ral', 'Set', 'Thal', 'Ul', 'Vex', 'Wyr', 'Xen', 'Yl', 'Zan', 'Bel',
+  'Cas', 'Del', 'Esh', 'Fal', 'Gyr', 'Hal', 'Ist', 'Jon', 'Kal', 'Lon',
+  'Mir', 'Nar', 'Oph', 'Pol', 'Ren', 'Sar', 'Tel', 'Uri', 'Val', 'Wen',
+  'Aer', 'Bor', 'Cor', 'Dur', 'Eld', 'Fyr', 'Gor', 'Hyp', 'Ith', 'Jor',
+  'Kael', 'Leth', 'Mor', 'Neth', 'Oss', 'Phen', 'Rael', 'Sev', 'Tryn', 'Usk',
+  'Vael', 'Weth', 'Xar', 'Yel', 'Zeph', 'Arn', 'Cyth', 'Dun', 'Eth', 'Gryn',
+];
+const STAR_SUFFIXES = [
+  'ath', 'eth', 'on', 'is', 'ara', 'iel', 'oth', 'an', 'or', 'yn',
+  'ael', 'aris', 'eon', 'ora', 'ax', 'esh', 'ul', 'ith', 'urd', 'elis',
+  'anis', 'onix', 'edra', 'oros', 'alin', 'ethi', 'ovan', 'idus', 'elys', 'athis',
+  'aros', 'elin', 'odra', 'uxis', 'evon', 'alis', 'othi', 'uran', 'idon', 'elas',
+];
+const STAR_DESCRIPTORS = [
+  ' Prime', ' Major', ' Minor', ' Alpha', ' Beta', ' Gamma', ' Delta',
+  ' Centauri', ' Proxima', ' Ultima', ' Nova', ' Vega', ' Eridani',
+  ' Cygni', ' Leonis', ' Draconis', ' Orionis', ' Tauri', ' Persei',
+  ' Aquilae', ' Lyrae', ' Carinae', ' Lupi', ' Scorpii',
+  '', '', '', '', '', '', '',
+];
 
 function makeName(rng: Rng): string {
-  const prefix1 = PREFIXES[Math.floor(rng() * PREFIXES.length)];
-  const prefix2 = PREFIXES[Math.floor(rng() * PREFIXES.length)];
-  const suffix  = SUFFIXES[Math.floor(rng() * SUFFIXES.length)];
-  return `${prefix1}${prefix2.toLowerCase()}${suffix}`;
+  const prefix     = STAR_PREFIXES[Math.floor(rng() * STAR_PREFIXES.length)];
+  const suffix     = STAR_SUFFIXES[Math.floor(rng() * STAR_SUFFIXES.length)];
+  const descriptor = STAR_DESCRIPTORS[Math.floor(rng() * STAR_DESCRIPTORS.length)];
+  return `${prefix}${suffix}${descriptor}`;
 }
 
 function lerp(start: number, end: number, t: number) {
