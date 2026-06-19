@@ -28,6 +28,8 @@ import { ScaleBar } from './ScaleBar';
 import { buildAddressComponent } from '../game/types';
 import { BackgroundStars } from './BackgroundStars';
 
+const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000];
+
 extend({ Container, Graphics, Sprite });
 
 export function GalaxyStage() {
@@ -53,17 +55,19 @@ function GalaxyWorld() {
   const handleSelectSystem = useCallback((id: number | null) => {
     if (activeSystem !== null) popAddress();
     if (id !== null) {
-      const sys = galaxy.systems[id];
+      const sys = useGameStore.getState().galaxy.systems[id];
       pushAddress(buildAddressComponent(sys.name, sys.x, sys.y, 0, 'system'));
       setSystem(sys);
       setView('system');
     } else {
       setSystem(null);
     }
-  }, [activeSystem, galaxy, pushAddress, popAddress, setSystem, setView]);
+  }, [activeSystem, pushAddress, popAddress, setSystem, setView]);
+
+  const handleStageTap = useCallback(() => handleSelectSystem(null), [handleSelectSystem]);
 
   const worldRef = useRef<Container>(null);
-  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, () => handleSelectSystem(null));
+  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, handleStageTap);
 
   const radiusLy = useMemo(() => {
     const rng = createRng(galaxy.seed);
@@ -196,7 +200,7 @@ function GalaxyWorld() {
         camera={camera}
         unitsPerWorldPx={radiusLy / GALAXY_RADIUS}
         unit="Light Years"
-        niceValues={[100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000]}
+        niceValues={GALAXY_NICE_VALUES}
       />
     </>
   );

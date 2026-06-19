@@ -5,6 +5,7 @@ import {
   BACKGROUND_STAR_COUNT, BACKGROUND_STAR_AREA_X, BACKGROUND_STAR_AREA_Y,
   SC_WORLD_HALF, SC_ATTRACTOR_COUNT, SC_CLUSTER_DOTS_PER_ATTRACTOR,
   SC_CLUSTER_SIGMA, SC_FILAMENT_DOTS_PER_EDGE, SC_FILAMENT_SCATTER,
+  OBS_UNIVERSE_RADIUS,
 } from './constants';
 
 const CLUSTER_ROOTS = [
@@ -52,6 +53,18 @@ function makeSupercusterName(rng: Rng): string {
   }
   const suffix = SC_NAME_SUFFIXES[Math.floor(rng() * SC_NAME_SUFFIXES.length)];
   return `${base}${suffix}`;
+}
+
+// Derives a stable observable-universe position for a supercluster from its seed.
+// Uses a XOR-offset seed so this never interferes with generateSupercluster's RNG sequence.
+export function getSuperclusterCoords(seed: number): [number, number, number] {
+  const rng = createRng((seed ^ 0x5a3c9f12) >>> 0);
+  const span = OBS_UNIVERSE_RADIUS * 2;
+  return [
+    rng() * span - OBS_UNIVERSE_RADIUS,
+    rng() * span - OBS_UNIVERSE_RADIUS,
+    rng() * span - OBS_UNIVERSE_RADIUS,
+  ];
 }
 
 export function generateGalaxyName(seed: number): string {

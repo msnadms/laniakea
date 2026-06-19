@@ -8,7 +8,7 @@ The game lets you explore a simulated cosmos across three zoom levels:
 
 1. **Supercluster view** — A 900-million-light-year wide field of thousands of galaxies grouped into clusters and filaments. Tap any galaxy dot to enter it.
 2. **Galaxy view** — A procedurally generated spiral galaxy with hundreds of named star systems connected by hyperlanes. Click a system to visit it.
-3. **System view** — An animated solar system for the selected star: orbiting planets with moons, rings, and atmospheres rendered in real time.
+3. **System view** — An animated solar system for the selected star: 3–7 planets across four orbital zones (hot rocky inner planets, habitable worlds, gas giants, ice giants) with moons, rings, asteroid belts, a pulsing corona, and a nebula glow, all orbiting in real time.
 
 A breadcrumb address bar tracks your position through the hierarchy: `Observable Universe > Supercluster > Attractor > Galaxy > System`.
 
@@ -21,7 +21,10 @@ A breadcrumb address bar tracks your position through the hierarchy: `Observable
 - **Animated nebulae** — Particle-based nebula rendered with blur and displacement filters that animate organically each frame. Inner arms are blue/violet; outer arms use a per-galaxy color palette; the galactic core glows warm white/gold.
 - **Supercluster simulation** — Galaxy dots are clustered around 12 named gravitational attractors and connected by filaments, scaled to 900 million light years across.
 - **Pan and zoom** — Cursor-anchored zoom via scroll wheel and pointer drag, across all three views.
-- **Toggleable overlays** — Hyperlane network and attractor labels can be toggled on/off from the config panel.
+- **Procedural solar systems** — Each star generates 3–7 planets using zone-based rules: hot rocky inner planets, habitable worlds, gas giants, and ice giants. Orbital speed follows Kepler-like scaling. Planets can have rings (split back/front so the body renders inside the ring plane), moons, and atmospheric glow. A 40% chance asteroid belt is inserted between orbits using Gaussian radial particle distribution.
+- **Star rendering** — The sun is rendered with a texture-based gradient, a pulsing scale animation, and a procedural corona (12 long rays + 22 short white rays in screen blend mode that rotates and breathes). A large nebula glow sprite behind the system uses the star's color.
+- **Planet resources** — Each planet and moon carries typed resources matching its zone: alloys in the hot zone, nutrients + alloys in the habitable zone, exotic matter from gas and ice giants.
+- **Toggleable overlays** — Hyperlane network, attractor labels, and orbit rings can be toggled on/off from the config panel.
 
 ## Getting Started
 
@@ -64,4 +67,5 @@ src/
 | Navigate back | Click any breadcrumb segment |
 | Toggle hyperlanes | Config panel |
 | Toggle labels | Config panel |
+| Toggle orbit rings | Config panel |
 | New galaxy | Config panel seed input |

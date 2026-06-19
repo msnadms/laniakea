@@ -16,6 +16,7 @@ interface UIState {
   pushAddress: (segment: AddressComponent) => void;
   popAddress: () => void;
   removeAddressType: (type: AddressComponentType) => void;
+  clearAddress: () => void;
 }
 
 const obsUniverse: AddressComponent = {
@@ -45,4 +46,5 @@ export const useUIStore = create<UIState>((set) => ({
   pushAddress: (segment) => set((s) => ({ address: upsertAddress(s.address, segment) })),
   popAddress: () => set((s) => ({ address: s.address.slice(0, -1) })),
   removeAddressType: (type) => set((s) => ({ address: s.address.filter((a) => a.type !== type) })),
+  clearAddress: () => set({ address: [obsUniverse] }),
 }));

@@ -3,6 +3,8 @@ import { Container, Graphics, Ticker, BlurFilter } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
+import { useCodexStore } from '../store/codexStore';
 import { buildAddressComponent, type SuperclusterDot } from '../game/types';
 import { useCamera } from './useCamera';
 import { createDisplacementSetup } from './textures';
@@ -11,6 +13,9 @@ import { ScaleBar } from './ScaleBar';
 import { createRng } from '../game/galaxyGen';
 import { createPointerLabel } from './labels';
 import { BackgroundStars } from './BackgroundStars';
+import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
+
+const SC_NICE_VALUES = [5, 10, 25, 50, 100, 150, 200, 300, 500];
 
 const BRIGHTNESS_TIERS = [
   { min: 0.80, radius: 3.5, color: 0xffee00, alpha: 1.00 },
@@ -41,6 +46,8 @@ function SuperclusterWorld() {
 
   const worldRef = useRef<Container>(null);
   const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE);
+  const showAttractorLabelsRef = useRef(showAttractorLabels);
+  showAttractorLabelsRef.current = showAttractorLabels;
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
@@ -117,7 +124,7 @@ function SuperclusterWorld() {
     }
     world.addChild(labelContainer);
 
-    const tick = () => { labelContainer.visible = showAttractorLabels && camera.current.scale > 0.25; };
+    const tick = () => { labelContainer.visible = showAttractorLabelsRef.current && camera.current.scale > 0.25; };
     Ticker.shared.add(tick);
 
     return () => {
@@ -127,7 +134,7 @@ function SuperclusterWorld() {
       titleGroup.destroy({ children: true });
       labelContainer.destroy({ children: true });
     };
-  }, [scData, isInitialised, showAttractorLabels]);
+  }, [scData, isInitialised]);
 
 
   useEffect(() => {
@@ -147,6 +154,12 @@ function SuperclusterWorld() {
       const maxDist = 15 / camera.current.scale;
       if (nearestDist > maxDist) return;
       markDotVisited(nearest.seed);
+      useCodexStore.getState().addGalaxyRecord(scData.seed, scData.name, nearest.seed, nearest.name);
+      const user = useAuthStore.getState().user;
+      if (user) {
+        saveSuperclusterDiscovery(user.uid, scData.seed, scData.name);
+        saveGalaxyDiscovery(user.uid, scData.seed, nearest.seed, nearest.name);
+      }
       regenerateGalaxy(nearest.seed);
 
       let nearestAttractorDist = Infinity;
@@ -177,7 +190,7 @@ function SuperclusterWorld() {
         camera={camera}
         unitsPerWorldPx={SC_WORLD_HALF_MLY / SC_WORLD_HALF}
         unit="Million Light Years"
-        niceValues={[5, 10, 25, 50, 100, 150, 200, 300, 500]}
+        niceValues={SC_NICE_VALUES}
       />
     </>
   );

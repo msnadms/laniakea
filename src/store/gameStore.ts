@@ -2,25 +2,38 @@ import { create } from 'zustand';
 import type { Galaxy, StarSystem, SuperclusterData } from '../game/types';
 import { generateGalaxy } from '../game/galaxyGen';
 import { generateSupercluster } from '../game/superclusters';
+import { generateSystemLayout, generatePlanets } from '../game/planetGen';
 
 interface GameState {
   galaxy: Galaxy;
   supercluster: SuperclusterData;
   system: StarSystem | null;
-  visitedSystemsByGalaxySeed: Record<number, number[]>;
+  visitedSystemsByGalaxySeed: Record<number, Set<number>>;
+  visitedGalaxyBySuperclusterSeed: Record<number, Set<number>>;
   regenerateGalaxy: (seed?: number) => void;
   regenerateSupercluster: (seed?: number) => void;
   setSystem: (system: StarSystem | null) => void;
   markDotVisited: (seed: number) => void;
   markSystemVisited: (id: number) => void;
+  restoreVisited: (
+    visitedSystems: Record<number, number[]>,
+    visitedGalaxies: Record<number, number[]>,
+  ) => void;
 }
 
-function applyVisited(galaxy: Galaxy, visited: number[] | undefined): Galaxy {
-  if (!visited || visited.length === 0) return galaxy;
-  const visitedSet = new Set(visited);
+function applyVisited(galaxy: Galaxy, visited: Set<number> | undefined): Galaxy {
+  if (!visited || visited.size === 0) return galaxy;
   return {
     ...galaxy,
-    systems: galaxy.systems.map((s) => visitedSet.has(s.id) ? { ...s, visited: true } : s),
+    systems: galaxy.systems.map((s) => visited.has(s.id) ? { ...s, visited: true } : s),
+  };
+}
+
+function applyVisitedDots(sc: SuperclusterData, visitedSeeds: Set<number> | undefined): SuperclusterData {
+  if (!visitedSeeds || visitedSeeds.size === 0) return sc;
+  return {
+    ...sc,
+    dots: sc.dots.map((d) => visitedSeeds.has(d.seed) ? { ...d, visited: true } : d),
   };
 }
 
@@ -29,6 +42,7 @@ export const useGameStore = create<GameState>((set) => ({
   supercluster: generateSupercluster(),
   system: null,
   visitedSystemsByGalaxySeed: {},
+  visitedGalaxyBySuperclusterSeed: {},
   regenerateGalaxy: (seed) => set((state) => {
     const galaxy = generateGalaxy(seed);
     return {
@@ -36,27 +50,59 @@ export const useGameStore = create<GameState>((set) => ({
       system: null,
     };
   }),
-  regenerateSupercluster: (seed) => set({ supercluster: generateSupercluster(seed), visitedSystemsByGalaxySeed: {} }),
-  setSystem: (system) => set({ system }),
-  markDotVisited: (seed) => set((state) => ({
-    supercluster: {
-      ...state.supercluster,
-      dots: state.supercluster.dots.map((d) => d.seed === seed ? { ...d, visited: true } : d),
-    },
-  })),
+  regenerateSupercluster: (seed) => set((state) => {
+    const sc = generateSupercluster(seed);
+    return {
+      supercluster: applyVisitedDots(sc, state.visitedGalaxyBySuperclusterSeed[sc.seed]),
+    };
+  }),
+  setSystem: (system) => set({
+    system: system ? { ...system, planets: generatePlanets(generateSystemLayout(system.seed), system.name) } : null,
+  }),
+  markDotVisited: (seed) => set((state) => {
+    const scSeed = state.supercluster.seed;
+    const existing = state.visitedGalaxyBySuperclusterSeed[scSeed];
+    if (existing?.has(seed)) return state;
+    const updated = new Set(existing);
+    updated.add(seed);
+    return {
+      supercluster: {
+        ...state.supercluster,
+        dots: state.supercluster.dots.map((d) => d.seed === seed ? { ...d, visited: true } : d),
+      },
+      visitedGalaxyBySuperclusterSeed: {
+        ...state.visitedGalaxyBySuperclusterSeed,
+        [scSeed]: updated,
+      },
+    };
+  }),
   markSystemVisited: (id) => set((state) => {
     const galaxySeed = state.galaxy.seed;
-    const existing = state.visitedSystemsByGalaxySeed[galaxySeed] ?? [];
-    const alreadyVisited = existing.includes(id);
+    const existing = state.visitedSystemsByGalaxySeed[galaxySeed];
+    if (existing?.has(id)) return state;
+    const updated = new Set(existing);
+    updated.add(id);
     return {
       galaxy: {
         ...state.galaxy,
         systems: state.galaxy.systems.map((s) => s.id === id ? { ...s, visited: true } : s),
       },
-      visitedSystemsByGalaxySeed: alreadyVisited ? state.visitedSystemsByGalaxySeed : {
+      visitedSystemsByGalaxySeed: {
         ...state.visitedSystemsByGalaxySeed,
-        [galaxySeed]: [...existing, id],
+        [galaxySeed]: updated,
       },
+    };
+  }),
+  restoreVisited: (visitedSystems, visitedGalaxies) => set((state) => {
+    const systemSets: Record<number, Set<number>> = {};
+    for (const [k, v] of Object.entries(visitedSystems)) systemSets[Number(k)] = new Set(v);
+    const galaxySets: Record<number, Set<number>> = {};
+    for (const [k, v] of Object.entries(visitedGalaxies)) galaxySets[Number(k)] = new Set(v);
+    return {
+      visitedSystemsByGalaxySeed: systemSets,
+      visitedGalaxyBySuperclusterSeed: galaxySets,
+      galaxy: applyVisited(state.galaxy, systemSets[state.galaxy.seed]),
+      supercluster: applyVisitedDots(state.supercluster, galaxySets[state.supercluster.seed]),
     };
   }),
 }));

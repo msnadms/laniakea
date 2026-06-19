@@ -89,9 +89,12 @@ export interface Moon {
 
 export interface Planet {
   name: string;
+  type: ZoneType;
   resources: Resource[];
   moons: Moon[];
 }
+
+export type ZoneType = 'hot' | 'habitable' | 'gas' | 'ice';
 
 export type AddressComponentType = 'universe' | 'supercluster' | 'attractor' | 'galaxy' | 'system'
 

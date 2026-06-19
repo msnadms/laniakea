@@ -1,5 +1,6 @@
 import { Texture, Sprite, DisplacementFilter, Container } from 'pixi.js';
 import { GALAXY_RADIUS } from '../game/constants';
+import { createRng } from '../game/galaxyGen';
 
 export function createDisplacementTexture(size = 512, lowRes = 64): Texture {
   const tmp = document.createElement('canvas');
@@ -166,7 +167,8 @@ export function createStarTexture(color: number, size: number): Texture {
   return Texture.from(canvas);
 }
 
-export function createGasGiantTexture(baseColor: number, rng: () => number, isIce = false): Texture {
+export function createGasGiantTexture(baseColor: number, seed: number, isIce = false): Texture {
+  const rng = createRng(seed);
   const SIZE = 256;
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;

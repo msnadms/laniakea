@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { GalaxyStage } from './pixi/GalaxyStage';
 import { Supercluster } from './pixi/Supercluster';
 import { ConfigPanel } from './ui/ConfigPanel';
@@ -8,10 +9,13 @@ import './App.css';
 import { Address } from './ui/Address';
 import { SolarSystemStage } from './pixi/SolarSystem';
 import { AuthButton } from './ui/AuthButton';
+import { Codex } from './ui/Codex';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
+import { initAuth } from './store/authStore';
 
 export default function App() {
   useSettingsPersist();
+  useEffect(() => initAuth(), []);
   const view = useUIStore((s) => s.view);
   const setView = useUIStore((s) => s.setView);
   const popAddress = useUIStore((s) => s.popAddress);
@@ -36,6 +40,7 @@ export default function App() {
           </button>
         )}
         <ConfigPanel />
+        <Codex />
       </div>
       <div className="top-right">
         <AuthButton />

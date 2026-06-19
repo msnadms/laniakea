@@ -1,0 +1,363 @@
+.codex-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(6, 12, 28, 0.88);
+  border: 1px solid rgba(40, 80, 120, 0.5);
+  border-radius: 4px;
+  color: #6a90b0;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(4px);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.codex-btn:hover {
+  color: #99bbdd;
+  border-color: rgba(60, 110, 160, 0.7);
+}
+
+.codex-btn-icon {
+  font-size: 13px;
+}
+
+.codex-btn-label {
+  flex: 1;
+  text-align: left;
+}
+
+.codex-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.codex-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  background: rgba(6, 12, 28, 0.96);
+  border-left: 1px solid rgba(40, 80, 120, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: all;
+  font-size: 12px;
+  color: #8aa4bc;
+}
+
+.codex-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(40, 80, 120, 0.4);
+  flex-shrink: 0;
+}
+
+.codex-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c0d8f0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.codex-close {
+  background: none;
+  border: none;
+  color: #6a90b0;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.codex-close:hover {
+  color: #99bbdd;
+}
+
+.codex-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(40, 80, 120, 0.3);
+  flex-shrink: 0;
+}
+
+.codex-search-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(40, 80, 120, 0.5);
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: #99bbdd;
+  font-size: 12px;
+  outline: none;
+}
+
+.codex-search-input::placeholder {
+  color: rgba(100, 140, 170, 0.5);
+}
+
+.codex-search-input:focus {
+  border-color: rgba(60, 110, 160, 0.8);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.codex-search-clear {
+  background: none;
+  border: none;
+  color: #4a6a80;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.codex-search-clear:hover {
+  color: #99bbdd;
+}
+
+.codex-highlight {
+  background: rgba(80, 140, 220, 0.35);
+  color: #c8e0f8;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.codex-stats {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(40, 80, 120, 0.3);
+  color: #5a7a96;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.codex-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4a6a80;
+  text-align: center;
+  padding: 24px;
+  line-height: 1.6;
+}
+
+.codex-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.codex-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.codex-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.codex-list::-webkit-scrollbar-thumb {
+  background: rgba(40, 80, 120, 0.5);
+  border-radius: 2px;
+}
+
+/* Supercluster row */
+.codex-supercluster {
+  border-bottom: 1px solid rgba(40, 80, 120, 0.3);
+}
+
+.codex-supercluster-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+  background: rgba(20, 40, 70, 0.25);
+}
+
+.codex-supercluster-header:hover {
+  background: rgba(40, 80, 120, 0.2);
+}
+
+.codex-chevron {
+  font-size: 8px;
+  color: #4a6a80;
+  flex-shrink: 0;
+}
+
+.codex-supercluster-name {
+  flex: 1;
+  color: #c8dff5;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.codex-supercluster-count {
+  color: #4a6a80;
+  font-size: 11px;
+}
+
+.codex-sc-galaxies {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Galaxy row */
+.codex-galaxy {
+  border-bottom: 1px solid rgba(40, 80, 120, 0.15);
+}
+
+.codex-galaxy:last-child {
+  border-bottom: none;
+}
+
+.codex-galaxy-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 8px 28px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.codex-galaxy-header:hover {
+  background: rgba(40, 80, 120, 0.12);
+}
+
+.codex-galaxy-name {
+  flex: 1;
+  color: #b0ccec;
+  font-weight: 500;
+}
+
+.codex-galaxy-count {
+  color: #4a6a80;
+  font-size: 11px;
+}
+
+/* System rows */
+.codex-systems {
+  padding: 0 0 4px 0;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.codex-system {
+  padding: 6px 16px 6px 40px;
+  border-bottom: 1px solid rgba(40, 80, 120, 0.1);
+}
+
+.codex-system:last-child {
+  border-bottom: none;
+}
+
+.codex-system-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.codex-system-header:hover .codex-system-name {
+  color: #c0d8f0;
+}
+
+.codex-system-name {
+  color: #8aa4bc;
+  font-weight: 500;
+  transition: color 0.1s;
+}
+
+.codex-star-type {
+  color: #4a6a80;
+  font-size: 11px;
+}
+
+/* Planet rows */
+.codex-planets {
+  padding: 4px 0 2px 12px;
+}
+
+.codex-planet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 0;
+}
+
+.codex-planet-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.codex-zone-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.codex-zone-dot.hot      { background: #c05030; }
+.codex-zone-dot.habitable { background: #3a8a5a; }
+.codex-zone-dot.gas      { background: #b08040; }
+.codex-zone-dot.ice      { background: #4070a0; }
+
+.codex-planet-name {
+  color: #7090a8;
+  font-size: 11px;
+}
+
+.codex-moons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-left: 13px;
+}
+
+.codex-moon {
+  color: #445a6a;
+  font-size: 10px;
+  background: rgba(40, 80, 120, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(40, 80, 120, 0.25);
+}
+
+.codex-travel-btn {
+  background: none;
+  border: none;
+  color: #4a6a80;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.codex-supercluster-header:hover .codex-travel-btn,
+.codex-galaxy-header:hover .codex-travel-btn,
+.codex-system-header:hover .codex-travel-btn {
+  opacity: 1;
+}
+
+.codex-travel-btn:hover {
+  color: #88ccff;
+}
