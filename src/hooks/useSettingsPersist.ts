@@ -9,9 +9,13 @@ export function useSettingsPersist() {
   const showHyperlanes = useUIStore((s) => s.showHyperlanes);
   const showOrbitRings = useUIStore((s) => s.showOrbitRings);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
+  const showHUD = useUIStore((s) => s.showHUD);
+  const exoticMatter = useUIStore((s) => s.exoticMatter);
+  const driveIntegrity = useUIStore((s) => s.driveIntegrity);
+  const railgunAmmo = useUIStore((s) => s.railgunAmmo);
 
   useEffect(() => {
     if (!user || !settingsLoaded) return;
-    saveUserSettings(user.uid, { showHyperlanes, showOrbitRings, showAttractorLabels });
-  }, [user, settingsLoaded, showHyperlanes, showOrbitRings, showAttractorLabels]);
+    saveUserSettings(user.uid, { showHyperlanes, showOrbitRings, showAttractorLabels, showHUD, exoticMatter, driveIntegrity, railgunAmmo });
+  }, [user, settingsLoaded, showHyperlanes, showOrbitRings, showAttractorLabels, showHUD, exoticMatter, driveIntegrity, railgunAmmo]);
 }

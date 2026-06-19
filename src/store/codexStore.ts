@@ -7,6 +7,9 @@ interface CodexState {
   addGalaxyRecord: (superclusterSeed: number, superclusterName: string, galaxySeed: number, galaxyName: string) => void;
   addSystemRecord: (superclusterSeed: number, superclusterName: string, galaxySeed: number, galaxyName: string, system: StarSystem) => void;
   setAll: (records: SuperclusterRecord[]) => void;
+  deleteSystem: (superclusterSeed: number, galaxySeed: number, systemId: string) => void;
+  deleteGalaxy: (superclusterSeed: number, galaxySeed: number) => void;
+  deleteSupercluster: (superclusterSeed: number) => void;
 }
 
 function upsertSupercluster(
@@ -60,4 +63,36 @@ export const useCodexStore = create<CodexState>((set) => ({
     for (const sc of records) superclusters[String(sc.superclusterSeed)] = sc;
     set({ superclusters });
   },
+
+  deleteSystem: (superclusterSeed, galaxySeed, systemId) =>
+    set((state) => {
+      const scKey = String(superclusterSeed);
+      const gKey = String(galaxySeed);
+      const sc = state.superclusters[scKey];
+      if (!sc) return state;
+      const galaxy = sc.galaxies[gKey];
+      if (!galaxy) return state;
+      const { [systemId]: _removed, ...remainingSystems } = galaxy.systems;
+      const updatedGalaxy = { ...galaxy, systems: remainingSystems };
+      const updatedSc = { ...sc, galaxies: { ...sc.galaxies, [gKey]: updatedGalaxy } };
+      return { superclusters: { ...state.superclusters, [scKey]: updatedSc } };
+    }),
+
+  deleteGalaxy: (superclusterSeed, galaxySeed) =>
+    set((state) => {
+      const scKey = String(superclusterSeed);
+      const gKey = String(galaxySeed);
+      const sc = state.superclusters[scKey];
+      if (!sc) return state;
+      const { [gKey]: _removed, ...remainingGalaxies } = sc.galaxies;
+      const updatedSc = { ...sc, galaxies: remainingGalaxies };
+      return { superclusters: { ...state.superclusters, [scKey]: updatedSc } };
+    }),
+
+  deleteSupercluster: (superclusterSeed) =>
+    set((state) => {
+      const scKey = String(superclusterSeed);
+      const { [scKey]: _removed, ...rest } = state.superclusters;
+      return { superclusters: rest };
+    }),
 }));

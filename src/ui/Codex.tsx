@@ -7,6 +7,7 @@ import { STAR_TYPE_LABELS, buildAddressComponent } from '../game/types';
 import { getSuperclusterCoords } from '../game/superclusters';
 import { SC_ATTRACTOR_LABEL_MAX_DIST } from '../game/constants';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
+import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import './Codex.css';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
@@ -29,6 +30,16 @@ export function Codex() {
   return (
     <>
       <button className="codex-btn" onClick={() => setOpen((o) => !o)}>
+        <svg className="codex-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon
+            vectorEffect="non-scaling-stroke"
+            points="0,0.1 0.61,0.1 0.95,1 0.35,1"
+            fill="transparent"
+            stroke="rgba(0, 190, 230, 0.55)"
+            strokeWidth="1"
+            pointerEvents="all"
+          />
+        </svg>
         <span className="codex-btn-icon">◈</span>
         <span className="codex-btn-label">Codex</span>
       </button>
@@ -45,8 +56,27 @@ export function Codex() {
 function CodexDrawer({ onClose }: { onClose: () => void }) {
   const user = useAuthStore((s) => s.user);
   const superclusters = useCodexStore((s) => s.superclusters);
+  const deleteSystem = useCodexStore((s) => s.deleteSystem);
+  const deleteGalaxy = useCodexStore((s) => s.deleteGalaxy);
+  const deleteSupercluster = useCodexStore((s) => s.deleteSupercluster);
   const [query, setQuery] = useState('');
+  const [deleteMode, setDeleteMode] = useState(false);
   const q = query.trim().toLowerCase();
+
+  function handleDeleteSystem(scSeed: number, galaxySeed: number, systemId: string) {
+    deleteSystem(scSeed, galaxySeed, systemId);
+    if (user) deleteSystemDiscovery(user.uid, scSeed, galaxySeed, systemId);
+  }
+
+  function handleDeleteGalaxy(scSeed: number, galaxySeed: number) {
+    deleteGalaxy(scSeed, galaxySeed);
+    if (user) deleteGalaxyDiscovery(user.uid, scSeed, galaxySeed);
+  }
+
+  function handleDeleteSupercluster(scSeed: number) {
+    deleteSupercluster(scSeed);
+    if (user) deleteSuperclusterDiscovery(user.uid, scSeed);
+  }
 
   const enriched = useMemo<EnrichedSupercluster[]>(
     () =>
@@ -95,7 +125,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
   const hasDiscoveries = enriched.length > 0;
 
   return (
-    <div className="codex-drawer">
+    <div className={`codex-drawer${deleteMode ? ' codex-delete-mode' : ''}`}>
       <div className="codex-header">
         <span className="codex-title">Discovery Codex</span>
         <button className="codex-close" onClick={onClose}>✕</button>
@@ -110,31 +140,50 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
         </>
       ) : (
         <>
-          <div className="codex-search">
-            <input
-              className="codex-search-input"
-              type="text"
-              placeholder="Search superclusters, galaxies, stars…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {query && (
-              <button className="codex-search-clear" onClick={() => setQuery('')}>✕</button>
-            )}
-          </div>
+          {deleteMode ? (
+            <div className="codex-forget-banner">Select entries to forget — this cannot be undone.</div>
+          ) : (
+            <div className="codex-search">
+              <input
+                className="codex-search-input"
+                type="text"
+                placeholder="Search superclusters, galaxies, stars…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {query && (
+                <button className="codex-search-clear" onClick={() => setQuery('')}>✕</button>
+              )}
+            </div>
+          )}
           <div className="codex-stats">
-            {enriched.length} {enriched.length === 1 ? 'supercluster' : 'superclusters'} ·{' '}
-            {totalGalaxies} {totalGalaxies === 1 ? 'galaxy' : 'galaxies'} ·{' '}
-            {totalStars} {totalStars === 1 ? 'star' : 'stars'}
+            <span>
+              {enriched.length} {enriched.length === 1 ? 'supercluster' : 'superclusters'} ·{' '}
+              {totalGalaxies} {totalGalaxies === 1 ? 'galaxy' : 'galaxies'} ·{' '}
+              {totalStars} {totalStars === 1 ? 'star' : 'stars'}
+            </span>
+            <button
+              className={`codex-forget-btn${deleteMode ? ' active' : ''}`}
+              title={deleteMode ? 'Exit forget mode' : 'Forget records'}
+              onClick={() => { setDeleteMode((m) => !m); setQuery(''); }}
+            >⊘</button>
           </div>
           <div className="codex-list">
             {filtered.length === 0 ? (
               <div className="codex-empty">No matches for "{query}"</div>
             ) : (
               filtered.map((sc) => (
-                <SuperclusterEntry key={sc.superclusterSeed} supercluster={sc} query={q} />
+                <SuperclusterEntry
+                  key={sc.superclusterSeed}
+                  supercluster={sc}
+                  query={q}
+                  deleteMode={deleteMode}
+                  onDeleteSupercluster={handleDeleteSupercluster}
+                  onDeleteGalaxy={handleDeleteGalaxy}
+                  onDeleteSystem={handleDeleteSystem}
+                />
               ))
             )}
           </div>
@@ -223,7 +272,13 @@ function travelToSystem(
   ui.setView('system');
 }
 
-function SuperclusterEntry({ supercluster, query }: { supercluster: EnrichedSupercluster; query: string }) {
+interface DeleteHandlers {
+  onDeleteSupercluster: (scSeed: number) => void;
+  onDeleteGalaxy: (scSeed: number, galaxySeed: number) => void;
+  onDeleteSystem: (scSeed: number, galaxySeed: number, systemId: string) => void;
+}
+
+function SuperclusterEntry({ supercluster, query, deleteMode, onDeleteSupercluster, onDeleteGalaxy, onDeleteSystem }: { supercluster: EnrichedSupercluster; query: string; deleteMode: boolean } & DeleteHandlers) {
   const [expanded, setExpanded] = useState(true);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
@@ -233,19 +288,38 @@ function SuperclusterEntry({ supercluster, query }: { supercluster: EnrichedSupe
       <div className="codex-supercluster-header" onClick={() => !forceExpand && setExpanded((e) => !e)}>
         <span className="codex-chevron">{isOpen ? '▼' : '▶'}</span>
         <span className="codex-supercluster-name">{highlight(supercluster.superclusterName, query)}</span>
-        <span className="codex-supercluster-count">
-          {supercluster.enrichedGalaxies.length} {supercluster.enrichedGalaxies.length === 1 ? 'galaxy' : 'galaxies'}
-        </span>
-        <button
-          className="codex-travel-btn"
-          title="Travel to supercluster"
-          onClick={(e) => { e.stopPropagation(); travelToSupercluster(supercluster.superclusterSeed, supercluster.superclusterName); }}
-        >⊙</button>
+        <div className="codex-row-right">
+          <span className="codex-supercluster-count">
+            {supercluster.enrichedGalaxies.length} {supercluster.enrichedGalaxies.length === 1 ? 'galaxy' : 'galaxies'}
+          </span>
+          {deleteMode ? (
+            <button
+              className="codex-delete-btn"
+              title="Forget supercluster"
+              onClick={(e) => { e.stopPropagation(); onDeleteSupercluster(supercluster.superclusterSeed); }}
+            >✕</button>
+          ) : (
+            <button
+              className="codex-travel-btn"
+              title="Travel to supercluster"
+              onClick={(e) => { e.stopPropagation(); travelToSupercluster(supercluster.superclusterSeed, supercluster.superclusterName); }}
+            >⊙</button>
+          )}
+        </div>
       </div>
       {isOpen && (
         <div className="codex-sc-galaxies">
           {supercluster.enrichedGalaxies.map((g) => (
-            <GalaxyEntry key={g.galaxySeed} galaxy={g} query={query} superclusterSeed={supercluster.superclusterSeed} superclusterName={supercluster.superclusterName} />
+            <GalaxyEntry
+              key={g.galaxySeed}
+              galaxy={g}
+              query={query}
+              superclusterSeed={supercluster.superclusterSeed}
+              superclusterName={supercluster.superclusterName}
+              deleteMode={deleteMode}
+              onDeleteGalaxy={onDeleteGalaxy}
+              onDeleteSystem={onDeleteSystem}
+            />
           ))}
         </div>
       )}
@@ -253,7 +327,7 @@ function SuperclusterEntry({ supercluster, query }: { supercluster: EnrichedSupe
   );
 }
 
-function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName }: { galaxy: EnrichedGalaxy; query: string; superclusterSeed: number; superclusterName: string }) {
+function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, deleteMode, onDeleteGalaxy, onDeleteSystem }: { galaxy: EnrichedGalaxy; query: string; superclusterSeed: number; superclusterName: string; deleteMode: boolean } & Omit<DeleteHandlers, 'onDeleteSupercluster'>) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
@@ -263,19 +337,39 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName }: { ga
       <div className="codex-galaxy-header" onClick={() => !forceExpand && setExpanded((e) => !e)}>
         <span className="codex-chevron">{isOpen ? '▼' : '▶'}</span>
         <span className="codex-galaxy-name">{highlight(galaxy.galaxyName, query)}</span>
-        <span className="codex-galaxy-count">
-          {galaxy.enrichedSystems.length} {galaxy.enrichedSystems.length === 1 ? 'star' : 'stars'}
-        </span>
-        <button
-          className="codex-travel-btn"
-          title="Travel to galaxy"
-          onClick={(e) => { e.stopPropagation(); travelToGalaxy(superclusterSeed, superclusterName, galaxy.galaxySeed, galaxy.galaxyName); }}
-        >⊙</button>
+        <div className="codex-row-right">
+          <span className="codex-galaxy-count">
+            {galaxy.enrichedSystems.length} {galaxy.enrichedSystems.length === 1 ? 'star' : 'stars'}
+          </span>
+          {deleteMode ? (
+            <button
+              className="codex-delete-btn"
+              title="Forget galaxy"
+              onClick={(e) => { e.stopPropagation(); onDeleteGalaxy(superclusterSeed, galaxy.galaxySeed); }}
+            >✕</button>
+          ) : (
+            <button
+              className="codex-travel-btn"
+              title="Travel to galaxy"
+              onClick={(e) => { e.stopPropagation(); travelToGalaxy(superclusterSeed, superclusterName, galaxy.galaxySeed, galaxy.galaxyName); }}
+            >⊙</button>
+          )}
+        </div>
       </div>
       {isOpen && galaxy.enrichedSystems.length > 0 && (
         <div className="codex-systems">
           {galaxy.enrichedSystems.map((sys) => (
-            <SystemEntry key={sys.id} system={sys} query={query} superclusterSeed={superclusterSeed} superclusterName={superclusterName} galaxySeed={galaxy.galaxySeed} galaxyName={galaxy.galaxyName} />
+            <SystemEntry
+              key={sys.id}
+              system={sys}
+              query={query}
+              superclusterSeed={superclusterSeed}
+              superclusterName={superclusterName}
+              galaxySeed={galaxy.galaxySeed}
+              galaxyName={galaxy.galaxyName}
+              deleteMode={deleteMode}
+              onDeleteSystem={onDeleteSystem}
+            />
           ))}
         </div>
       )}
@@ -311,7 +405,7 @@ function SystemPlanets({ seed, name, query }: { seed: number; name: string; quer
   );
 }
 
-function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string }) {
+function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, deleteMode, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; deleteMode: boolean; onDeleteSystem: DeleteHandlers['onDeleteSystem'] }) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
@@ -321,12 +415,22 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
       <div className="codex-system-header" onClick={() => !forceExpand && setExpanded((e) => !e)}>
         <span className="codex-chevron">{isOpen ? '▼' : '▶'}</span>
         <span className="codex-system-name">{highlight(system.name, query)}</span>
-        <span className="codex-star-type">{STAR_TYPE_LABELS[system.starType]}</span>
-        <button
-          className="codex-travel-btn"
-          title="Travel to system"
-          onClick={(e) => { e.stopPropagation(); travelToSystem(superclusterSeed, superclusterName, galaxySeed, galaxyName, system.id, system.name); }}
-        >⊙</button>
+        <div className="codex-row-right">
+          <span className="codex-star-type">{STAR_TYPE_LABELS[system.starType]}</span>
+          {deleteMode ? (
+            <button
+              className="codex-delete-btn"
+              title="Forget system"
+              onClick={(e) => { e.stopPropagation(); onDeleteSystem(superclusterSeed, galaxySeed, system.id); }}
+            >✕</button>
+          ) : (
+            <button
+              className="codex-travel-btn"
+              title="Travel to system"
+              onClick={(e) => { e.stopPropagation(); travelToSystem(superclusterSeed, superclusterName, galaxySeed, galaxyName, system.id, system.name); }}
+            >⊙</button>
+          )}
+        </div>
       </div>
       {isOpen && <SystemPlanets seed={system.seed} name={system.name} query={query} />}
     </div>

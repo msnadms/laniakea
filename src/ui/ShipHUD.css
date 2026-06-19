@@ -1,0 +1,137 @@
+.ship-hud {
+  position: relative;
+  pointer-events: none;
+  user-select: none;
+  min-width: 540px;
+  padding: 18px 36px 22px;
+  background: transparent;
+}
+
+.hud-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.35));
+}
+
+.hud-header {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: rgba(0, 180, 220, 0.4);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.hud-row:last-child {
+  margin-bottom: 0;
+}
+
+.hud-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #2a6a8a;
+  text-transform: uppercase;
+  white-space: nowrap;
+  width: 148px;
+  flex-shrink: 0;
+}
+
+.hud-bar-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(0, 136, 187, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.hud-bar-fill {
+  height: 100%;
+  background: #0088bb;
+  box-shadow: 0 0 6px rgba(0, 136, 187, 0.7);
+  transition: width 0.4s ease;
+}
+
+.hud-bar-low {
+  background: #bb4400;
+  box-shadow: 0 0 6px rgba(187, 68, 0, 0.7);
+}
+
+.hud-value {
+  font-size: 13px;
+  font-family: monospace;
+  color: #00c8e8;
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.55);
+  white-space: nowrap;
+  width: 68px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.hud-value-dim {
+  color: #2a6a8a;
+  text-shadow: none;
+}
+
+.nav-back-btn {
+  position: absolute;
+  left: calc(100% - 20px);
+  top: 0;
+  bottom: 0;
+  width: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.3));
+  color: rgba(0, 180, 220, 0.55);
+  cursor: pointer;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
+.nav-back-btn:hover:not(.nav-back-btn--disabled) {
+  color: rgba(0, 215, 255, 0.95);
+  filter: drop-shadow(0 0 6px rgba(0, 200, 232, 0.65));
+}
+
+.nav-back-btn--disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+
+.nav-back-btn-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.nav-back-btn-icon {
+  position: relative;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.nav-back-btn-label {
+  position: relative;
+  text-align: center;
+  line-height: 1;
+}

@@ -11,6 +11,8 @@ export function ConfigPanel() {
   const toggleAttractorLabels = useUIStore((s) => s.toggleAttractorLabels);
   const showOrbitRings = useUIStore((s) => s.showOrbitRings);
   const toggleOrbitRings = useUIStore((s) => s.toggleOrbitRings);
+  const showHUD = useUIStore((s) => s.showHUD);
+  const toggleHUD = useUIStore((s) => s.toggleHUD);
   const view = useUIStore((s) => s.view);
   const scSeed = useGameStore((s) => s.supercluster.seed);
   const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
@@ -37,6 +39,19 @@ export function ConfigPanel() {
       
       {expanded && (
         <div className="config-body">
+          <label className="config-row">
+            <span className="config-row-label">Ship HUD</span>
+            <input
+              type="checkbox"
+              className="config-toggle-checkbox"
+              checked={showHUD}
+              onChange={toggleHUD}
+            />
+            <div className={`config-toggle ${showHUD ? 'on' : 'off'}`} aria-hidden="true">
+              <div className="config-toggle-thumb" />
+            </div>
+          </label>
+
           {view === 'galaxy' && (
             <label className="config-row">
               <span className="config-row-label">Hyperlanes</span>

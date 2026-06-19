@@ -1,32 +1,51 @@
 .codex-btn {
+  position: absolute;
+  right: calc(100% - 20px);
+  top: 0;
+  bottom: 0;
+  width: 78px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(6, 12, 28, 0.88);
-  border: 1px solid rgba(40, 80, 120, 0.5);
-  border-radius: 4px;
-  color: #6a90b0;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.3));
+  color: rgba(0, 180, 220, 0.55);
   cursor: pointer;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  backdrop-filter: blur(4px);
-  width: 100%;
-  box-sizing: border-box;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
 }
 
 .codex-btn:hover {
-  color: #99bbdd;
-  border-color: rgba(60, 110, 160, 0.7);
+  color: rgba(0, 215, 255, 0.95);
+  filter: drop-shadow(0 0 6px rgba(0, 200, 232, 0.65));
+}
+
+.codex-btn-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
 }
 
 .codex-btn-icon {
-  font-size: 13px;
+  position: relative;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .codex-btn-label {
-  flex: 1;
-  text-align: left;
+  position: relative;
+  text-align: center;
+  line-height: 1;
 }
 
 .codex-overlay {
@@ -136,6 +155,9 @@
 }
 
 .codex-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 8px 16px;
   border-bottom: 1px solid rgba(40, 80, 120, 0.3);
   color: #5a7a96;
@@ -181,6 +203,7 @@
 .codex-supercluster-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 9px 16px;
   cursor: pointer;
@@ -227,6 +250,7 @@
 .codex-galaxy-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 8px 16px 8px 28px;
   cursor: pointer;
@@ -267,6 +291,7 @@
 .codex-system-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   cursor: pointer;
   user-select: none;
@@ -277,6 +302,7 @@
 }
 
 .codex-system-name {
+  flex: 1;
   color: #8aa4bc;
   font-weight: 500;
   transition: color 0.1s;
@@ -338,6 +364,13 @@
   border: 1px solid rgba(40, 80, 120, 0.25);
 }
 
+.codex-row-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .codex-travel-btn {
   background: none;
   border: none;
@@ -347,7 +380,7 @@
   padding: 0 2px;
   line-height: 1;
   border-radius: 3px;
-  opacity: 0;
+  opacity: 0.5;
   transition: opacity 0.15s, color 0.15s;
   flex-shrink: 0;
 }
@@ -360,4 +393,61 @@
 
 .codex-travel-btn:hover {
   color: #88ccff;
+}
+
+/* Forget mode */
+.codex-forget-btn {
+  background: none;
+  border: none;
+  color: #4a6a80;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.codex-forget-btn:hover {
+  color: #cc6666;
+}
+
+.codex-forget-btn.active {
+  color: #cc4444;
+}
+
+.codex-forget-banner {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(180, 60, 60, 0.4);
+  background: rgba(120, 30, 30, 0.25);
+  color: #cc7777;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.codex-delete-mode .codex-header {
+  border-bottom-color: rgba(180, 60, 60, 0.5);
+}
+
+.codex-delete-mode .codex-title {
+  color: #cc8888;
+}
+
+.codex-delete-btn {
+  background: none;
+  border: none;
+  color: #884444;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 4px;
+  line-height: 1;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.codex-delete-btn:hover {
+  color: #ff6666;
+  background: rgba(180, 40, 40, 0.2);
 }

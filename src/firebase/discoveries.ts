@@ -3,6 +3,9 @@ import {
   doc,
   getDocs,
   setDoc,
+  updateDoc,
+  deleteDoc,
+  deleteField,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -87,6 +90,36 @@ export async function saveSystemDiscovery(
     },
     { merge: true },
   );
+}
+
+export async function deleteSystemDiscovery(
+  uid: string,
+  superclusterSeed: number,
+  galaxySeed: number,
+  systemId: string,
+): Promise<void> {
+  const ref = doc(db, 'users', uid, 'discoveries', String(superclusterSeed), 'galaxies', String(galaxySeed));
+  await updateDoc(ref, { [`systems.${systemId}`]: deleteField() });
+}
+
+export async function deleteGalaxyDiscovery(
+  uid: string,
+  superclusterSeed: number,
+  galaxySeed: number,
+): Promise<void> {
+  const ref = doc(db, 'users', uid, 'discoveries', String(superclusterSeed), 'galaxies', String(galaxySeed));
+  await deleteDoc(ref);
+}
+
+export async function deleteSuperclusterDiscovery(
+  uid: string,
+  superclusterSeed: number,
+): Promise<void> {
+  const galaxySnap = await getDocs(
+    collection(db, 'users', uid, 'discoveries', String(superclusterSeed), 'galaxies'),
+  );
+  await Promise.all(galaxySnap.docs.map((d) => deleteDoc(d.ref)));
+  await deleteDoc(doc(db, 'users', uid, 'discoveries', String(superclusterSeed)));
 }
 
 export async function loadAllDiscoveries(uid: string): Promise<SuperclusterRecord[]> {

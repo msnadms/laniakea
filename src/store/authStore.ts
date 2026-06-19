@@ -39,6 +39,10 @@ export function initAuth(): () => void {
         showHyperlanes: settings.showHyperlanes,
         showOrbitRings: settings.showOrbitRings,
         showAttractorLabels: settings.showAttractorLabels,
+        showHUD: settings.showHUD,
+        exoticMatter: settings.exoticMatter,
+        driveIntegrity: settings.driveIntegrity,
+        railgunAmmo: settings.railgunAmmo,
       });
       useCodexStore.getState().setAll(discoveries);
 

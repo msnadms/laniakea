@@ -10,6 +10,12 @@ interface UIState {
   toggleAttractorLabels: () => void;
   showOrbitRings: boolean;
   toggleOrbitRings: () => void;
+  showHUD: boolean;
+  toggleHUD: () => void;
+  exoticMatter: number;
+  driveIntegrity: number;
+  railgunAmmo: number;
+  setShipStats: (stats: { exoticMatter: number; driveIntegrity: number; railgunAmmo: number }) => void;
   view: AppView;
   setView: (view: AppView) => void;
   address: AddressComponent[];
@@ -40,6 +46,12 @@ export const useUIStore = create<UIState>((set) => ({
   toggleAttractorLabels: () => set((s) => ({ showAttractorLabels: !s.showAttractorLabels })),
   showOrbitRings: false,
   toggleOrbitRings: () => set((s) => ({ showOrbitRings: !s.showOrbitRings })),
+  showHUD: true,
+  toggleHUD: () => set((s) => ({ showHUD: !s.showHUD })),
+  exoticMatter: 75,
+  driveIntegrity: 98,
+  railgunAmmo: 350,
+  setShipStats: (stats) => set(stats),
   view: 'supercluster',
   setView: (view) => set({ view }),
   address: [obsUniverse],

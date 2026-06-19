@@ -21,18 +21,24 @@ export function ScaleBar({ camera, unitsPerWorldPx, unit, niceValues }: Props) {
     const barGfx = new Graphics();
     const barLabel = new Text({
       text: '',
-      style: { fontFamily: 'sans-serif', fontSize: 14, fill: 0xaabbff, align: 'center' },
+      style: { fontFamily: 'sans-serif', fontSize: 14, fill: 0x00bee6, align: 'center' },
     });
     barLabel.anchor.set(0.5, 1.0);
+    barLabel.alpha = 0.75;
 
     const scaleGroup = new Container();
     scaleGroup.addChild(barGfx);
     scaleGroup.addChild(barLabel);
     stage.addChild(scaleGroup);
 
+    let lastScale = -1;
     const update = () => {
       if (!app.renderer) return;
-      const pxPerUnit = camera.current.scale / unitsPerWorldPx;
+      const currentScale = camera.current.scale;
+      if (currentScale === lastScale) return;
+      lastScale = currentScale;
+
+      const pxPerUnit = currentScale / unitsPerWorldPx;
       const targetUnits = TARGET_BAR_PX / pxPerUnit;
       let niceVal = niceValues[0];
       for (const v of niceValues) {
@@ -44,11 +50,11 @@ export function ScaleBar({ camera, unitsPerWorldPx, unit, niceValues }: Props) {
 
       barGfx.clear();
       barGfx.moveTo(-barWidth / 2, 0).lineTo(barWidth / 2, 0);
-      barGfx.stroke({ color: 0xaabbff, width: 2, alpha: 0.8 });
+      barGfx.stroke({ color: 0x00bee6, width: 2, alpha: 0.55 });
       barGfx.moveTo(-barWidth / 2, -8).lineTo(-barWidth / 2, 0);
-      barGfx.stroke({ color: 0xaabbff, width: 1.5, alpha: 0.8 });
+      barGfx.stroke({ color: 0x00bee6, width: 1.5, alpha: 0.55 });
       barGfx.moveTo(barWidth / 2, -8).lineTo(barWidth / 2, 0);
-      barGfx.stroke({ color: 0xaabbff, width: 1.5, alpha: 0.8 });
+      barGfx.stroke({ color: 0x00bee6, width: 1.5, alpha: 0.55 });
 
       barLabel.text = `${niceVal} ${unit}`;
       barLabel.position.set(0, -14);

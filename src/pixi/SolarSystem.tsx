@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useUIStore } from "../store/uiStore";
 import { BackgroundStars } from "./BackgroundStars";
+import { ScaleBar } from "./ScaleBar";
 import { generateSystemLayout, ORBITAL_K, MOON_K } from "../game/planetGen";
 import { createRng } from "../game/galaxyGen";
 import { createSunTexture, createNebulaGlowTexture, createGasGiantTexture } from "./textures";
@@ -40,6 +41,7 @@ function createBodyGfx(radius: number, color: number, highlightAlpha: number): G
 }
 
 const ASTEROID_COLORS = [0x888888, 0x999999, 0xaaaaaa, 0x776655, 0x887766, 0x998877];
+const SYSTEM_NICE_VALUES = [1, 2, 5, 10, 20, 30, 60];
 
 function createAsteroidBelt(gapIdx: number, planets: PlanetLayout[], seed: number): Container {
   const rng = createRng(seed);
@@ -136,7 +138,7 @@ function SolarSystem() {
   const showOrbitRingsRef = useRef(showOrbitRings);
   showOrbitRingsRef.current = showOrbitRings;
   const orbitGfxRef = useRef<Graphics[]>([]);
-  useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
+  const { camera } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
 
   useEffect(() => {
     for (const gfx of orbitGfxRef.current) gfx.visible = showOrbitRings;
@@ -270,6 +272,12 @@ function SolarSystem() {
     <>
       <BackgroundStars stars={backgroundStars} />
       <pixiContainer ref={worldRef} />
+      <ScaleBar
+        camera={camera}
+        unitsPerWorldPx={1 / 180}
+        unit="Light Minutes"
+        niceValues={SYSTEM_NICE_VALUES}
+      />
     </>
   );
 }

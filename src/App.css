@@ -15,26 +15,6 @@
   gap: 6px;
 }
 
-.back-btn {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  background: rgba(6, 12, 28, 0.88);
-  border: 1px solid rgba(40, 80, 120, 0.5);
-  border-radius: 4px;
-  color: #6a90b0;
-  font-size: 12px;
-  cursor: pointer;
-  letter-spacing: 0.04em;
-  backdrop-filter: blur(4px);
-  user-select: none;
-}
-
-.back-btn:hover {
-  color: #99bbdd;
-  border-color: rgba(60, 110, 160, 0.7);
-}
-
 .galaxy-title {
   position: absolute;
   top: 20px;
@@ -48,6 +28,59 @@
   pointer-events: none;
   user-select: none;
   text-shadow: 0 0 20px rgba(100, 160, 255, 0.4);
+}
+
+.hud-wrap {
+  position: absolute;
+  bottom: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+.hud-address-bar {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 100;
+}
+
+.hud-address-breadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hud-address-seg {
+  color: #2a6a8a;
+}
+
+.hud-address-seg--current {
+  color: rgba(0, 190, 230, 0.9);
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.4);
+}
+
+.hud-address-sep {
+  color: #1a3a50;
+  font-size: 10px;
+  padding: 0 4px;
+}
+
+.hud-address-coords {
+  font-size: 10px;
+  font-family: monospace;
+  letter-spacing: 0.12em;
+  color: #1e4a6a;
+  margin-top: 4px;
 }
 
 .top-right {

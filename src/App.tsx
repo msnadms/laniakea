@@ -6,22 +6,26 @@ import { useUIStore } from './store/uiStore';
 import { useGameStore } from './store/gameStore';
 import { generateGalaxyName } from './game/superclusters';
 import './App.css';
-import { Address } from './ui/Address';
 import { SolarSystemStage } from './pixi/SolarSystem';
 import { AuthButton } from './ui/AuthButton';
-import { Codex } from './ui/Codex';
+import { ShipHUD } from './ui/ShipHUD';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
 import { initAuth } from './store/authStore';
+
+const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
 
 export default function App() {
   useSettingsPersist();
   useEffect(() => initAuth(), []);
   const view = useUIStore((s) => s.view);
-  const setView = useUIStore((s) => s.setView);
-  const popAddress = useUIStore((s) => s.popAddress);
-  const removeAddressType = useUIStore((s) => s.removeAddressType);
+  const showHUD = useUIStore((s) => s.showHUD);
+  const address = useUIStore((s) => s.address);
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
-  const setSystem = useGameStore((s) => s.setSystem);
+
+  const coords = address
+    .filter((s) => COORD_TYPES.has(s.type))
+    .map((s) => { const z = Math.round(s.z); return `${Math.round(s.x)}.${Math.round(s.y)}${z !== 0 ? `.${z}` : ''}`; })
+    .join(':');
 
   return (
     <div className="app">
@@ -29,23 +33,31 @@ export default function App() {
       {view === 'supercluster' && (<Supercluster />)}
       {view === 'system' && (<SolarSystemStage />)}
       <div className="top-left">
-        {view === 'system' && (
-          <button className="back-btn" onClick={() => { removeAddressType('system'); setSystem(null); setView('galaxy'); }}>
-            ← Galaxy
-          </button>
-        )}
-        {view === 'galaxy' && (
-          <button className="back-btn" onClick={() => { popAddress(); removeAddressType('attractor'); setView('supercluster'); }}>
-            ← Supercluster
-          </button>
-        )}
         <ConfigPanel />
-        <Codex />
       </div>
       <div className="top-right">
         <AuthButton />
       </div>
-      <Address />
+      {showHUD && (
+        <div className="hud-wrap">
+          <ShipHUD />
+        </div>
+      )}
+      {showHUD && (
+        <div className="hud-address-bar">
+          <div className="hud-address-breadcrumb">
+            {address.map((segment, i) => (
+              <span key={i}>
+                {i > 0 && <span className="hud-address-sep">›</span>}
+                <span className={`hud-address-seg${i === address.length - 1 ? ' hud-address-seg--current' : ''}`}>
+                  {segment.name}
+                </span>
+              </span>
+            ))}
+          </div>
+          {coords && <div className="hud-address-coords">{coords}</div>}
+        </div>
+      )}
       {view === 'galaxy' && (
         <div className="galaxy-title">{generateGalaxyName(galaxySeed)}</div>
       )}

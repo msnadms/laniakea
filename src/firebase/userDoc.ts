@@ -6,12 +6,20 @@ export interface UserSettings {
   showHyperlanes: boolean;
   showOrbitRings: boolean;
   showAttractorLabels: boolean;
+  showHUD: boolean;
+  exoticMatter: number;
+  driveIntegrity: number;
+  railgunAmmo: number;
 }
 
 const defaultSettings: UserSettings = {
   showHyperlanes: false,
   showOrbitRings: false,
   showAttractorLabels: true,
+  showHUD: true,
+  exoticMatter: 75,
+  driveIntegrity: 98,
+  railgunAmmo: 350,
 };
 
 export async function initUserDoc(user: User): Promise<UserSettings> {
