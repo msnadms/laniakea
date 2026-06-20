@@ -1,5 +1,5 @@
 import { createRng } from "./galaxyGen";
-import type { Planet, Moon, Resource, ZoneType } from "./types";
+import type { Planet, Moon, Resource, StarType, ZoneType } from "./types";
 
 export interface MoonLayout {
   dist: number;
@@ -23,6 +23,7 @@ export interface SystemLayout {
   asteroidGapIdx: number | null;
   asteroidSeed: number;
   seed: number;
+  starType?: StarType;
 }
 
 export type ZoneConfig = {
@@ -56,27 +57,28 @@ export function getPlanetZone(idx: number, total: number): ZoneType {
 
 export function getZoneConfig(zone: ZoneType): ZoneConfig {
   switch (zone) {
-    case 'hot':      return { radiusMin: 10, radiusSpread: 13, colors: HOT_ZONE_COLORS,      moonColors: HOT_MOON_COLORS,      ringThreshold: 1.1,  moonThreshold: 0.90, maxMoons: 1 };
+    case 'hot':      return { radiusMin: 10, radiusSpread: 13, colors: HOT_ZONE_COLORS,       moonColors: HOT_MOON_COLORS,       ringThreshold: 1.1,  moonThreshold: 0.90, maxMoons: 1 };
     case 'marginal': return { radiusMin: 18, radiusSpread: 16, colors: MARGINAL_ZONE_COLORS,  moonColors: MARGINAL_MOON_COLORS,  ringThreshold: 1.1,  moonThreshold: 0.70, maxMoons: 2 };
     case 'habitable':return { radiusMin: 24, radiusSpread: 17, colors: HABITABLE_ZONE_COLORS, moonColors: HABITABLE_MOON_COLORS, ringThreshold: 1.1,  moonThreshold: 0.60, maxMoons: 2 };
-    case 'gas':      return { radiusMin: 75, radiusSpread: 50, colors: GAS_GIANT_COLORS,      moonColors: GAS_MOON_COLORS,      ringThreshold: 0.40, moonThreshold: 0.15, maxMoons: 5 };
-    case 'ice':      return { radiusMin: 28, radiusSpread: 22, colors: ICE_GIANT_COLORS,      moonColors: ICE_MOON_COLORS,      ringThreshold: 0.62, moonThreshold: 0.28, maxMoons: 3 };
+    case 'gas':      return { radiusMin: 75, radiusSpread: 50, colors: GAS_GIANT_COLORS,      moonColors: GAS_MOON_COLORS,       ringThreshold: 0.40, moonThreshold: 0.15, maxMoons: 5 };
+    case 'ice':      return { radiusMin: 28, radiusSpread: 22, colors: ICE_GIANT_COLORS,      moonColors: ICE_MOON_COLORS,       ringThreshold: 0.62, moonThreshold: 0.28, maxMoons: 3 };
   }
 }
 
 export const ORBITAL_K = 3500;
 export const MOON_K = 430;
 
-export function generateSystemLayout(seed: number): SystemLayout {
+export function generateSystemLayout(seed: number, starType?: StarType): SystemLayout {
   const rng = createRng(seed);
-  const numRings = Math.floor(rng() * 5) + 3;
+  const isBrownDwarf = starType === 'L';
+  const numRings = isBrownDwarf ? Math.floor(rng() * 3) + 1 : Math.floor(rng() * 5) + 3;
   let orbitRadius = 380 + rng() * 120;
 
   const planets: PlanetLayout[] = [];
 
   for (let ring = 0; ring < numRings; ring++) {
     const rawZone = getPlanetZone(ring, numRings);
-    const zone = rawZone === 'habitable' && rng() > 0.12 ? 'marginal' : rawZone;
+    const zone = isBrownDwarf ? 'ice' : (rawZone === 'habitable' && rng() > 0.12 ? 'marginal' : rawZone);
     const cfg = getZoneConfig(zone);
 
     const radius = Math.floor(rng() * cfg.radiusSpread) + cfg.radiusMin;
@@ -110,7 +112,7 @@ export function generateSystemLayout(seed: number): SystemLayout {
   // derive a seed transform itself, and a second renderer always gets the same belt.
   const asteroidSeed = (seed ^ 0xdeadbeef) >>> 0;
 
-  return { planets, asteroidGapIdx, asteroidSeed, seed };
+  return { planets, asteroidGapIdx, asteroidSeed, seed, starType };
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -135,7 +137,7 @@ function makePlanetName(rng: () => number): string {
   return `${prefix}${suffix}`;
 }
 
-function resourcesForZone(rng: () => number, zone: ZoneType): Resource[] {
+function resourcesForZone(rng: () => number, zone: ZoneType, isBrownDwarf = false): Resource[] {
   switch (zone) {
     case 'hot':      return [{ type: 'alloys', count: 2 + Math.floor(rng() * 4) }];
     case 'marginal': return [{ type: 'alloys', count: 1 + Math.floor(rng() * 3) }];
@@ -144,13 +146,11 @@ function resourcesForZone(rng: () => number, zone: ZoneType): Resource[] {
       { type: 'alloys', count: 1 + Math.floor(rng() * 3) },
     ];
     case 'gas': return [
-      { type: 'exotic',   count: 2 + Math.floor(rng() * 4) },
       { type: 'helium-3', count: 3 + Math.floor(rng() * 6) },
     ];
-    case 'ice': return [
-      { type: 'exotic', count: 1 + Math.floor(rng() * 3) },
-      { type: 'nutrients', count: 1 + Math.floor(rng() * 2) },
-    ];
+    case 'ice': return isBrownDwarf
+      ? [{ type: 'exotic', count: 4 + Math.floor(rng() * 7) }]
+      : [{ type: 'nutrients', count: 1 + Math.floor(rng() * 2) }];
   }
 }
 
@@ -159,12 +159,13 @@ function moonResourcesForZone(rng: () => number, zone: ZoneType): Resource[] {
     case 'hot':      return [{ type: 'alloys', count: 1 + Math.floor(rng() * 2) }];
     case 'marginal': return [{ type: 'alloys', count: 1 + Math.floor(rng() * 2) }];
     case 'habitable':return [{ type: 'nutrients', count: 1 + Math.floor(rng() * 2) }];
-    case 'gas':      return [{ type: 'alloys', count: 1 + Math.floor(rng() * 3) }];
-    case 'ice':      return [{ type: 'exotic', count: 1 + Math.floor(rng() * 2) }];
+    case 'gas':      return [{ type: 'helium-3', count: 1 + Math.floor(rng() * 3) }];
+    case 'ice':      return [{ type: 'nutrients', count: 1 + Math.floor(rng() * 2) }];
   }
 }
 
 export function generatePlanets(layout: SystemLayout): Planet[] {
+  const isBrownDwarf = layout.starType === 'L';
   const rng = createRng(layout.seed);
   const nameRng = createRng((layout.seed ^ 0xb1a2c3d4) >>> 0);
 
@@ -177,7 +178,7 @@ export function generatePlanets(layout: SystemLayout): Planet[] {
     return {
       name: planetName,
       type: planet.zone,
-      resources: resourcesForZone(rng, planet.zone),
+      resources: resourcesForZone(rng, planet.zone, isBrownDwarf),
       moons,
     };
   });

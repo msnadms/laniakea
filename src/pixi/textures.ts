@@ -415,6 +415,80 @@ export function createMoonTexture(baseColor: number, seed: number): Texture {
   return Texture.from(canvas);
 }
 
+export function createBrownDwarfTexture(seed: number): Texture {
+  const rng = createRng(seed);
+  const SIZE = 256;
+  const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, 0x4a1a0a);
+
+  // Subtle atmospheric banding
+  const numBands = Math.floor(rng() * 4) + 7;
+  let y = 0;
+  let prevR = r0, prevG = g0, prevB = b0;
+  for (let i = 0; i < numBands; i++) {
+    const bandH = Math.ceil(SIZE * (0.5 + rng() * 0.9) / numBands);
+    const bri = Math.round((rng() - 0.5) * 28);
+    const cr = Math.min(255, Math.max(0, r0 + bri));
+    const cg = Math.min(255, Math.max(0, g0 + Math.round((rng() - 0.5) * 10)));
+    const cb = Math.min(255, Math.max(0, b0 + Math.round((rng() - 0.5) * 6)));
+    const grad = ctx.createLinearGradient(0, y, 0, y + bandH);
+    grad.addColorStop(0,    `rgb(${prevR},${prevG},${prevB})`);
+    grad.addColorStop(0.3,  `rgb(${cr},${cg},${cb})`);
+    grad.addColorStop(1,    `rgb(${cr},${cg},${cb})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, y, SIZE, bandH);
+    prevR = cr; prevG = cg; prevB = cb;
+    y += bandH;
+  }
+
+  // Storm spots
+  const numSpots = Math.floor(rng() * 2) + 1;
+  for (let i = 0; i < numSpots; i++) {
+    const cx = SIZE * 0.2 + rng() * SIZE * 0.6;
+    const cy = SIZE * 0.2 + rng() * SIZE * 0.6;
+    const rx = 8 + rng() * 18;
+    const ry = 4 + rng() * 8;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rng() * 0.4);
+    ctx.scale(1, ry / rx);
+    const spot = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    spot.addColorStop(0,   'rgba(15,4,1,0.55)');
+    spot.addColorStop(0.5, 'rgba(20,6,2,0.25)');
+    spot.addColorStop(1,   'rgba(25,8,3,0)');
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, Math.PI * 2);
+    ctx.fillStyle = spot;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Faint internal heat glow at center
+  const heat = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 0, SIZE / 2, SIZE / 2, SIZE * 0.35);
+  heat.addColorStop(0,   'rgba(155,50,14,0.22)');
+  heat.addColorStop(0.5, 'rgba(110,30,8,0.09)');
+  heat.addColorStop(1,   'rgba(80,18,4,0)');
+  ctx.fillStyle = heat;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  // Limb darkening in dark reddish-brown instead of black
+  const limb = ctx.createRadialGradient(SIZE / 2, SIZE / 2, SIZE * 0.18, SIZE / 2, SIZE / 2, SIZE / 2);
+  limb.addColorStop(0,    'rgba(30,8,2,0)');
+  limb.addColorStop(0.52, 'rgba(30,8,2,0.10)');
+  limb.addColorStop(1,    'rgba(20,5,1,0.38)');
+  ctx.fillStyle = limb;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  // Subtle specular
+  const hi = ctx.createRadialGradient(SIZE * 0.38, SIZE * 0.32, 0, SIZE * 0.38, SIZE * 0.32, SIZE * 0.2);
+  hi.addColorStop(0,   'rgba(255,255,255,0.08)');
+  hi.addColorStop(0.5, 'rgba(255,255,255,0.02)');
+  hi.addColorStop(1,   'rgba(255,255,255,0)');
+  ctx.fillStyle = hi;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  return Texture.from(canvas);
+}
+
 export function createGasGiantTexture(baseColor: number, seed: number, isIce = false): Texture {
   const rng = createRng(seed);
   const SIZE = 256;

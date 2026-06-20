@@ -1,4 +1,4 @@
-import { Application, useApplication } from "@pixi/react";
+import { useApplication } from "@pixi/react";
 import { useCamera } from "./useCamera";
 import { CAMERA_INITIAL_SCALE, SYSTEM_CAMERA_MIN_SCALE } from "../game/constants";
 import { Container, Graphics, Sprite, Texture, Ticker } from "pixi.js";
@@ -9,7 +9,7 @@ import { BackgroundStars } from "./BackgroundStars";
 import { ScaleBar } from "./ScaleBar";
 import { generateSystemLayout, ORBITAL_K, MOON_K } from "../game/planetGen";
 import { createRng } from "../game/galaxyGen";
-import { createSunTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
+import { createSunTexture, createBrownDwarfTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
 import type { PlanetLayout } from "../game/planetGen";
 
 type MoonState   = { gfx: Sprite; angle: number; speed: number; dist: number };
@@ -115,15 +115,7 @@ function createCorona(seed: number, color: number, sunRadius: number): Container
   return container;
 }
 
-export function SolarSystemStage() {
-  return (
-    <Application resizeTo={window} background={0x050810}>
-        <SolarSystem />
-    </Application>
-  )
-}
-
-function SolarSystem() {
+export function SolarSystem() {
   const { isInitialised } = useApplication();
   const worldRef = useRef<Container>(null);
   const backgroundStars = useGameStore((s) => s.galaxy.backgroundStars);
@@ -141,7 +133,7 @@ function SolarSystem() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current || !system) return;
     const world   = worldRef.current;
-    const layout  = generateSystemLayout(system.seed);
+    const layout  = generateSystemLayout(system.seed, system.starType);
     const systemContainer = new Container();
     const systemGfx       = new Graphics();
     const planets: PlanetState[] = [];
@@ -220,8 +212,11 @@ function SolarSystem() {
       ? createAsteroidBelt(layout.asteroidGapIdx, layout.planets, layout.asteroidSeed)
       : null;
 
-    const sunRadius  = system.size * 120;
-    const sunTexture = createSunTexture(system.color);
+    const isBrownDwarf = system.starType === 'L';
+    const sunRadius  = system.size * 120 * (isBrownDwarf ? 0.5 : 1);
+    const sunTexture = isBrownDwarf
+      ? createBrownDwarfTexture(system.seed)
+      : createSunTexture(system.color);
     const sunSprite  = new Sprite(sunTexture);
     sunSprite.anchor.set(0.5);
     sunSprite.width  = sunRadius * 4;

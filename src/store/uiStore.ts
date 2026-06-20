@@ -15,6 +15,12 @@ interface UIState {
   railgunAmmo: number;
   helium3Reserves: number;
   setShipStats: (stats: { exoticMatter: number; driveIntegrity: number; railgunAmmo: number; helium3Reserves: number }) => void;
+  consumeExoticMatter: (amount: number) => void;
+  consumeHelium3: (amount: number) => void;
+  consumeResources: (exotic: number, helium: number) => void;
+  refillResources: () => void;
+  hudFlash: number;
+  triggerHudFlash: () => void;
   view: AppView;
   setView: (view: AppView) => void;
   address: AddressComponent[];
@@ -50,6 +56,15 @@ export const useUIStore = create<UIState>((set) => ({
   railgunAmmo: 350,
   helium3Reserves: 220,
   setShipStats: (stats) => set(stats),
+  consumeExoticMatter: (amount) => set((s) => ({ exoticMatter: Math.max(0, s.exoticMatter - amount) })),
+  consumeHelium3: (amount) => set((s) => ({ helium3Reserves: Math.max(0, s.helium3Reserves - amount) })),
+  consumeResources: (exotic, helium) => set((s) => ({
+    exoticMatter: Math.max(0, s.exoticMatter - exotic),
+    helium3Reserves: Math.max(0, s.helium3Reserves - helium),
+  })),
+  refillResources: () => set({ exoticMatter: 75, helium3Reserves: 220 }),
+  hudFlash: 0,
+  triggerHudFlash: () => set((s) => ({ hudFlash: s.hudFlash + 1 })),
   view: 'supercluster',
   setView: (view) => set({ view }),
   address: [obsUniverse],

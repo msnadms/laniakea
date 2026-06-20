@@ -1,6 +1,6 @@
 import type { GalaxyConfig } from "./galaxyConfig";
 
-export type StarType = 'G' | 'K' | 'M' | 'F' | 'A';
+export type StarType = 'G' | 'K' | 'M' | 'F' | 'A' | 'L';
 
 export const STAR_TYPE_LABELS: Record<StarType, string> = {
   G: 'G-class (Yellow Dwarf)',
@@ -8,6 +8,7 @@ export const STAR_TYPE_LABELS: Record<StarType, string> = {
   M: 'M-class (Red Dwarf)',
   F: 'F-class (Yellow-White)',
   A: 'A-class (White)',
+  L: 'L-class (Brown Dwarf)',
 };
 
 export interface StarSystem {

@@ -1,4 +1,4 @@
-import { Application, useApplication } from '@pixi/react';
+import { useApplication } from '@pixi/react';
 import { Container, Graphics, Ticker, BlurFilter } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
@@ -45,18 +45,15 @@ function getBrightnessTiers(seed: number) {
   return TIER_BASE.map((t, i) => ({ ...t, color: colors[i] }));
 }
 
-export function Supercluster() {
-  return (
-    <Application resizeTo={window} background={0x050810} antialias>
-      <SuperclusterWorld />
-    </Application>
-  );
-}
 
-function SuperclusterWorld() {
+export function SuperclusterWorld() {
   const { app, isInitialised } = useApplication();
 
-  const scData = useGameStore((s) => s.supercluster);
+  const scSeed = useGameStore((s) => s.supercluster.seed);
+  const scName = useGameStore((s) => s.supercluster.name);
+  const scDots = useGameStore((s) => s.supercluster.dots);
+  const scAttractors = useGameStore((s) => s.supercluster.attractors);
+  const scBackgroundStars = useGameStore((s) => s.supercluster.backgroundStars);
   const regenerateGalaxy = useGameStore((s) => s.regenerateGalaxy);
   const markDotVisited = useGameStore((s) => s.markDotVisited);
   const setView = useUIStore((s) => s.setView);
@@ -72,15 +69,15 @@ function SuperclusterWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
-    const rng = createRng(scData.seed);
+    const rng = createRng(scSeed);
     const obsUniverseCoords = () => rng() * OBS_UNIVERSE_RADIUS * 2 - OBS_UNIVERSE_RADIUS;
     const [x, y, z] = [obsUniverseCoords(), obsUniverseCoords(), obsUniverseCoords()];
-    pushAddress(buildAddressComponent(scData.name, x, y, z, 'supercluster'))
+    pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'))
 
-    const tiers = getBrightnessTiers(scData.seed);
+    const tiers = getBrightnessTiers(scSeed);
     const buckets: SuperclusterDot[][] = tiers.map(() => []);
     const visitedDots: SuperclusterDot[] = [];
-    for (const dot of scData.dots) {
+    for (const dot of scDots) {
       buckets[tiers.findIndex(t => dot.brightness > t.min)].push(dot);
       if (dot.visited) visitedDots.push(dot);
     }
@@ -135,13 +132,13 @@ function SuperclusterWorld() {
       scContainer.destroy({ children: true });
       blurFilter.destroy();
     };
-  }, [scData, app, isInitialised]);
+  }, [scSeed, scDots, scName, pushAddress, app, isInitialised]);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
 
-    const titleGroup = createPointerLabel(scData.name, 90, {
+    const titleGroup = createPointerLabel(scName, 90, {
       lineLength: 1600,
       dotRadius: 8,
       alpha: 0.8,
@@ -150,7 +147,7 @@ function SuperclusterWorld() {
     world.addChild(titleGroup);
 
     const labelContainer = new Container();
-    for (const att of scData.attractors) {
+    for (const att of scAttractors) {
       const group = createPointerLabel(att.name, 40, { lineLength: 120 });
       group.position.set(att.x, att.y);
       labelContainer.addChild(group);
@@ -167,7 +164,7 @@ function SuperclusterWorld() {
       titleGroup.destroy({ children: true });
       labelContainer.destroy({ children: true });
     };
-  }, [scData, isInitialised]);
+  }, [scSeed, scName, scAttractors, isInitialised]);
 
 
   useEffect(() => {
@@ -178,26 +175,38 @@ function SuperclusterWorld() {
     const onTap = (e: { global: { x: number; y: number } }) => {
       if (camera.current.scale < 0.5) return;
       const local = world.toLocal(e.global);
-      let nearest = scData.dots[0];
+      const sc = useGameStore.getState().supercluster;
+      let nearest = sc.dots[0];
       let nearestDist = Infinity;
-      for (const dot of scData.dots) {
+      for (const dot of sc.dots) {
         const d = Math.hypot(dot.x - local.x, dot.y - local.y);
         if (d < nearestDist) { nearestDist = d; nearest = dot; }
       }
       const maxDist = 15 / camera.current.scale;
       if (nearestDist > maxDist) return;
+      const currentGalaxySeed = useGameStore.getState().galaxy.seed;
+      const currentDot = sc.dots.find(d => d.seed === currentGalaxySeed);
+      const travelDist = Math.hypot(nearest.x - (currentDot?.x ?? 0), nearest.y - (currentDot?.y ?? 0));
+      const exoticCost = Math.min(40, Math.max(10, Math.round((travelDist / SC_WORLD_HALF) * 40)));
+      const uiStore = useUIStore.getState();
+      if (uiStore.exoticMatter < exoticCost || uiStore.helium3Reserves < 10) {
+        uiStore.triggerHudFlash();
+        return;
+      }
+      uiStore.consumeResources(exoticCost, 10);
+
       markDotVisited(nearest.seed);
-      useCodexStore.getState().addGalaxyRecord(scData.seed, scData.name, nearest.seed, nearest.name);
+      useCodexStore.getState().addGalaxyRecord(sc.seed, sc.name, nearest.seed, nearest.name);
       const user = useAuthStore.getState().user;
       if (user) {
-        saveSuperclusterDiscovery(user.uid, scData.seed, scData.name);
-        saveGalaxyDiscovery(user.uid, scData.seed, nearest.seed, nearest.name);
+        saveSuperclusterDiscovery(user.uid, sc.seed, sc.name);
+        saveGalaxyDiscovery(user.uid, sc.seed, nearest.seed, nearest.name);
       }
       regenerateGalaxy(nearest.seed);
 
       let nearestAttractorDist = Infinity;
-      let nearestAttractor = scData.attractors[0];
-      for (const att of scData.attractors) {
+      let nearestAttractor = sc.attractors[0];
+      for (const att of sc.attractors) {
         const d = Math.hypot(nearest.x - att.x, nearest.y - att.y);
         if (d < nearestAttractorDist) { nearestAttractorDist = d; nearestAttractor = att; }
       }
@@ -213,11 +222,11 @@ function SuperclusterWorld() {
 
     stage.on('pointertap', onTap);
     return () => { stage.off('pointertap', onTap); };
-  }, [scData, app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType]);
+  }, [app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType]);
 
   return (
     <>
-      <BackgroundStars stars={scData.backgroundStars} />
+      <BackgroundStars stars={scBackgroundStars} />
       <pixiContainer ref={worldRef} visible={isReady} />
       <ScaleBar
         camera={camera}

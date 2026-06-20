@@ -4,18 +4,29 @@ import { useAuthStore } from '../store/authStore';
 import { saveUserSettings } from '../firebase/userDoc';
 
 export function useSettingsPersist() {
-  const user = useAuthStore((s) => s.user);
-  const settingsLoaded = useAuthStore((s) => s.settingsLoaded);
-  const showOrbitRings = useUIStore((s) => s.showOrbitRings);
-  const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
-  const showHUD = useUIStore((s) => s.showHUD);
-  const exoticMatter = useUIStore((s) => s.exoticMatter);
-  const driveIntegrity = useUIStore((s) => s.driveIntegrity);
-  const railgunAmmo = useUIStore((s) => s.railgunAmmo);
-  const helium3Reserves = useUIStore((s) => s.helium3Reserves);
-
   useEffect(() => {
-    if (!user || !settingsLoaded) return;
-    saveUserSettings(user.uid, { showOrbitRings, showAttractorLabels, showHUD, exoticMatter, driveIntegrity, railgunAmmo, helium3Reserves });
-  }, [user, settingsLoaded, showOrbitRings, showAttractorLabels, showHUD, exoticMatter, driveIntegrity, railgunAmmo, helium3Reserves]);
+    let timer: ReturnType<typeof setTimeout>;
+
+    const unsubscribe = useUIStore.subscribe((state) => {
+      const { user, settingsLoaded } = useAuthStore.getState();
+      if (!user || !settingsLoaded) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        saveUserSettings(user.uid, {
+          showOrbitRings: state.showOrbitRings,
+          showAttractorLabels: state.showAttractorLabels,
+          showHUD: state.showHUD,
+          exoticMatter: state.exoticMatter,
+          driveIntegrity: state.driveIntegrity,
+          railgunAmmo: state.railgunAmmo,
+          helium3Reserves: state.helium3Reserves,
+        });
+      }, 2000);
+    });
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
+  }, []);
 }

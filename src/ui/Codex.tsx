@@ -5,7 +5,7 @@ import { useCodexStore } from '../store/codexStore';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
 import { STAR_TYPE_LABELS, buildAddressComponent } from '../game/types';
 import { getSuperclusterCoords } from '../game/superclusters';
-import { SC_ATTRACTOR_LABEL_MAX_DIST } from '../game/constants';
+import { SC_ATTRACTOR_LABEL_MAX_DIST, SC_WORLD_HALF, GALAXY_RADIUS } from '../game/constants';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import './Codex.css';
@@ -220,9 +220,22 @@ function pushAttractor(ui: ReturnType<typeof useUIStore.getState>, sc: ReturnTyp
   }
 }
 
+function checkAndConsumeResources(exoticCost: number, heliumCost: number): boolean {
+  const ui = useUIStore.getState();
+  if (ui.exoticMatter < exoticCost || ui.helium3Reserves < heliumCost) {
+    ui.triggerHudFlash();
+    return false;
+  }
+  ui.consumeResources(exoticCost, heliumCost);
+  return true;
+}
+
 function travelToSupercluster(scSeed: number, scName: string) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
+  if (game.supercluster.seed !== scSeed) {
+    if (!checkAndConsumeResources(50, 10)) return;
+  }
   ui.clearAddress();
   game.regenerateSupercluster(scSeed);
   const [x, y, z] = getSuperclusterCoords(scSeed);
@@ -234,6 +247,16 @@ function travelToSupercluster(scSeed: number, scName: string) {
 function travelToGalaxy(scSeed: number, scName: string, galaxySeed: number, galaxyName: string) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
+  let exoticCost: number;
+  if (game.supercluster.seed !== scSeed) {
+    exoticCost = 50;
+  } else {
+    const currentDot = game.supercluster.dots.find((d) => d.seed === game.galaxy.seed);
+    const targetDot = game.supercluster.dots.find((d) => d.seed === galaxySeed);
+    const dist = Math.hypot((targetDot?.x ?? 0) - (currentDot?.x ?? 0), (targetDot?.y ?? 0) - (currentDot?.y ?? 0));
+    exoticCost = Math.min(40, Math.max(10, Math.round((dist / SC_WORLD_HALF) * 40)));
+  }
+  if (!checkAndConsumeResources(exoticCost, 10)) return;
   ui.clearAddress();
   if (game.supercluster.seed !== scSeed) game.regenerateSupercluster(scSeed);
   game.regenerateGalaxy(galaxySeed);
@@ -254,6 +277,20 @@ function travelToSystem(
 ) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
+  let exoticCost: number;
+  if (game.supercluster.seed !== scSeed) {
+    exoticCost = 50;
+  } else if (game.galaxy.seed !== galaxySeed) {
+    exoticCost = 15;
+  } else {
+    const currentSystem = game.system;
+    const fromX = currentSystem?.x ?? 0;
+    const fromY = currentSystem?.y ?? 0;
+    const targetSys = game.galaxy.systems.find((s) => String(s.id) === systemId);
+    const dist = Math.hypot((targetSys?.x ?? 0) - fromX, (targetSys?.y ?? 0) - fromY);
+    exoticCost = Math.max(1, Math.round((dist / GALAXY_RADIUS) * 5));
+  }
+  if (!checkAndConsumeResources(exoticCost, 10)) return;
   ui.clearAddress();
   if (game.supercluster.seed !== scSeed) game.regenerateSupercluster(scSeed);
   game.regenerateGalaxy(galaxySeed);
@@ -332,7 +369,7 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const hasHabitable = useMemo(
-    () => galaxy.enrichedSystems.some((s) => systemHasHabitable(s.seed)),
+    () => galaxy.enrichedSystems.some((s) => systemHasHabitable(s.seed, s.starType)),
     [galaxy.enrichedSystems],
   );
 
@@ -384,14 +421,15 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   );
 }
 
-function systemHasHabitable(seed: number): boolean {
-  return generateSystemLayout(seed).planets.some((p) => p.zone === 'habitable');
+function systemHasHabitable(seed: number, starType?: import('../game/types').StarType): boolean {
+  if (starType === 'L') return false;
+  return generateSystemLayout(seed, starType).planets.some((p) => p.zone === 'habitable');
 }
 
-function SystemPlanets({ seed, name, query }: { seed: number; name: string; query: string }) {
+function SystemPlanets({ seed, starType, name, query }: { seed: number; starType?: import('../game/types').StarType; name: string; query: string }) {
   const planets = useMemo(
-    () => generatePlanets(generateSystemLayout(seed)),
-    [seed],
+    () => generatePlanets(generateSystemLayout(seed, starType)),
+    [seed, starType],
   );
   return (
     <div className="codex-planets">
@@ -420,7 +458,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
-  const hasHabitable = useMemo(() => systemHasHabitable(system.seed), [system.seed]);
+  const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType), [system.seed, system.starType]);
 
   return (
     <div className="codex-system">
@@ -447,7 +485,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} name={system.name} query={query} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} name={system.name} query={query} />}
     </div>
   );
 }

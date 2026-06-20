@@ -1,4 +1,4 @@
-import { Application, extend, useApplication } from '@pixi/react';
+import { extend, useApplication } from '@pixi/react';
 import { Container, Graphics, Ticker, Sprite, BlurFilter } from 'pixi.js';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
@@ -26,41 +26,59 @@ import { useCamera } from './useCamera';
 import { ScaleBar } from './ScaleBar';
 import { buildAddressComponent } from '../game/types';
 import { BackgroundStars } from './BackgroundStars';
+import { useCodexStore } from '../store/codexStore';
+import { useAuthStore } from '../store/authStore';
+import { saveSystemDiscovery } from '../firebase/discoveries';
+import { generateGalaxyName } from '../game/superclusters';
 
 const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000];
 
 extend({ Container, Graphics, Sprite });
 
-export function GalaxyStage() {
-  return (
-    <Application resizeTo={window} background={0x050810}>
-      <GalaxyWorld />
-    </Application>
-  );
-}
 
-function GalaxyWorld() {
+export function GalaxyWorld() {
   const { app, isInitialised } = useApplication();
 
-  const galaxy = useGameStore((s) => s.galaxy);
-  const activeSystem = useGameStore((s) => s.system);
+  const galaxySeed = useGameStore((s) => s.galaxy.seed);
+  const galaxyConfig = useGameStore((s) => s.galaxy.config);
+  const galaxySystems = useGameStore((s) => s.galaxy.systems);
+  const galaxyBackgroundStars = useGameStore((s) => s.galaxy.backgroundStars);
   const setSystem = useGameStore((s) => s.setSystem);
   const pushAddress = useUIStore((s) => s.pushAddress);
   const popAddress = useUIStore((s) => s.popAddress);
   const setView = useUIStore((s) => s.setView);
-  const config = galaxy.config;
+  const config = galaxyConfig;
 
   const handleSelectSystem = useCallback((id: number | null) => {
-    if (activeSystem !== null) popAddress();
     if (id !== null) {
-      const sys = useGameStore.getState().galaxy.systems[id];
+      const gameState = useGameStore.getState();
+      const sys = gameState.galaxy.systems[id];
+      const activeSystem = gameState.system;
+      const fromX = activeSystem?.x ?? 0;
+      const fromY = activeSystem?.y ?? 0;
+      const travelDist = Math.hypot(sys.x - fromX, sys.y - fromY);
+      const exoticCost = Math.max(1, Math.round((travelDist / GALAXY_RADIUS) * 5));
+      const store = useUIStore.getState();
+      if (store.exoticMatter < exoticCost || store.helium3Reserves < 10) {
+        store.triggerHudFlash();
+        return;
+      }
+      if (activeSystem !== null) popAddress();
+      store.consumeResources(exoticCost, 10);
+      gameState.markSystemVisited(sys.id);
+      const galaxyName = generateGalaxyName(gameState.galaxy.seed);
+      useCodexStore.getState().addSystemRecord(gameState.supercluster.seed, gameState.supercluster.name, gameState.galaxy.seed, galaxyName, sys);
+      const user = useAuthStore.getState().user;
+      if (user) saveSystemDiscovery(user.uid, gameState.supercluster.seed, gameState.galaxy.seed, sys);
       pushAddress(buildAddressComponent(sys.name, sys.x, sys.y, 0, 'system'));
       setSystem(sys);
       setView('system');
     } else {
+      const activeSystem = useGameStore.getState().system;
+      if (activeSystem !== null) popAddress();
       setSystem(null);
     }
-  }, [activeSystem, pushAddress, popAddress, setSystem, setView]);
+  }, [pushAddress, popAddress, setSystem, setView]);
 
   const handleStageTap = useCallback(() => handleSelectSystem(null), [handleSelectSystem]);
 
@@ -68,10 +86,10 @@ function GalaxyWorld() {
   const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, handleStageTap);
 
   const radiusLy = useMemo(() => {
-    const rng = createRng(galaxy.seed);
+    const rng = createRng(galaxySeed);
     const sizeScale = Math.floor(rng() * 7) - 3;
     return Math.round(GALAXY_RADIUS_LY * Math.pow(2, sizeScale));
-  }, [galaxy.seed]);
+  }, [galaxySeed]);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
@@ -79,7 +97,7 @@ function GalaxyWorld() {
 
     const nebulaContainer = new Container();
     const nebulaGfx = new Graphics();
-    const rng = createRng((galaxy.seed ^ 0x9e3779b9) >>> 0);
+    const rng = createRng((galaxySeed ^ 0x9e3779b9) >>> 0);
 
     type Particle = { x: number; y: number; r: number; a: number };
     const nebulaBatches = new Map<number, Particle[]>();
@@ -183,13 +201,13 @@ function GalaxyWorld() {
       nebulaContainer.destroy({ children: true });
       disp.destroy();
     };
-  }, [galaxy.seed, config, app, isInitialised]);
+  }, [galaxySeed, config, app, isInitialised]);
 
   return (
     <>
-      <BackgroundStars stars={galaxy.backgroundStars} />
+      <BackgroundStars stars={galaxyBackgroundStars} />
       <pixiContainer ref={worldRef} visible={isReady}>
-        {galaxy.systems.map((system) => (
+        {galaxySystems.map((system) => (
           <StarNode key={system.id} system={system} onSelect={handleSelectSystem} />
         ))}
       </pixiContainer>

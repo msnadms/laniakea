@@ -15,6 +15,7 @@ import {
   DISK_FRACTION,
   DISK_SIZE_SCALE,
   DISK_GAP_SCATTER,
+  BROWN_DWARF_FRACTION,
 } from './constants';
 import { GalaxyConfig } from './galaxyConfig';
 
@@ -34,6 +35,7 @@ const STAR_COLORS: Record<StarType, number> = {
   M: 0xcc9999,
   F: 0xfff5dd,
   A: 0xc8e0ff,
+  L: 0x7a3018,
 };
 
 const STAR_SIZES: Record<StarType, [number, number]> = {
@@ -42,6 +44,7 @@ const STAR_SIZES: Record<StarType, [number, number]> = {
   M: [2.0, 3.5],
   F: [2.8, 4.0],
   A: [3.2, 4.8],
+  L: [1.0, 1.8],
 };
 
 // Three populations: bulge (old, K/M heavy), disk (inter-arm, old/dim), arm (young, A/F heavy).
@@ -50,9 +53,9 @@ const STAR_SIZES: Record<StarType, [number, number]> = {
 function pickStarType(rng: Rng, armFraction: number | null, isDisk: boolean): StarType {
   let weights: Record<StarType, number>;
   if (isDisk) {
-    weights = { M: 0.48, K: 0.28, G: 0.18, F: 0.05, A: 0.01 };
+    weights = { M: 0.48, K: 0.28, G: 0.18, F: 0.05, A: 0.01, L: 0 };
   } else if (armFraction === null) {
-    weights = { M: 0.50, K: 0.35, G: 0.12, F: 0.03, A: 0.00 };
+    weights = { M: 0.50, K: 0.35, G: 0.12, F: 0.03, A: 0.00, L: 0 };
   } else {
     const t = armFraction;
     weights = {
@@ -61,6 +64,7 @@ function pickStarType(rng: Rng, armFraction: number | null, isDisk: boolean): St
       G: lerp(0.12, 0.22, t),
       K: lerp(0.08, 0.20, t),
       M: lerp(0.05, 0.13, t),
+      L: 0,
     };
   }
   const total = (Object.values(weights) as number[]).reduce((a, b) => a + b, 0);
@@ -116,6 +120,7 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
   const armIndices: (number | null)[] = [];
   const armFractions: (number | null)[] = [];
   const isDiskStar: boolean[] = [];
+  const isBrownDwarf: boolean[] = [];
   const config = new GalaxyConfig(rng);
 
   for (let i = 0; i < config.numStars; i++) {
@@ -129,6 +134,7 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
       armIndices.push(null);
       armFractions.push(null);
       isDiskStar.push(false);
+      isBrownDwarf.push(false);
     } else if (rng() < DISK_FRACTION) {
       const t = Math.pow(rng(), ARM_T_POWER);
       const radius = lerp(GALAXY_RADIUS * ARM_INNER_FRACTION, GALAXY_RADIUS, t);
@@ -141,6 +147,7 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
       armIndices.push(null);
       armFractions.push(null);
       isDiskStar.push(true);
+      isBrownDwarf.push(false);
     } else {
       const arm = Math.floor(rng() * config.numArms);
       const armFraction = Math.pow(rng(), ARM_T_POWER);
@@ -155,14 +162,27 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
       armIndices.push(arm);
       armFractions.push(armFraction);
       isDiskStar.push(false);
+      isBrownDwarf.push(false);
     }
 
     positions.push([x, y]);
   }
 
+  // Rare brown dwarfs scattered at the galactic edge (beyond 82% of GALAXY_RADIUS).
+  const numBrownDwarfs = Math.round(config.numStars * BROWN_DWARF_FRACTION);
+  for (let i = 0; i < numBrownDwarfs; i++) {
+    const angle = rng() * Math.PI * 2;
+    const r = GALAXY_RADIUS * (0.82 + rng() * 0.26);
+    positions.push([Math.cos(angle) * r, Math.sin(angle) * r * config.galaxyEllipse]);
+    armIndices.push(null);
+    armFractions.push(null);
+    isDiskStar.push(false);
+    isBrownDwarf.push(true);
+  }
+
   const systems: StarSystem[] = positions.map(([x, y], id) => {
     const disk = isDiskStar[id];
-    const starType = pickStarType(rng, armFractions[id], disk);
+    const starType = isBrownDwarf[id] ? 'L' : pickStarType(rng, armFractions[id], disk);
     const [minSize, maxSize] = STAR_SIZES[starType];
     const sizeScale = disk ? DISK_SIZE_SCALE : 1;
     return {

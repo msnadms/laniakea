@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { Codex } from './Codex';
@@ -60,9 +61,23 @@ export function ShipHUD() {
   const driveIntegrity = useUIStore((s) => s.driveIntegrity);
   const railgunAmmo = useUIStore((s) => s.railgunAmmo);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
+  const hudFlash = useUIStore((s) => s.hudFlash);
+  const hudRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (hudFlash === 0) return;
+    const el = hudRef.current;
+    if (!el) return;
+    el.classList.remove('ship-hud--alert');
+    void el.offsetWidth;
+    el.classList.add('ship-hud--alert');
+    const onEnd = () => el.classList.remove('ship-hud--alert');
+    el.addEventListener('animationend', onEnd, { once: true });
+    return () => el.removeEventListener('animationend', onEnd);
+  }, [hudFlash]);
 
   return (
-    <div className="ship-hud" aria-hidden="true">
+    <div ref={hudRef} className="ship-hud" aria-hidden="true">
       <Codex />
       <NavBack />
       {/* trapezoid outline: wide at top, narrows at bottom, no top edge */}

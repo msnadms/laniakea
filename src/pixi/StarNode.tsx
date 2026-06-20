@@ -1,12 +1,8 @@
 import { memo, useMemo, useEffect, useCallback } from 'react';
 import { Graphics } from 'pixi.js';
 import { useGameStore } from '../store/gameStore';
-import { useAuthStore } from '../store/authStore';
-import { useCodexStore } from '../store/codexStore';
 import type { StarSystem } from '../game/types';
 import { createStarTexture } from './textures';
-import { generateGalaxyName } from '../game/superclusters';
-import { saveSystemDiscovery } from '../firebase/discoveries';
 
 export const StarNode = memo(function StarNode({
   system,
@@ -16,7 +12,6 @@ export const StarNode = memo(function StarNode({
   onSelect: (id: number | null) => void;
 }) {
   const isVisited = useGameStore((s) => s.galaxy.systems[system.id]?.visited ?? false);
-  const markSystemVisited = useGameStore((s) => s.markSystemVisited);
 
   const glowTexture = useMemo(
     () => createStarTexture(system.color, system.size),
@@ -39,15 +34,8 @@ export const StarNode = memo(function StarNode({
   );
 
   const handleClick = useCallback(() => {
-    markSystemVisited(system.id);
-    const galaxy = useGameStore.getState().galaxy;
-    const sc = useGameStore.getState().supercluster;
-    const galaxyName = generateGalaxyName(galaxy.seed);
-    useCodexStore.getState().addSystemRecord(sc.seed, sc.name, galaxy.seed, galaxyName, system);
-    const user = useAuthStore.getState().user;
-    if (user) saveSystemDiscovery(user.uid, sc.seed, galaxy.seed, system);
     onSelect(system.id);
-  }, [system, markSystemVisited, onSelect]);
+  }, [system.id, onSelect]);
 
   return (
     <pixiContainer

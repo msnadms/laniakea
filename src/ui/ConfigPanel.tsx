@@ -12,6 +12,7 @@ export function ConfigPanel() {
   const toggleOrbitRings = useUIStore((s) => s.toggleOrbitRings);
   const showHUD = useUIStore((s) => s.showHUD);
   const toggleHUD = useUIStore((s) => s.toggleHUD);
+  const refillResources = useUIStore((s) => s.refillResources);
   const view = useUIStore((s) => s.view);
   const scSeed = useGameStore((s) => s.supercluster.seed);
   const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
@@ -20,7 +21,16 @@ export function ConfigPanel() {
   function handleSeedSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     const parsed = parseInt(seedInput, 10);
-    regenerateSupercluster(isNaN(parsed) ? undefined : parsed);
+    const newSeed = isNaN(parsed) ? undefined : parsed;
+    if (newSeed === undefined || newSeed !== scSeed) {
+      const ui = useUIStore.getState();
+      if (ui.exoticMatter < 50 || ui.helium3Reserves < 10) {
+        ui.triggerHudFlash();
+        return;
+      }
+      ui.consumeResources(50, 10);
+    }
+    regenerateSupercluster(newSeed);
     setSeedInput('');
   }
 
@@ -80,6 +90,11 @@ export function ConfigPanel() {
               </div>
             </label>
           )}
+
+          <div className="config-row config-row--seed">
+            <span className="config-row-label">Refill Reserves</span>
+            <button className="config-refill-btn" onClick={refillResources} title="Reset exotic matter and helium-3 to full">↑</button>
+          </div>
 
           {view === 'supercluster' && (
             <div className="config-row config-row--seed">
