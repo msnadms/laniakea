@@ -59,12 +59,14 @@ export function GalaxyWorld() {
       const travelDist = Math.hypot(sys.x - fromX, sys.y - fromY);
       const exoticCost = Math.max(1, Math.round((travelDist / GALAXY_RADIUS) * 5));
       const store = useUIStore.getState();
-      if (store.exoticMatter < exoticCost || store.helium3Reserves < 10) {
-        store.triggerHudFlash();
-        return;
+      if (!store.infiniteExplore) {
+        if (store.exoticMatter < exoticCost || store.helium3Reserves < 10) {
+          store.triggerHudFlash();
+          return;
+        }
+        store.consumeResources(exoticCost, 10);
       }
       if (activeSystem !== null) popAddress();
-      store.consumeResources(exoticCost, 10);
       gameState.markSystemVisited(sys.id);
       const galaxyName = generateGalaxyName(gameState.galaxy.seed);
       useCodexStore.getState().addSystemRecord(gameState.supercluster.seed, gameState.supercluster.name, gameState.galaxy.seed, galaxyName, sys);

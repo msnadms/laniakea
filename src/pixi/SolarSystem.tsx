@@ -1,15 +1,18 @@
 import { useApplication } from "@pixi/react";
 import { useCamera } from "./useCamera";
 import { CAMERA_INITIAL_SCALE, SYSTEM_CAMERA_MIN_SCALE } from "../game/constants";
-import { Container, Graphics, Sprite, Texture, Ticker } from "pixi.js";
+import { Circle, Container, Graphics, Sprite, Texture, Ticker } from "pixi.js";
 import { useEffect, useRef } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useUIStore } from "../store/uiStore";
+import { useExtractorStore } from "../store/extractorStore";
+import { makeExtractorKey } from "../game/types";
 import { BackgroundStars } from "./BackgroundStars";
 import { ScaleBar } from "./ScaleBar";
 import { generateSystemLayout, ORBITAL_K, MOON_K } from "../game/planetGen";
 import { createRng } from "../game/galaxyGen";
 import { createSunTexture, createBrownDwarfTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
+import { createExtractorGfx } from "./extractorGfx";
 import type { PlanetLayout } from "../game/planetGen";
 
 type MoonState   = { gfx: Sprite; angle: number; speed: number; dist: number };
@@ -125,6 +128,7 @@ export function SolarSystem() {
   showOrbitRingsRef.current = showOrbitRings;
   const orbitGfxRef = useRef<Graphics[]>([]);
   const { camera } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
+  const extractorGfxRef = useRef<Map<string, Graphics>>(new Map());
 
   useEffect(() => {
     for (const gfx of orbitGfxRef.current) gfx.visible = showOrbitRings;
@@ -140,6 +144,8 @@ export function SolarSystem() {
 
     const allOrbitGfx: Graphics[]  = [systemGfx];
     const planetTextures: Texture[] = [];
+    const galaxySeed = useGameStore.getState().galaxy.seed;
+    const generatedPlanets = system.planets ?? [];
 
     for (let ring = 0; ring < layout.planets.length; ring++) {
       const pl    = layout.planets[ring];
@@ -162,28 +168,32 @@ export function SolarSystem() {
       const rings = pl.hasRings ? createPlanetRings(pr * 2.4, pr * 0.5) : null;
       if (rings) planetContainer.addChild(rings.back);
 
-      for (let m = 0; m < pl.moons.length; m++) {
-        const moon = pl.moons[m];
-        const moonSpeed = MOON_K / Math.pow(moon.dist, 1.5);
-
+      if (pl.moons.length > 0) {
+        // One Graphics per planet for all its moon orbit rings (vs one per moon)
         const moonOrbitGfx = new Graphics();
-        moonOrbitGfx.circle(0, 0, moon.dist).stroke({ color: 0xffffff, width: 2, alpha: 0.25 });
         allOrbitGfx.push(moonOrbitGfx);
         planetContainer.addChild(moonOrbitGfx);
 
-        const mr = moon.radius;
-        const moonSeed = (system.seed + ring * 0x9e3779b9 + (m + 1) * 0x7f4a9c3b) >>> 0;
-        const moonTex = createMoonTexture(moon.color, moonSeed);
-        planetTextures.push(moonTex);
-        const moonSprite = new Sprite(moonTex);
-        moonSprite.anchor.set(0.5);
-        moonSprite.width  = mr * 2;
-        moonSprite.height = mr * 2;
-        moonSprite.x = Math.cos(moon.angle) * moon.dist;
-        moonSprite.y = Math.sin(moon.angle) * moon.dist;
-        planetContainer.addChild(moonSprite);
+        for (let m = 0; m < pl.moons.length; m++) {
+          const moon = pl.moons[m];
+          const moonSpeed = MOON_K / Math.pow(moon.dist, 1.5);
 
-        planet.moons.push({ gfx: moonSprite, angle: moon.angle, speed: moonSpeed, dist: moon.dist });
+          moonOrbitGfx.circle(0, 0, moon.dist).stroke({ color: 0xffffff, width: 2, alpha: 0.25 });
+
+          const mr = moon.radius;
+          const moonSeed = (system.seed + ring * 0x9e3779b9 + (m + 1) * 0x7f4a9c3b) >>> 0;
+          const moonTex = createMoonTexture(moon.color, moonSeed);
+          planetTextures.push(moonTex);
+          const moonSprite = new Sprite(moonTex);
+          moonSprite.anchor.set(0.5);
+          moonSprite.width  = mr * 2;
+          moonSprite.height = mr * 2;
+          moonSprite.x = Math.cos(moon.angle) * moon.dist;
+          moonSprite.y = Math.sin(moon.angle) * moon.dist;
+          planetContainer.addChild(moonSprite);
+
+          planet.moons.push({ gfx: moonSprite, angle: moon.angle, speed: moonSpeed, dist: moon.dist });
+        }
       }
 
       const planetSeed = (system.seed + ring * 0x9e3779b9) >>> 0;
@@ -200,9 +210,54 @@ export function SolarSystem() {
       planetContainer.addChild(planetSprite);
 
       if (rings) planetContainer.addChild(rings.front);
+
+      // make planet clickable
+      if (generatedPlanets[ring]) {
+        const planetData = generatedPlanets[ring];
+        const key = makeExtractorKey(galaxySeed, system.id, planetData.name);
+
+        planetContainer.hitArea = new Circle(0, 0, pr * 1.5);
+        planetContainer.eventMode = 'static';
+        planetContainer.cursor = 'pointer';
+        planetContainer.on('pointerdown', (e) => {
+          e.stopPropagation();
+          useUIStore.getState().setSelectedPlanet(key);
+        });
+
+        // render existing extractor station if already placed
+        if (useExtractorStore.getState().extractors[key]) {
+          const stationGfx = createExtractorGfx(pr);
+          planetContainer.addChild(stationGfx);
+          extractorGfxRef.current.set(key, stationGfx);
+        }
+      }
+
       systemContainer.addChild(planetContainer);
       planets.push(planet);
     }
+
+    // subscribe to extractor store — only fires when the set of keys changes, not on lastCollectedAt updates
+    const unsubExtractors = useExtractorStore.subscribe(
+      (state) => Object.keys(state.extractors).sort().join('\0'),
+      () => {
+        const { extractors } = useExtractorStore.getState();
+        for (let ring = 0; ring < generatedPlanets.length; ring++) {
+          const planetData = generatedPlanets[ring];
+          const key = makeExtractorKey(galaxySeed, system.id, planetData.name);
+          const hasExtractor = !!extractors[key];
+          const existing = extractorGfxRef.current.get(key);
+          if (hasExtractor && !existing) {
+            const pr = layout.planets[ring].radius;
+            const stationGfx = createExtractorGfx(pr);
+            planets[ring].container.addChild(stationGfx);
+            extractorGfxRef.current.set(key, stationGfx);
+          } else if (!hasExtractor && existing) {
+            existing.destroy();
+            extractorGfxRef.current.delete(key);
+          }
+        }
+      },
+    );
 
     systemGfx.stroke({ color: 0xffffff, width: 2, alpha: 0.25 });
     for (const gfx of allOrbitGfx) gfx.visible = showOrbitRingsRef.current;
@@ -252,10 +307,15 @@ export function SolarSystem() {
           moon.gfx.y = Math.sin(moon.angle) * moon.dist;
         }
       }
+      for (const gfx of extractorGfxRef.current.values()) {
+        gfx.rotation += 0.004 * dt;
+      }
     }
     Ticker.shared.add(onTick);
 
     return () => {
+      unsubExtractors();
+      extractorGfxRef.current.clear();
       orbitGfxRef.current = [];
       Ticker.shared.remove(onTick);
       world.removeChild(systemContainer);

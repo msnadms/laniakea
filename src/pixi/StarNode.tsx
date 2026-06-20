@@ -1,6 +1,5 @@
 import { memo, useMemo, useEffect, useCallback } from 'react';
 import { Graphics } from 'pixi.js';
-import { useGameStore } from '../store/gameStore';
 import type { StarSystem } from '../game/types';
 import { createStarTexture } from './textures';
 
@@ -11,7 +10,8 @@ export const StarNode = memo(function StarNode({
   system: StarSystem;
   onSelect: (id: number | null) => void;
 }) {
-  const isVisited = useGameStore((s) => s.galaxy.systems[system.id]?.visited ?? false);
+  const isVisited = system.visited;
+  const isCurrent = system.current;
 
   const glowTexture = useMemo(
     () => createStarTexture(system.color, system.size),
@@ -23,14 +23,22 @@ export const StarNode = memo(function StarNode({
   const drawRing = useCallback(
     (gfx: Graphics) => {
       gfx.clear();
-      if (isVisited) {
+      if (isVisited && !isCurrent) {
+        gfx.clear();
         gfx.circle(0, 0, system.size + 7);
         gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
         gfx.circle(0, 0, system.size + 11);
         gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
       }
+      if (isCurrent) {
+        gfx.clear();
+        gfx.circle(0, 0, system.size + 7);
+        gfx.stroke({ color: 0x00c8e8, width: 1.5, alpha: 0.75 });
+        gfx.circle(0, 0, system.size + 11);
+        gfx.stroke({ color: 0x00c8e8, width: 0.5, alpha: 0.25 });
+      }
     },
-    [system.size, isVisited],
+    [system.size, isVisited, isCurrent],
   );
 
   const handleClick = useCallback(() => {

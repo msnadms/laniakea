@@ -1,0 +1,229 @@
+.planet-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: all;
+}
+
+.planet-panel {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 300px;
+  background: rgba(6, 12, 28, 0.92);
+  border: 1px solid #1a3a5c;
+  box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
+  padding: 18px 20px 20px;
+  font-family: monospace;
+  color: #c0dde8;
+  user-select: none;
+}
+
+.planet-panel-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #2a6a8a;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.planet-panel-close:hover {
+  color: #00c8e8;
+}
+
+.planet-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.planet-panel-zone-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.planet-panel-zone-dot.hot      { background: #cc6633; }
+.planet-panel-zone-dot.marginal { background: #888866; }
+.planet-panel-zone-dot.habitable{ background: #44aa66; }
+.planet-panel-zone-dot.gas      { background: #5588cc; }
+.planet-panel-zone-dot.ice      { background: #88aacc; }
+
+.planet-panel-name {
+  font-size: 15px;
+  color: #00c8e8;
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.5);
+  letter-spacing: 0.06em;
+}
+
+.planet-panel-zone {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: #2a6a8a;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.planet-panel-section-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: #2a6a8a;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.planet-panel-resources {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.planet-panel-resource {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.planet-panel-resource-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.planet-panel-resource-dot.res-exotic   { background: #aa44cc; }
+.planet-panel-resource-dot.res-alloys   { background: #cc8833; }
+.planet-panel-resource-dot.res-nutrients{ background: #44bb55; }
+.planet-panel-resource-dot.res-helium-3 { background: #4488cc; }
+
+.planet-panel-resource-label {
+  flex: 1;
+  color: #7ab0c8;
+}
+
+.planet-panel-resource-count {
+  color: #00c8e8;
+  font-size: 12px;
+}
+
+.planet-panel-moons {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.planet-panel-moon {
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  border-left: 1px solid #1a3a5c;
+}
+
+.planet-panel-moon-name {
+  color: #7ab0c8;
+  letter-spacing: 0.06em;
+}
+
+.planet-panel-moon-resources {
+  color: #2a6a8a;
+  font-size: 9px;
+}
+
+.planet-panel-divider {
+  height: 1px;
+  background: #1a3a5c;
+  margin: 12px 0;
+}
+
+.planet-panel-extractor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.planet-panel-extractor-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.planet-panel-extractor-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: #00ffcc;
+  text-transform: uppercase;
+}
+
+.planet-panel-extractor-resource {
+  font-size: 11px;
+  color: #7ab0c8;
+}
+
+.planet-panel-extractor-rate {
+  font-size: 9px;
+  color: #2a6a8a;
+  letter-spacing: 0.06em;
+}
+
+.planet-panel-btn {
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(0, 136, 187, 0.12);
+  border: 1px solid rgba(0, 190, 230, 0.45);
+  color: #00c8e8;
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.planet-panel-btn:hover:not(:disabled) {
+  background: rgba(0, 136, 187, 0.25);
+  box-shadow: 0 0 10px rgba(0, 200, 232, 0.3);
+}
+
+.planet-panel-btn--dim {
+  color: #2a6a8a;
+  border-color: rgba(0, 190, 230, 0.18);
+}
+
+.planet-panel-btn--dismantle {
+  margin-top: 6px;
+  background: rgba(180, 40, 40, 0.08);
+  border-color: rgba(200, 60, 60, 0.35);
+  color: #cc4444;
+}
+
+.planet-panel-btn--dismantle:hover {
+  background: rgba(180, 40, 40, 0.2);
+  box-shadow: 0 0 10px rgba(200, 60, 60, 0.25);
+}
+
+.planet-panel-resource-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.planet-panel-btn--pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: none;
+  letter-spacing: 0.06em;
+}

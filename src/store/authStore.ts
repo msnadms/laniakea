@@ -3,9 +3,11 @@ import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebas
 import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
+import { loadAllExtractors } from '../firebase/extractors';
 import { useUIStore } from './uiStore';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
+import { useExtractorStore } from './extractorStore';
 
 interface AuthState {
   user: User | null;
@@ -31,19 +33,24 @@ export const useAuthStore = create<AuthState>()(() => ({
 export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
-      const [settings, discoveries] = await Promise.all([
+      const [settings, discoveries, extractors] = await Promise.all([
         initUserDoc(user),
         loadAllDiscoveries(user.uid),
+        loadAllExtractors(user.uid),
       ]);
       useUIStore.setState({
         showOrbitRings: settings.showOrbitRings,
         showAttractorLabels: settings.showAttractorLabels,
         showHUD: settings.showHUD,
+        infiniteExplore: settings.infiniteExplore,
         exoticMatter: settings.exoticMatter,
         driveIntegrity: settings.driveIntegrity,
         railgunAmmo: settings.railgunAmmo,
         helium3Reserves: settings.helium3Reserves,
+        alloys: settings.alloys,
+        nutrients: settings.nutrients,
       });
+      useExtractorStore.getState().restoreExtractors(extractors);
       useCodexStore.getState().setAll(discoveries);
 
       const visitedSystems: Record<number, number[]> = {};

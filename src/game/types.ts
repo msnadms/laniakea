@@ -22,6 +22,7 @@ export interface StarSystem {
   arm: number | null;
   seed: number;
   visited: boolean;
+  current: boolean;
   planets?: Planet[];
 }
 
@@ -61,6 +62,7 @@ export interface SuperclusterDot {
   seed: number;
   name: string;
   visited: boolean;
+  current: boolean;
 }
 
 export interface SuperclusterData {
@@ -103,4 +105,21 @@ export interface AddressComponent {
 
 export function buildAddressComponent(name: string, x: number, y: number, z: number, type: AddressComponentType) {
   return { name, x, y, z, type } as AddressComponent
+}
+
+export type ExtractorKey = string;
+
+export interface Extractor {
+  key: ExtractorKey;
+  galaxySeed: number;
+  systemId: number;
+  planetName: string;
+  resourceType: Resource['type'];
+  rate: number;
+  placedAt: number;
+  lastCollectedAt: number;
+}
+
+export function makeExtractorKey(galaxySeed: number, systemId: number, planetName: string): ExtractorKey {
+  return `${galaxySeed}|${systemId}|${planetName}`;
 }

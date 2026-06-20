@@ -11,6 +11,7 @@ import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscove
 import './Codex.css';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
+import { useExtractorStore } from '../store/extractorStore';
 
 interface EnrichedSystem extends SystemRecord {
   id: string;
@@ -59,6 +60,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
   const deleteSystem = useCodexStore((s) => s.deleteSystem);
   const deleteGalaxy = useCodexStore((s) => s.deleteGalaxy);
   const deleteSupercluster = useCodexStore((s) => s.deleteSupercluster);
+  const allExtractorKeys = useExtractorStore((s) => Object.keys(s.extractors).sort().join('\0'));
   const [query, setQuery] = useState('');
   const [deleteMode, setDeleteMode] = useState(false);
   const q = query.trim().toLowerCase();
@@ -180,6 +182,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
                   supercluster={sc}
                   query={q}
                   deleteMode={deleteMode}
+                  allExtractorKeys={allExtractorKeys}
                   onDeleteSupercluster={handleDeleteSupercluster}
                   onDeleteGalaxy={handleDeleteGalaxy}
                   onDeleteSystem={handleDeleteSystem}
@@ -222,6 +225,7 @@ function pushAttractor(ui: ReturnType<typeof useUIStore.getState>, sc: ReturnTyp
 
 function checkAndConsumeResources(exoticCost: number, heliumCost: number): boolean {
   const ui = useUIStore.getState();
+  if (ui.infiniteExplore) return true;
   if (ui.exoticMatter < exoticCost || ui.helium3Reserves < heliumCost) {
     ui.triggerHudFlash();
     return false;
@@ -315,7 +319,7 @@ interface DeleteHandlers {
   onDeleteSystem: (scSeed: number, galaxySeed: number, systemId: string) => void;
 }
 
-function SuperclusterEntry({ supercluster, query, deleteMode, onDeleteSupercluster, onDeleteGalaxy, onDeleteSystem }: { supercluster: EnrichedSupercluster; query: string; deleteMode: boolean } & DeleteHandlers) {
+function SuperclusterEntry({ supercluster, query, deleteMode, allExtractorKeys, onDeleteSupercluster, onDeleteGalaxy, onDeleteSystem }: { supercluster: EnrichedSupercluster; query: string; deleteMode: boolean; allExtractorKeys: string } & DeleteHandlers) {
   const [expanded, setExpanded] = useState(true);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
@@ -354,6 +358,7 @@ function SuperclusterEntry({ supercluster, query, deleteMode, onDeleteSuperclust
               superclusterSeed={supercluster.superclusterSeed}
               superclusterName={supercluster.superclusterName}
               deleteMode={deleteMode}
+              allExtractorKeys={allExtractorKeys}
               onDeleteGalaxy={onDeleteGalaxy}
               onDeleteSystem={onDeleteSystem}
             />
@@ -364,13 +369,20 @@ function SuperclusterEntry({ supercluster, query, deleteMode, onDeleteSuperclust
   );
 }
 
-function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, deleteMode, onDeleteGalaxy, onDeleteSystem }: { galaxy: EnrichedGalaxy; query: string; superclusterSeed: number; superclusterName: string; deleteMode: boolean } & Omit<DeleteHandlers, 'onDeleteSupercluster'>) {
+function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, deleteMode, allExtractorKeys, onDeleteGalaxy, onDeleteSystem }: { galaxy: EnrichedGalaxy; query: string; superclusterSeed: number; superclusterName: string; deleteMode: boolean; allExtractorKeys: string } & Omit<DeleteHandlers, 'onDeleteSupercluster'>) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const hasHabitable = useMemo(
     () => galaxy.enrichedSystems.some((s) => systemHasHabitable(s.seed, s.starType)),
     [galaxy.enrichedSystems],
+  );
+  const hasMiningStation = useMemo(
+    () => {
+      const prefix = `${galaxy.galaxySeed}|`;
+      return allExtractorKeys.split('\0').some((k) => k.startsWith(prefix));
+    },
+    [allExtractorKeys, galaxy.galaxySeed],
   );
 
   return (
@@ -380,6 +392,7 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
         <span className="codex-galaxy-name">
           {highlight(galaxy.galaxyName, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
+          {hasMiningStation && <span className="codex-extractor-dot" title="Has mining station" />}
         </span>
         <div className="codex-row-right">
           <span className="codex-galaxy-count">
@@ -412,6 +425,7 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
               galaxySeed={galaxy.galaxySeed}
               galaxyName={galaxy.galaxyName}
               deleteMode={deleteMode}
+              allExtractorKeys={allExtractorKeys}
               onDeleteSystem={onDeleteSystem}
             />
           ))}
@@ -426,18 +440,26 @@ function systemHasHabitable(seed: number, starType?: import('../game/types').Sta
   return generateSystemLayout(seed, starType).planets.some((p) => p.zone === 'habitable');
 }
 
-function SystemPlanets({ seed, starType, name, query }: { seed: number; starType?: import('../game/types').StarType; name: string; query: string }) {
+function SystemPlanets({ seed, starType, name, query, galaxySeed, systemId, allExtractorKeys }: { seed: number; starType?: import('../game/types').StarType; name: string; query: string; galaxySeed: number; systemId: string; allExtractorKeys: string }) {
   const planets = useMemo(
     () => generatePlanets(generateSystemLayout(seed, starType)),
     [seed, starType],
   );
+  const systemPrefix = `${galaxySeed}|${systemId}|`;
+  const systemExtractors = useMemo(
+    () => new Set(allExtractorKeys.split('\0').filter((k) => k.startsWith(systemPrefix))),
+    [allExtractorKeys, systemPrefix],
+  );
   return (
     <div className="codex-planets">
-      {planets.map((planet) => (
+      {planets.map((planet) => {
+        const hasExtractor = systemExtractors.has(`${systemPrefix}${planet.name}`);
+        return (
         <div key={planet.name} className="codex-planet">
           <div className="codex-planet-row">
             <span className={`codex-zone-dot ${planet.type}`} />
             <span className="codex-planet-name">{highlight(planet.name, query)}</span>
+            {hasExtractor && <span className="codex-extractor-dot" title="Mining station active" />}
           </div>
           {planet.moons.length > 0 && (
             <div className="codex-moons">
@@ -449,16 +471,24 @@ function SystemPlanets({ seed, starType, name, query }: { seed: number; starType
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, deleteMode, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; deleteMode: boolean; onDeleteSystem: DeleteHandlers['onDeleteSystem'] }) {
+function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, deleteMode, allExtractorKeys, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; deleteMode: boolean; allExtractorKeys: string; onDeleteSystem: DeleteHandlers['onDeleteSystem'] }) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType), [system.seed, system.starType]);
+  const hasMiningStation = useMemo(
+    () => {
+      const prefix = `${galaxySeed}|${system.id}|`;
+      return allExtractorKeys.split('\0').some((k) => k.startsWith(prefix));
+    },
+    [allExtractorKeys, galaxySeed, system.id],
+  );
 
   return (
     <div className="codex-system">
@@ -467,6 +497,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
         <span className="codex-system-name">
           {highlight(system.name, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
+          {hasMiningStation && <span className="codex-extractor-dot" title="Has mining station" />}
         </span>
         <div className="codex-row-right">
           <span className="codex-star-type">{STAR_TYPE_LABELS[system.starType]}</span>
@@ -485,7 +516,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} name={system.name} query={query} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} name={system.name} query={query} galaxySeed={galaxySeed} systemId={system.id} allExtractorKeys={allExtractorKeys} />}
     </div>
   );
 }

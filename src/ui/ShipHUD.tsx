@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { Codex } from './Codex';
 import './ShipHUD.css';
 
-function StatBar({ value, max }: { value: number; max: number }) {
+const StatBar = memo(function StatBar({ value, max }: { value: number; max: number }) {
   const pct = (value / max) * 100;
   const low = pct < 25;
   return (
@@ -15,9 +15,26 @@ function StatBar({ value, max }: { value: number; max: number }) {
       />
     </div>
   );
-}
+});
 
-function NavBack() {
+const VerticalCargoBar = memo(function VerticalCargoBar({ label, value, max }: { label: string; value: number; max: number }) {
+  const pct = Math.min((value / max) * 100, 100);
+  const low = pct < 25;
+  return (
+    <div className="hud-vcargo-col">
+      <span className="hud-vcargo-value">{value}</span>
+      <div className="hud-vbar-track">
+        <div
+          className={`hud-vbar-fill${low ? ' hud-vbar-low' : ''}`}
+          style={{ height: `${pct}%` }}
+        />
+      </div>
+      <span className="hud-vcargo-label">{label}</span>
+    </div>
+  );
+});
+
+const NavBack = memo(function NavBack() {
   const view = useUIStore((s) => s.view);
   const setView = useUIStore((s) => s.setView);
   const popAddress = useUIStore((s) => s.popAddress);
@@ -26,8 +43,11 @@ function NavBack() {
 
   const disabled = view === 'supercluster';
 
+  const setSelectedPlanet = useUIStore((s) => s.setSelectedPlanet);
+
   function handleBack() {
     if (view === 'system') {
+      setSelectedPlanet(null);
       removeAddressType('system');
       setSystem(null);
       setView('galaxy');
@@ -54,13 +74,15 @@ function NavBack() {
       <span className="nav-back-btn-label">Back</span>
     </button>
   );
-}
+});
 
 export function ShipHUD() {
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const driveIntegrity = useUIStore((s) => s.driveIntegrity);
   const railgunAmmo = useUIStore((s) => s.railgunAmmo);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
+  const alloys = useUIStore((s) => s.alloys);
+  const nutrients = useUIStore((s) => s.nutrients);
   const hudFlash = useUIStore((s) => s.hudFlash);
   const hudRef = useRef<HTMLDivElement>(null);
 
@@ -96,28 +118,37 @@ export function ShipHUD() {
 
       <div className="hud-header">NAV CONSOLE</div>
 
-      <div className="hud-row">
-        <span className="hud-label">EXOTIC MATTER</span>
-        <StatBar value={exoticMatter} max={100} />
-        <span className="hud-value">{exoticMatter}%</span>
-      </div>
+      <div className="hud-content">
+        <div className="hud-rows">
+          <div className="hud-row">
+            <span className="hud-label">EXOTIC MATTER</span>
+            <StatBar value={exoticMatter} max={100} />
+            <span className="hud-value">{exoticMatter}%</span>
+          </div>
 
-      <div className="hud-row">
-        <span className="hud-label">ALCUBIERRE DRIVE</span>
-        <StatBar value={driveIntegrity} max={100} />
-        <span className="hud-value">{driveIntegrity}%</span>
-      </div>
+          <div className="hud-row">
+            <span className="hud-label">HELIUM-3 RESERVES</span>
+            <StatBar value={helium3Reserves} max={500} />
+            <span className="hud-value">{helium3Reserves} <span className="hud-value-dim">/ 500</span></span>
+          </div>
 
-      <div className="hud-row">
-        <span className="hud-label">RAILGUN RESERVES</span>
-        <StatBar value={railgunAmmo} max={500} />
-        <span className="hud-value">{railgunAmmo} <span className="hud-value-dim">/ 500</span></span>
-      </div>
+          <div className="hud-row">
+            <span className="hud-label">ALCUBIERRE DRIVE</span>
+            <StatBar value={driveIntegrity} max={100} />
+            <span className="hud-value">{driveIntegrity}%</span>
+          </div>
 
-      <div className="hud-row">
-        <span className="hud-label">HELIUM-3 RESERVES</span>
-        <StatBar value={helium3Reserves} max={500} />
-        <span className="hud-value">{helium3Reserves} <span className="hud-value-dim">/ 500</span></span>
+          <div className="hud-row">
+            <span className="hud-label">RAILGUN RESERVES</span>
+            <StatBar value={railgunAmmo} max={500} />
+            <span className="hud-value">{railgunAmmo} <span className="hud-value-dim">/ 500</span></span>
+          </div>
+        </div>
+
+        <div className="hud-cargo-bars">
+          <VerticalCargoBar label="ALLOYS" value={alloys} max={500} />
+          <VerticalCargoBar label="NUTR" value={nutrients} max={500} />
+        </div>
       </div>
     </div>
   );

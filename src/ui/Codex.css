@@ -360,6 +360,16 @@
   flex-shrink: 0;
 }
 
+.codex-extractor-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00c8e8;
+  box-shadow: 0 0 5px rgba(0, 200, 232, 0.75);
+  flex-shrink: 0;
+}
+
 .codex-planet-name {
   color: #7090a8;
   font-size: 11px;

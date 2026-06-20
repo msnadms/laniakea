@@ -13,6 +13,8 @@ export function ConfigPanel() {
   const showHUD = useUIStore((s) => s.showHUD);
   const toggleHUD = useUIStore((s) => s.toggleHUD);
   const refillResources = useUIStore((s) => s.refillResources);
+  const infiniteExplore = useUIStore((s) => s.infiniteExplore);
+  const toggleInfiniteExplore = useUIStore((s) => s.toggleInfiniteExplore);
   const view = useUIStore((s) => s.view);
   const scSeed = useGameStore((s) => s.supercluster.seed);
   const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
@@ -24,11 +26,13 @@ export function ConfigPanel() {
     const newSeed = isNaN(parsed) ? undefined : parsed;
     if (newSeed === undefined || newSeed !== scSeed) {
       const ui = useUIStore.getState();
-      if (ui.exoticMatter < 50 || ui.helium3Reserves < 10) {
-        ui.triggerHudFlash();
-        return;
+      if (!ui.infiniteExplore) {
+        if (ui.exoticMatter < 50 || ui.helium3Reserves < 10) {
+          ui.triggerHudFlash();
+          return;
+        }
+        ui.consumeResources(50, 10);
       }
-      ui.consumeResources(50, 10);
     }
     regenerateSupercluster(newSeed);
     setSeedInput('');
@@ -91,6 +95,19 @@ export function ConfigPanel() {
             </label>
           )}
 
+          <label className="config-row">
+            <span className="config-row-label">Infinite Explore</span>
+            <input
+              type="checkbox"
+              className="config-toggle-checkbox"
+              checked={infiniteExplore}
+              onChange={toggleInfiniteExplore}
+            />
+            <div className={`config-toggle ${infiniteExplore ? 'on' : 'off'}`} aria-hidden="true">
+              <div className="config-toggle-thumb" />
+            </div>
+          </label>
+
           <div className="config-row config-row--seed">
             <span className="config-row-label">Refill Reserves</span>
             <button className="config-refill-btn" onClick={refillResources} title="Reset exotic matter and helium-3 to full">↑</button>
@@ -132,8 +149,12 @@ export function ConfigPanel() {
             <div className="tutorial-item">Click the travel button to go to any visited supercluster, galaxy, or system. Remove destinations from your codex with forget mode.</div>
           </div>
           <div className="tutorial-section">
-            <div className="tutorial-section-title">Resources [WIP]</div>
+            <div className="tutorial-section-title">Resources</div>
             <div className="tutorial-item">Manage your <a href="https://en.wikipedia.org/wiki/Exotic_matter" target="_blank" rel="noopener noreferrer">exotic matter</a> reserves, <a href="https://en.wikipedia.org/wiki/Alcubierre_drive" target="_blank" rel="noopener noreferrer">Alcubierre drive</a> integrity, Railgun ammo, and Helium-3 reserves to travel and explore the universe.</div>
+          </div>
+          <div className="tutorial-section">
+            <div className="tutorial-section-title">Extraction</div>
+            <div className="tutorial-item">Build extraction stations on planets to gather alloys, nutrients, exotic matter, and Helium-3.</div>
           </div>
         </div>
       )}

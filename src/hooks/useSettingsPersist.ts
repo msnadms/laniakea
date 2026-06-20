@@ -7,19 +7,23 @@ export function useSettingsPersist() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
 
-    const unsubscribe = useUIStore.subscribe((state) => {
-      const { user, settingsLoaded } = useAuthStore.getState();
-      if (!user || !settingsLoaded) return;
+    const unsubscribe = useUIStore.subscribe(() => {
       clearTimeout(timer);
       timer = setTimeout(() => {
+        const { user, settingsLoaded } = useAuthStore.getState();
+        if (!user || !settingsLoaded) return;
+        const s = useUIStore.getState();
         saveUserSettings(user.uid, {
-          showOrbitRings: state.showOrbitRings,
-          showAttractorLabels: state.showAttractorLabels,
-          showHUD: state.showHUD,
-          exoticMatter: state.exoticMatter,
-          driveIntegrity: state.driveIntegrity,
-          railgunAmmo: state.railgunAmmo,
-          helium3Reserves: state.helium3Reserves,
+          showOrbitRings: s.showOrbitRings,
+          showAttractorLabels: s.showAttractorLabels,
+          showHUD: s.showHUD,
+          infiniteExplore: s.infiniteExplore,
+          exoticMatter: s.exoticMatter,
+          driveIntegrity: s.driveIntegrity,
+          railgunAmmo: s.railgunAmmo,
+          helium3Reserves: s.helium3Reserves,
+          alloys: s.alloys,
+          nutrients: s.nutrients,
         });
       }, 2000);
     });

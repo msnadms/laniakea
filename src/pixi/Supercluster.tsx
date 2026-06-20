@@ -66,20 +66,23 @@ export function SuperclusterWorld() {
   const showAttractorLabelsRef = useRef(showAttractorLabels);
   showAttractorLabelsRef.current = showAttractorLabels;
 
+  const visitedGfxRef = useRef<Graphics | null>(null);
+
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
     const rng = createRng(scSeed);
     const obsUniverseCoords = () => rng() * OBS_UNIVERSE_RADIUS * 2 - OBS_UNIVERSE_RADIUS;
     const [x, y, z] = [obsUniverseCoords(), obsUniverseCoords(), obsUniverseCoords()];
-    pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'))
+    pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'));
 
     const tiers = getBrightnessTiers(scSeed);
     const buckets: SuperclusterDot[][] = tiers.map(() => []);
-    const visitedDots: SuperclusterDot[] = [];
-    for (const dot of scDots) {
+    // Read dots directly from store — brightness/position never change, only visited flag does.
+    // The visited overlay is handled by its own separate effect below.
+    const initialDots = useGameStore.getState().supercluster.dots;
+    for (const dot of initialDots) {
       buckets[tiers.findIndex(t => dot.brightness > t.min)].push(dot);
-      if (dot.visited) visitedDots.push(dot);
     }
 
     const scContainer = new Container();
@@ -106,11 +109,7 @@ export function SuperclusterWorld() {
     }
 
     const visitedGfx = new Graphics();
-    for (const d of visitedDots) visitedGfx.circle(d.x, d.y, 8);
-    visitedGfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
-    for (const d of visitedDots) visitedGfx.circle(d.x, d.y, 11);
-    visitedGfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
-
+    visitedGfxRef.current = visitedGfx;
     scContainer.addChild(dotsContainer);
     scContainer.addChild(visitedGfx);
     world.addChild(scContainer);
@@ -128,11 +127,39 @@ export function SuperclusterWorld() {
 
     return () => {
       Ticker.shared.remove(tick);
+      visitedGfxRef.current = null;
       world.removeChild(scContainer);
       scContainer.destroy({ children: true });
       blurFilter.destroy();
     };
-  }, [scSeed, scDots, scName, pushAddress, app, isInitialised]);
+  }, [scSeed, scName, pushAddress, app, isInitialised]);
+
+  // Redraws only the visited-dot overlay when scDots changes, without rebuilding the scene.
+  useEffect(() => {
+    const gfx = visitedGfxRef.current;
+    if (!gfx) return;
+    gfx.clear();
+    for (const d of scDots) {
+      if (!d.visited || d.current) continue;
+      gfx.circle(d.x, d.y, 8);
+    }
+    gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
+    for (const d of scDots) {
+      if (!d.visited || d.current) continue;
+      gfx.circle(d.x, d.y, 11);
+    }
+    gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
+    for (const d of scDots) {
+      if (!d.current) continue;
+      gfx.circle(d.x, d.y, 8);
+    }
+    gfx.stroke({ color: 0x00c8e8, width: 1.5, alpha: 0.75 });
+    for (const d of scDots) {
+      if (!d.current) continue;
+      gfx.circle(d.x, d.y, 11);
+    }
+    gfx.stroke({ color: 0x00c8e8, width: 0.5, alpha: 0.25 });
+  }, [scDots]);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
@@ -189,11 +216,13 @@ export function SuperclusterWorld() {
       const travelDist = Math.hypot(nearest.x - (currentDot?.x ?? 0), nearest.y - (currentDot?.y ?? 0));
       const exoticCost = Math.min(40, Math.max(10, Math.round((travelDist / SC_WORLD_HALF) * 40)));
       const uiStore = useUIStore.getState();
-      if (uiStore.exoticMatter < exoticCost || uiStore.helium3Reserves < 10) {
-        uiStore.triggerHudFlash();
-        return;
+      if (!uiStore.infiniteExplore) {
+        if (uiStore.exoticMatter < exoticCost || uiStore.helium3Reserves < 10) {
+          uiStore.triggerHudFlash();
+          return;
+        }
+        uiStore.consumeResources(exoticCost, 10);
       }
-      uiStore.consumeResources(exoticCost, 10);
 
       markDotVisited(nearest.seed);
       useCodexStore.getState().addGalaxyRecord(sc.seed, sc.name, nearest.seed, nearest.name);

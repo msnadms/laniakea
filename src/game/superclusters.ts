@@ -158,7 +158,7 @@ export function generateSupercluster(seed: number = Date.now()): SuperclusterDat
       const brightness = (0.5 + rng() * 0.5) * radialFade;
       if (brightness < 0.02) { continue; }
       const dotSeed = (seed ^ (dotIndex++ * 2654435761)) >>> 0;
-      dots.push({ x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: generateGalaxyName(dotSeed), visited: false });
+      dots.push({ x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: generateGalaxyName(dotSeed), visited: false, current: false });
     }
   }
 
@@ -210,6 +210,7 @@ export function generateSupercluster(seed: number = Date.now()): SuperclusterDat
         seed: dotSeed,
         name: generateGalaxyName(dotSeed),
         visited: false,
+        current: false,
       });
     }
   }

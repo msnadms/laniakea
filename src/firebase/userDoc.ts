@@ -6,20 +6,26 @@ export interface UserSettings {
   showOrbitRings: boolean;
   showAttractorLabels: boolean;
   showHUD: boolean;
+  infiniteExplore: boolean;
   exoticMatter: number;
   driveIntegrity: number;
   railgunAmmo: number;
   helium3Reserves: number;
+  alloys: number;
+  nutrients: number;
 }
 
 const defaultSettings: UserSettings = {
   showOrbitRings: false,
   showAttractorLabels: true,
   showHUD: true,
+  infiniteExplore: false,
   exoticMatter: 75,
   driveIntegrity: 98,
   railgunAmmo: 350,
   helium3Reserves: 220,
+  alloys: 400,
+  nutrients: 200,
 };
 
 export async function initUserDoc(user: User): Promise<UserSettings> {

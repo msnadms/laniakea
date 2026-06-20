@@ -57,40 +57,46 @@ export const useGameStore = create<GameState>((set) => ({
     };
   }),
   setSystem: (system) => set({
-    system: system ? { ...system, planets: generatePlanets(generateSystemLayout(system.seed)) } : null,
+    system: system ? { ...system, planets: generatePlanets(generateSystemLayout(system.seed, system.starType)) } : null,
   }),
-  markDotVisited: (seed) => set((state) => {
+  markDotVisited: (seed) => set((state) => { 
     const scSeed = state.supercluster.seed;
     const existing = state.visitedGalaxyBySuperclusterSeed[scSeed];
-    if (existing?.has(seed)) return state;
-    const updated = new Set(existing);
-    updated.add(seed);
+    const alreadyVisited = existing?.has(seed);
+    const updated = alreadyVisited ? existing : new Set(existing);
+    if (!alreadyVisited) updated.add(seed);
     return {
       supercluster: {
         ...state.supercluster,
-        dots: state.supercluster.dots.map((d) => d.seed === seed ? { ...d, visited: true } : d),
+        dots: state.supercluster.dots.map((d) => {
+          if (d.seed === seed) return { ...d, visited: true, current: true };
+          if (d.current) return { ...d, current: false };
+          return d;
+        }),
       },
-      visitedGalaxyBySuperclusterSeed: {
-        ...state.visitedGalaxyBySuperclusterSeed,
-        [scSeed]: updated,
-      },
+      visitedGalaxyBySuperclusterSeed: alreadyVisited 
+        ? state.visitedGalaxyBySuperclusterSeed 
+        : { ...state.visitedGalaxyBySuperclusterSeed, [scSeed]: updated },
     };
   }),
   markSystemVisited: (id) => set((state) => {
     const galaxySeed = state.galaxy.seed;
     const existing = state.visitedSystemsByGalaxySeed[galaxySeed];
-    if (existing?.has(id)) return state;
-    const updated = new Set(existing);
-    updated.add(id);
+    const alreadyVisited = existing?.has(id);
+    const updated = alreadyVisited ? existing : new Set(existing);
+    if (!alreadyVisited) updated.add(id);
     return {
       galaxy: {
         ...state.galaxy,
-        systems: state.galaxy.systems.map((s) => s.id === id ? { ...s, visited: true } : s),
+        systems: state.galaxy.systems.map((s) => {
+          if (s.id === id) return { ...s, visited: true, current: true };
+          if (s.current) return { ...s, current: false };
+          return s;
+        }),
       },
-      visitedSystemsByGalaxySeed: {
-        ...state.visitedSystemsByGalaxySeed,
-        [galaxySeed]: updated,
-      },
+      visitedSystemsByGalaxySeed: alreadyVisited
+        ? state.visitedSystemsByGalaxySeed
+        : { ...state.visitedSystemsByGalaxySeed, [galaxySeed]: updated },
     };
   }),
   restoreVisited: (visitedSystems, visitedGalaxies) => set((state) => {

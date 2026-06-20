@@ -7,6 +7,7 @@ import { generateGalaxyName } from './game/superclusters';
 import './App.css';
 import { AuthButton } from './ui/AuthButton';
 import { ShipHUD } from './ui/ShipHUD';
+import { PlanetPanel } from './ui/PlanetPanel';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
 import { initAuth } from './store/authStore';
 
@@ -60,6 +61,7 @@ export default function App() {
       {view === 'galaxy' && (
         <div className="galaxy-title">{generateGalaxyName(galaxySeed)}</div>
       )}
+      {view === 'system' && <PlanetPanel />}
     </div>
   );
 }

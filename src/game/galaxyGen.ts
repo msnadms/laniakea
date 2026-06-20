@@ -196,6 +196,7 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
       arm: armIndices[id],
       seed: (seed ^ (id * 2654435761)) >>> 0,
       visited: false,
+      current: false,
     };
   });
 
