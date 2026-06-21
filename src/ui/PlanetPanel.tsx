@@ -3,8 +3,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { useExtractorStore, ACCUMULATION_RATE_PER_MS, MAX_STATIONS } from '../store/extractorStore';
-import { makeExtractorKey } from '../game/types';
+import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
+import { EXTRACTOR_HOLD_CAPS, computeStorageCap, computeLogisticsCap } from '../store/uiStore';
+import { makeExtractorKey, RESOURCE_LABELS } from '../game/types';
 import type { Extractor, Resource } from '../game/types';
 import { saveExtractor, updateExtractorCollected, deleteExtractor } from '../firebase/extractors';
 import './PlanetPanel.css';
@@ -17,16 +18,7 @@ const ZONE_LABELS: Record<string, string> = {
   ice: 'Ice Planet',
 };
 
-const RESOURCE_LABELS: Record<string, string> = {
-  exotic: 'Exotic Matter',
-  alloys: 'Alloys',
-  nutrients: 'Nutrients',
-  'helium-3': 'Helium-3',
-};
 
-function getAccumulated(extractor: Extractor): number {
-  return Math.floor((Date.now() - extractor.lastCollectedAt) * ACCUMULATION_RATE_PER_MS * extractor.rate);
-}
 
 export function PlanetPanel() {
   const selectedKey = useUIStore((s) => s.selectedPlanetKey);
@@ -34,26 +26,36 @@ export function PlanetPanel() {
   const addCargo = useUIStore((s) => s.addCargo);
   const spendAlloys = useUIStore((s) => s.spendAlloys);
   const alloys = useUIStore((s) => s.alloys);
+  const exoticMatter = useUIStore((s) => s.exoticMatter);
+  const helium3Reserves = useUIStore((s) => s.helium3Reserves);
+  const nutrients = useUIStore((s) => s.nutrients);
   const system = useGameStore((s) => s.system);
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
   const extractor = useExtractorStore((s) => selectedKey ? s.extractors[selectedKey] : undefined);
-  const atMax = useExtractorStore((s) => Object.keys(s.extractors).length >= MAX_STATIONS);
+  const logisticsA = useUIStore((s) => s.logisticsA);
+  const logisticsB = useUIStore((s) => s.logisticsB);
+  const maxStations = computeLogisticsCap(logisticsA);
+  const atMax = useExtractorStore((s) => Object.keys(s.extractors).length >= maxStations);
   const placeExtractor = useExtractorStore((s) => s.placeExtractor);
   const collectExtractor = useExtractorStore((s) => s.collectExtractor);
   const removeExtractor = useExtractorStore((s) => s.removeExtractor);
+  const storageA = useUIStore((s) => s.storageA);
+  const storageB = useUIStore((s) => s.storageB);
   const user = useAuthStore((s) => s.user);
   const [accumulated, setAccumulated] = useState(0);
 
+  const cap = computeStorageCap(storageA);
+
   useEffect(() => {
-    setAccumulated(extractor ? getAccumulated(extractor) : 0);
-  }, [extractor]);
+    setAccumulated(extractor ? peekAccumulated(extractor) : 0);
+  }, [extractor, storageB, logisticsB]);
 
   useEffect(() => {
     if (!extractor) return;
     const key = extractor.key;
     const id = setInterval(() => {
       const current = useExtractorStore.getState().extractors[key];
-      if (current) setAccumulated(getAccumulated(current));
+      if (current) setAccumulated(peekAccumulated(current));
     }, 5000);
     return () => clearInterval(id);
   }, [extractor?.key]);
@@ -80,6 +82,15 @@ export function PlanetPanel() {
   const STATION_COST = 200;
   const STATION_REFUND = 50;
 
+  const currentCargo: Record<Resource['type'], number> = {
+    exotic: exoticMatter,
+    'helium-3': helium3Reserves,
+    alloys,
+    nutrients,
+  };
+  const cargoSpace = extractor ? Math.max(0, cap - currentCargo[extractor.resourceType]) : 0;
+  const collectable = Math.min(accumulated, cargoSpace);
+
   function handlePlace(resource: { type: Resource['type']; count: number }) {
     if (!system || alloys < STATION_COST) return;
     spendAlloys(STATION_COST);
@@ -101,10 +112,13 @@ export function PlanetPanel() {
 
   function handleCollect() {
     if (!extractor || !selectedKey) return;
-    const amount = collectExtractor(selectedKey);
+    const space = cargoSpace;
+    if (space <= 0) return;
+    const amount = collectExtractor(selectedKey, space);
     if (amount > 0) {
       addCargo(extractor.resourceType, amount);
-      if (user) updateExtractorCollected(user.uid, selectedKey, Date.now());
+      const newLastCollected = useExtractorStore.getState().extractors[selectedKey]?.lastCollectedAt ?? Date.now();
+      if (user) updateExtractorCollected(user.uid, selectedKey, newLastCollected);
     }
   }
 
@@ -160,7 +174,7 @@ export function PlanetPanel() {
         {!extractor ? (
           atMax ? (
             <button className="planet-panel-btn planet-panel-btn--dim" disabled>
-              Max stations reached ({MAX_STATIONS})
+              Max stations reached ({maxStations})
             </button>
           ) : allResources.length === 1 ? (
             <button
@@ -200,14 +214,16 @@ export function PlanetPanel() {
               <span className="planet-panel-extractor-resource">
                 Harvesting: {RESOURCE_LABELS[extractor.resourceType]}
               </span>
-              <span className="planet-panel-extractor-rate">+{extractor.rate} / min · cargo cap 500</span>
+              <span className="planet-panel-extractor-rate">+{extractor.rate} / min · stores up to {EXTRACTOR_HOLD_CAPS[storageB]} · cargo cap {cap}</span>
             </div>
             <button
-              className={`planet-panel-btn${accumulated === 0 ? ' planet-panel-btn--dim' : ''}`}
+              className={`planet-panel-btn${collectable === 0 ? ' planet-panel-btn--dim' : ''}`}
               onClick={handleCollect}
-              disabled={accumulated === 0}
+              disabled={collectable === 0}
             >
-              Collect {accumulated > 0 ? `${accumulated} ${RESOURCE_LABELS[extractor.resourceType]}` : '(nothing yet)'}
+              {collectable > 0
+                ? `Collect ${collectable} ${RESOURCE_LABELS[extractor.resourceType]}`
+                : cargoSpace === 0 ? 'Cargo full' : '(nothing yet)'}
             </button>
             <button className="planet-panel-btn planet-panel-btn--dismantle" onClick={handleDismantle}>
               Dismantle Station (+{STATION_REFUND} alloys)

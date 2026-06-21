@@ -123,3 +123,10 @@ export interface Extractor {
 export function makeExtractorKey(galaxySeed: number, systemId: number, planetName: string): ExtractorKey {
   return `${galaxySeed}|${systemId}|${planetName}`;
 }
+
+export const RESOURCE_LABELS: Record<Resource['type'], string> = {
+  exotic: 'Exotic Matter',
+  alloys: 'Alloys',
+  nutrients: 'Nutrients',
+  'helium-3': 'Helium-3',
+};

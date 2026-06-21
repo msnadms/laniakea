@@ -2,6 +2,10 @@ import { Texture, Sprite, DisplacementFilter, Container } from 'pixi.js';
 import { GALAXY_RADIUS } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
 
+function colorToRgb(color: number) {
+  return { r: (color >> 16) & 0xff, g: (color >> 8) & 0xff, b: color & 0xff };
+}
+
 export function createDisplacementTexture(size = 512, lowRes = 64): Texture {
   const tmp = document.createElement('canvas');
   tmp.width = lowRes;
@@ -62,9 +66,7 @@ export function createSunTexture(color: number): Texture {
   canvas.height = SIZE;
   const ctx = canvas.getContext('2d')!;
 
-  const red   = (color >> 16) & 0xff;
-  const green = (color >> 8)  & 0xff;
-  const blue  =  color        & 0xff;
+  const { r: red, g: green, b: blue } = colorToRgb(color);
 
   const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
   gradient.addColorStop(0,    'rgba(255,255,255,1)');
@@ -89,9 +91,7 @@ export function createNebulaGlowTexture(color: number): Texture {
   canvas.height = SIZE;
   const ctx = canvas.getContext('2d')!;
 
-  const r = (color >> 16) & 0xff;
-  const g = (color >> 8)  & 0xff;
-  const b =  color        & 0xff;
+  const { r, g, b } = colorToRgb(color);
 
   // warm-white hot core fading to star color
   const wr = Math.min(255, Math.round(r + (255 - r) * 0.55));
@@ -123,9 +123,7 @@ export function createStarTexture(color: number, size: number): Texture {
   canvas.height = canvasSize;
   const ctx = canvas.getContext('2d')!;
 
-  const red   = (color >> 16) & 0xff;
-  const green = (color >> 8)  & 0xff;
-  const blue  =  color        & 0xff;
+  const { r: red, g: green, b: blue } = colorToRgb(color);
 
   // Core drawn first; spikes composite behind it via destination-over.
   const gradient = ctx.createRadialGradient(center, center, 0, center, center, outerRadius * 0.6);
@@ -172,9 +170,7 @@ function makeCircleCanvas(size: number, baseColor: number) {
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  const r0 = (baseColor >> 16) & 0xff;
-  const g0 = (baseColor >> 8)  & 0xff;
-  const b0 =  baseColor        & 0xff;
+  const { r: r0, g: g0, b: b0 } = colorToRgb(baseColor);
   ctx.beginPath();
   ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
   ctx.clip();

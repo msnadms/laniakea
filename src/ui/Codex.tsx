@@ -4,8 +4,8 @@ import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
 import { STAR_TYPE_LABELS, buildAddressComponent } from '../game/types';
-import { getSuperclusterCoords } from '../game/superclusters';
-import { SC_ATTRACTOR_LABEL_MAX_DIST, SC_WORLD_HALF, GALAXY_RADIUS } from '../game/constants';
+import { getSuperclusterCoords, pushAttractorAddress } from '../game/superclusters';
+import { galaxyTravelCost, superclusterTravelCost, flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import './Codex.css';
@@ -210,35 +210,14 @@ function highlight(text: string, query: string) {
 }
 
 function pushAttractor(ui: ReturnType<typeof useUIStore.getState>, sc: ReturnType<typeof useGameStore.getState>['supercluster'], dotX: number, dotY: number) {
-  let nearest = sc.attractors[0];
-  let nearestDist = Infinity;
-  for (const att of sc.attractors) {
-    const d = Math.hypot(dotX - att.x, dotY - att.y);
-    if (d < nearestDist) { nearestDist = d; nearest = att; }
-  }
-  if (nearest && nearestDist <= SC_ATTRACTOR_LABEL_MAX_DIST) {
-    ui.pushAddress(buildAddressComponent(nearest.name, nearest.x, nearest.y, nearest.z, 'attractor'));
-  } else {
-    ui.removeAddressType('attractor');
-  }
-}
-
-function checkAndConsumeResources(exoticCost: number, heliumCost: number): boolean {
-  const ui = useUIStore.getState();
-  if (ui.infiniteExplore) return true;
-  if (ui.exoticMatter < exoticCost || ui.helium3Reserves < heliumCost) {
-    ui.triggerHudFlash();
-    return false;
-  }
-  ui.consumeResources(exoticCost, heliumCost);
-  return true;
+  pushAttractorAddress(sc.attractors, dotX, dotY, ui.pushAddress, ui.removeAddressType);
 }
 
 function travelToSupercluster(scSeed: number, scName: string) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
   if (game.supercluster.seed !== scSeed) {
-    if (!checkAndConsumeResources(50, 10)) return;
+    if (!trySpendTravelCost(flatTravelCost(50))) return;
   }
   ui.clearAddress();
   game.regenerateSupercluster(scSeed);
@@ -251,16 +230,19 @@ function travelToSupercluster(scSeed: number, scName: string) {
 function travelToGalaxy(scSeed: number, scName: string, galaxySeed: number, galaxyName: string) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
-  let exoticCost: number;
-  if (game.supercluster.seed !== scSeed) {
-    exoticCost = 50;
-  } else {
-    const currentDot = game.supercluster.dots.find((d) => d.seed === game.galaxy.seed);
-    const targetDot = game.supercluster.dots.find((d) => d.seed === galaxySeed);
-    const dist = Math.hypot((targetDot?.x ?? 0) - (currentDot?.x ?? 0), (targetDot?.y ?? 0) - (currentDot?.y ?? 0));
-    exoticCost = Math.min(40, Math.max(10, Math.round((dist / SC_WORLD_HALF) * 40)));
+  const isCurrent = game.supercluster.seed === scSeed && game.galaxy.seed === galaxySeed;
+  if (!isCurrent) {
+    let cost: { exotic: number; helium: number };
+    if (game.supercluster.seed !== scSeed) {
+      cost = flatTravelCost(50);
+    } else {
+      const currentDot = game.supercluster.dots.find((d) => d.seed === game.galaxy.seed);
+      const targetDot = game.supercluster.dots.find((d) => d.seed === galaxySeed);
+      const dist = Math.hypot((targetDot?.x ?? 0) - (currentDot?.x ?? 0), (targetDot?.y ?? 0) - (currentDot?.y ?? 0));
+      cost = superclusterTravelCost(dist);
+    }
+    if (!trySpendTravelCost(cost)) return;
   }
-  if (!checkAndConsumeResources(exoticCost, 10)) return;
   ui.clearAddress();
   if (game.supercluster.seed !== scSeed) game.regenerateSupercluster(scSeed);
   game.regenerateGalaxy(galaxySeed);
@@ -281,20 +263,23 @@ function travelToSystem(
 ) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
-  let exoticCost: number;
-  if (game.supercluster.seed !== scSeed) {
-    exoticCost = 50;
-  } else if (game.galaxy.seed !== galaxySeed) {
-    exoticCost = 15;
-  } else {
-    const currentSystem = game.system;
-    const fromX = currentSystem?.x ?? 0;
-    const fromY = currentSystem?.y ?? 0;
-    const targetSys = game.galaxy.systems.find((s) => String(s.id) === systemId);
-    const dist = Math.hypot((targetSys?.x ?? 0) - fromX, (targetSys?.y ?? 0) - fromY);
-    exoticCost = Math.max(1, Math.round((dist / GALAXY_RADIUS) * 5));
+  const isCurrent = game.supercluster.seed === scSeed && game.galaxy.seed === galaxySeed && String(game.system?.id) === systemId;
+  if (!isCurrent) {
+    let cost: { exotic: number; helium: number };
+    if (game.supercluster.seed !== scSeed) {
+      cost = flatTravelCost(50);
+    } else if (game.galaxy.seed !== galaxySeed) {
+      cost = flatTravelCost(15);
+    } else {
+      const currentSystem = game.system;
+      const fromX = currentSystem?.x ?? 0;
+      const fromY = currentSystem?.y ?? 0;
+      const targetSys = game.galaxy.systems.find((s) => String(s.id) === systemId);
+      const dist = Math.hypot((targetSys?.x ?? 0) - fromX, (targetSys?.y ?? 0) - fromY);
+      cost = galaxyTravelCost(dist);
+    }
+    if (!trySpendTravelCost(cost)) return;
   }
-  if (!checkAndConsumeResources(exoticCost, 10)) return;
   ui.clearAddress();
   if (game.supercluster.seed !== scSeed) game.regenerateSupercluster(scSeed);
   game.regenerateGalaxy(galaxySeed);

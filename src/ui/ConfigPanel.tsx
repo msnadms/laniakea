@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
+import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import './ConfigPanel.css';
 
 export function ConfigPanel() {
@@ -13,6 +14,7 @@ export function ConfigPanel() {
   const showHUD = useUIStore((s) => s.showHUD);
   const toggleHUD = useUIStore((s) => s.toggleHUD);
   const refillResources = useUIStore((s) => s.refillResources);
+  const resetUpgrades = useUIStore((s) => s.resetUpgrades);
   const infiniteExplore = useUIStore((s) => s.infiniteExplore);
   const toggleInfiniteExplore = useUIStore((s) => s.toggleInfiniteExplore);
   const view = useUIStore((s) => s.view);
@@ -25,14 +27,7 @@ export function ConfigPanel() {
     const parsed = parseInt(seedInput, 10);
     const newSeed = isNaN(parsed) ? undefined : parsed;
     if (newSeed === undefined || newSeed !== scSeed) {
-      const ui = useUIStore.getState();
-      if (!ui.infiniteExplore) {
-        if (ui.exoticMatter < 50 || ui.helium3Reserves < 10) {
-          ui.triggerHudFlash();
-          return;
-        }
-        ui.consumeResources(50, 10);
-      }
+      if (!trySpendTravelCost(flatTravelCost(50))) return;
     }
     regenerateSupercluster(newSeed);
     setSeedInput('');
@@ -111,6 +106,11 @@ export function ConfigPanel() {
           <div className="config-row config-row--seed">
             <span className="config-row-label">Refill Reserves</span>
             <button className="config-refill-btn" onClick={refillResources} title="Reset exotic matter and helium-3 to full">↑</button>
+          </div>
+
+          <div className="config-row config-row--seed">
+            <span className="config-row-label">Reset Upgrades</span>
+            <button className="config-refill-btn" onClick={resetUpgrades} title="Set all upgrade levels to 0">↺</button>
           </div>
 
           {view === 'supercluster' && (

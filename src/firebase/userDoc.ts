@@ -13,6 +13,14 @@ export interface UserSettings {
   helium3Reserves: number;
   alloys: number;
   nutrients: number;
+  storageA: number;
+  storageB: number;
+  driveA: number;
+  driveB: number;
+  weaponA: number;
+  weaponB: number;
+  logisticsA: number;
+  logisticsB: number;
 }
 
 const defaultSettings: UserSettings = {
@@ -22,10 +30,18 @@ const defaultSettings: UserSettings = {
   infiniteExplore: false,
   exoticMatter: 75,
   driveIntegrity: 98,
-  railgunAmmo: 350,
+  railgunAmmo: 20,
   helium3Reserves: 220,
   alloys: 400,
   nutrients: 200,
+  storageA: 0,
+  storageB: 0,
+  driveA: 0,
+  driveB: 0,
+  weaponA: 0,
+  weaponB: 0,
+  logisticsA: 0,
+  logisticsB: 0,
 };
 
 export async function initUserDoc(user: User): Promise<UserSettings> {

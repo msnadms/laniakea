@@ -1,0 +1,274 @@
+@keyframes ship-upgrade-slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+
+.ship-upgrade-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: all;
+}
+
+.ship-upgrade-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  animation: ship-upgrade-slide-up 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  background: rgba(6, 12, 28, 0.92);
+  border-top: 1px solid #1a3a5c;
+  box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
+  padding: 18px 20px 20px;
+  font-family: monospace;
+  color: #c0dde8;
+  user-select: none;
+}
+
+.ship-upgrade-grid {
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+}
+
+.ship-upgrade-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.ship-upgrade-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.ship-upgrade-pool-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.ship-upgrade-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1px solid #1a4060;
+  background: transparent;
+}
+
+.ship-upgrade-dot--filled {
+  background: #00c8e8;
+  border-color: #00c8e8;
+  box-shadow: 0 0 4px rgba(0, 200, 232, 0.5);
+}
+
+.ship-upgrade-dual {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  flex: 1;
+}
+
+.ship-upgrade-subcell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid;
+}
+
+.ship-upgrade-subcell--current {
+  border-color: #162d47;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.ship-upgrade-subcell--next {
+  border-color: #163826;
+  background: rgba(0, 8, 4, 0.2);
+}
+
+.ship-upgrade-cell {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid;
+  flex: 1;
+}
+
+.ship-upgrade-cell--current {
+  border-color: #1a3a5c;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.ship-upgrade-cell--next {
+  border-color: #1a4a30;
+  background: rgba(0, 15, 8, 0.25);
+}
+
+.ship-upgrade-cell--maxed {
+  border-color: #1a3a5c;
+  background: rgba(0, 0, 0, 0.1);
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+}
+
+.ship-upgrade-cell-name {
+  font-size: 10px;
+  color: #c0dde8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ship-upgrade-level-count {
+  font-size: 9px;
+  color: #2a6a8a;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.ship-upgrade-cell--next .ship-upgrade-cell-name {
+  color: #7ddba8;
+}
+
+.ship-upgrade-cell-stat {
+  font-size: 10px;
+  color: #00c8e8;
+  letter-spacing: 0.08em;
+}
+
+.ship-upgrade-cell--next .ship-upgrade-cell-stat {
+  color: #00ffcc;
+}
+
+.ship-upgrade-cell-desc {
+  font-size: 9px;
+  color: #2a6a8a;
+  line-height: 1.45;
+  flex: 1;
+}
+
+.ship-upgrade-cell--next .ship-upgrade-cell-desc {
+  color: #2a7a5a;
+}
+
+.ship-upgrade-cell-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ship-upgrade-cost {
+  font-size: 10px;
+  color: #7ab0c8;
+  white-space: nowrap;
+}
+
+.ship-upgrade-maxed {
+  font-size: 9px;
+  color: #00c8e8;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(0, 200, 232, 0.5);
+}
+
+.planet-panel-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #2a6a8a;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.planet-panel-close:hover { color: #00c8e8; }
+
+.planet-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.planet-panel-name {
+  font-size: 15px;
+  color: #00c8e8;
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.5);
+  letter-spacing: 0.06em;
+}
+
+.planet-panel-zone {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: #2a6a8a;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.planet-panel-section-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: #2a6a8a;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.planet-panel-btn {
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(0, 136, 187, 0.12);
+  border: 1px solid rgba(0, 190, 230, 0.45);
+  color: #00c8e8;
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.planet-panel-btn:hover:not(:disabled) {
+  background: rgba(0, 136, 187, 0.25);
+  box-shadow: 0 0 10px rgba(0, 200, 232, 0.3);
+}
+.planet-panel-btn--dim {
+  color: #2a6a8a;
+  border-color: rgba(0, 190, 230, 0.18);
+}
+
+.ship-upgrade-btn-trigger {
+  background: transparent;
+  border: none;
+  color: rgba(0, 180, 220, 0.55);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 6px;
+  pointer-events: all;
+  transition: color 0.2s;
+}
+
+.ship-upgrade-btn-trigger:hover {
+  color: rgba(0, 215, 255, 0.95);
+}

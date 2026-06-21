@@ -3,16 +3,18 @@ import { Container, Graphics, Ticker, BlurFilter } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
+import { superclusterTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
 import { buildAddressComponent, type SuperclusterDot } from '../game/types';
 import { useCamera } from './useCamera';
-import { SC_CAMERA_INITIAL_SCALE, SC_WORLD_HALF, SC_WORLD_HALF_MLY, SC_ATTRACTOR_LABEL_MAX_DIST, OBS_UNIVERSE_RADIUS } from '../game/constants';
+import { SC_CAMERA_INITIAL_SCALE, SC_WORLD_HALF, SC_WORLD_HALF_MLY, OBS_UNIVERSE_RADIUS } from '../game/constants';
 import { ScaleBar } from './ScaleBar';
 import { createRng } from '../game/galaxyGen';
 import { createPointerLabel } from './labels';
 import { BackgroundStars } from './BackgroundStars';
 import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
+import { pushAttractorAddress } from '../game/superclusters';
 
 const SC_NICE_VALUES = [5, 10, 25, 50, 100, 150, 200, 300, 500];
 
@@ -67,6 +69,8 @@ export function SuperclusterWorld() {
   showAttractorLabelsRef.current = showAttractorLabels;
 
   const visitedGfxRef = useRef<Graphics | null>(null);
+  const currentGfxRef = useRef<Graphics | null>(null);
+  const currentDotPosRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
@@ -110,8 +114,11 @@ export function SuperclusterWorld() {
 
     const visitedGfx = new Graphics();
     visitedGfxRef.current = visitedGfx;
+    const currentGfx = new Graphics();
+    currentGfxRef.current = currentGfx;
     scContainer.addChild(dotsContainer);
     scContainer.addChild(visitedGfx);
+    scContainer.addChild(currentGfx);
     world.addChild(scContainer);
 
     let elapsedSecs = 0;
@@ -122,12 +129,25 @@ export function SuperclusterWorld() {
         const t = 0.5 + 0.5 * Math.sin(elapsedSecs * BLINK_FREQ * Math.PI * 2 + phase);
         blinkGroups[g].alpha = BLINK_MIN + (BLINK_MAX - BLINK_MIN) * t;
       }
+      const pos = currentDotPosRef.current;
+      const gfx = currentGfxRef.current;
+      if (pos && gfx) {
+        const pulse = 0.5 + 0.5 * Math.sin(elapsedSecs * Math.PI * 2 * 0.7);
+        const outerR = 26 + pulse * 10;
+        gfx.clear();
+        gfx.circle(pos.x, pos.y, outerR);
+        gfx.stroke({ color: 0x00e8ff, width: 1.2, alpha: 0.2 + pulse * 0.45 });
+        gfx.circle(pos.x, pos.y, outerR + 6);
+        gfx.stroke({ color: 0x00e8ff, width: 0.6, alpha: 0.08 + pulse * 0.18 });
+      }
     };
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
       visitedGfxRef.current = null;
+      currentGfxRef.current = null;
+      currentDotPosRef.current = null;
       world.removeChild(scContainer);
       scContainer.destroy({ children: true });
       blurFilter.destroy();
@@ -139,6 +159,8 @@ export function SuperclusterWorld() {
     const gfx = visitedGfxRef.current;
     if (!gfx) return;
     gfx.clear();
+
+    // Visited dots (white outline rings)
     for (const d of scDots) {
       if (!d.visited || d.current) continue;
       gfx.circle(d.x, d.y, 8);
@@ -149,16 +171,36 @@ export function SuperclusterWorld() {
       gfx.circle(d.x, d.y, 11);
     }
     gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
-    for (const d of scDots) {
-      if (!d.current) continue;
-      gfx.circle(d.x, d.y, 8);
+
+    // Current galaxy — static parts: solid fill + inner rings + crosshair
+    const cur = scDots.find(d => d.current);
+    currentDotPosRef.current = cur ? { x: cur.x, y: cur.y } : null;
+    if (cur) {
+      const { x, y } = cur;
+      // Bright filled core
+      gfx.circle(x, y, 5);
+      gfx.fill({ color: 0x00e8ff, alpha: 0.55 });
+      // Inner solid ring
+      gfx.circle(x, y, 12);
+      gfx.stroke({ color: 0x00e8ff, width: 2, alpha: 0.95 });
+      // Second solid ring
+      gfx.circle(x, y, 18);
+      gfx.stroke({ color: 0x00e8ff, width: 1, alpha: 0.55 });
+      // Crosshair arms (gap from r=20 to r=38)
+      const gap = 20, arm = 38;
+      gfx.moveTo(x - arm, y).lineTo(x - gap, y);
+      gfx.moveTo(x + gap, y).lineTo(x + arm, y);
+      gfx.moveTo(x, y - arm).lineTo(x, y - gap);
+      gfx.moveTo(x, y + gap).lineTo(x, y + arm);
+      gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.85 });
+      // Crosshair tick marks at arm ends (small perpendicular nubs)
+      const nub = 4;
+      gfx.moveTo(x - arm, y - nub).lineTo(x - arm, y + nub);
+      gfx.moveTo(x + arm, y - nub).lineTo(x + arm, y + nub);
+      gfx.moveTo(x - nub, y - arm).lineTo(x + nub, y - arm);
+      gfx.moveTo(x - nub, y + arm).lineTo(x + nub, y + arm);
+      gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.65 });
     }
-    gfx.stroke({ color: 0x00c8e8, width: 1.5, alpha: 0.75 });
-    for (const d of scDots) {
-      if (!d.current) continue;
-      gfx.circle(d.x, d.y, 11);
-    }
-    gfx.stroke({ color: 0x00c8e8, width: 0.5, alpha: 0.25 });
   }, [scDots]);
 
   useEffect(() => {
@@ -212,17 +254,10 @@ export function SuperclusterWorld() {
       const maxDist = 15 / camera.current.scale;
       if (nearestDist > maxDist) return;
       const currentGalaxySeed = useGameStore.getState().galaxy.seed;
+      const isCurrent = nearest.seed === currentGalaxySeed;
       const currentDot = sc.dots.find(d => d.seed === currentGalaxySeed);
       const travelDist = Math.hypot(nearest.x - (currentDot?.x ?? 0), nearest.y - (currentDot?.y ?? 0));
-      const exoticCost = Math.min(40, Math.max(10, Math.round((travelDist / SC_WORLD_HALF) * 40)));
-      const uiStore = useUIStore.getState();
-      if (!uiStore.infiniteExplore) {
-        if (uiStore.exoticMatter < exoticCost || uiStore.helium3Reserves < 10) {
-          uiStore.triggerHudFlash();
-          return;
-        }
-        uiStore.consumeResources(exoticCost, 10);
-      }
+      if (!isCurrent && !trySpendTravelCost(superclusterTravelCost(travelDist))) return;
 
       markDotVisited(nearest.seed);
       useCodexStore.getState().addGalaxyRecord(sc.seed, sc.name, nearest.seed, nearest.name);
@@ -233,17 +268,7 @@ export function SuperclusterWorld() {
       }
       regenerateGalaxy(nearest.seed);
 
-      let nearestAttractorDist = Infinity;
-      let nearestAttractor = sc.attractors[0];
-      for (const att of sc.attractors) {
-        const d = Math.hypot(nearest.x - att.x, nearest.y - att.y);
-        if (d < nearestAttractorDist) { nearestAttractorDist = d; nearestAttractor = att; }
-      }
-      if (nearestAttractorDist <= SC_ATTRACTOR_LABEL_MAX_DIST) {
-        pushAddress(buildAddressComponent(nearestAttractor.name, nearestAttractor.x, nearestAttractor.y, nearestAttractor.z, 'attractor'));
-      } else {
-        removeAddressType('attractor');
-      }
+      pushAttractorAddress(sc.attractors, nearest.x, nearest.y, pushAddress, removeAddressType);
 
       pushAddress(buildAddressComponent(nearest.name, nearest.x, nearest.y, nearest.z, 'galaxy'));
       setView('galaxy');

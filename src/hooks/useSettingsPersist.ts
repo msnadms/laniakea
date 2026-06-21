@@ -24,6 +24,14 @@ export function useSettingsPersist() {
           helium3Reserves: s.helium3Reserves,
           alloys: s.alloys,
           nutrients: s.nutrients,
+          storageA: s.storageA,
+          storageB: s.storageB,
+          driveA: s.driveA,
+          driveB: s.driveB,
+          weaponA: s.weaponA,
+          weaponB: s.weaponB,
+          logisticsA: s.logisticsA,
+          logisticsB: s.logisticsB,
         });
       }, 2000);
     });

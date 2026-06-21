@@ -1,11 +1,12 @@
 import { Delaunay } from 'd3-delaunay';
 import { createRng } from './galaxyGen';
-import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, BackgroundStar, Rng } from './types';
+import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, BackgroundStar, Rng, AddressComponent, AddressComponentType } from './types';
+import { buildAddressComponent } from './types';
 import {
   BACKGROUND_STAR_COUNT, BACKGROUND_STAR_AREA_X, BACKGROUND_STAR_AREA_Y,
   SC_WORLD_HALF, SC_ATTRACTOR_COUNT, SC_CLUSTER_DOTS_PER_ATTRACTOR,
   SC_CLUSTER_SIGMA, SC_FILAMENT_DOTS_PER_EDGE, SC_FILAMENT_SCATTER,
-  OBS_UNIVERSE_RADIUS,
+  OBS_UNIVERSE_RADIUS, SC_ATTRACTOR_LABEL_MAX_DIST,
 } from './constants';
 
 const CLUSTER_ROOTS = [
@@ -53,6 +54,26 @@ function makeSupercusterName(rng: Rng): string {
   }
   const suffix = SC_NAME_SUFFIXES[Math.floor(rng() * SC_NAME_SUFFIXES.length)];
   return `${base}${suffix}`;
+}
+
+export function pushAttractorAddress(
+  attractors: SuperclusterAttractor[],
+  dotX: number,
+  dotY: number,
+  pushAddress: (a: AddressComponent) => void,
+  removeAddressType: (t: AddressComponentType) => void,
+): void {
+  let nearest = attractors[0];
+  let nearestDist = Infinity;
+  for (const att of attractors) {
+    const d = Math.hypot(dotX - att.x, dotY - att.y);
+    if (d < nearestDist) { nearestDist = d; nearest = att; }
+  }
+  if (nearest && nearestDist <= SC_ATTRACTOR_LABEL_MAX_DIST) {
+    pushAddress(buildAddressComponent(nearest.name, nearest.x, nearest.y, nearest.z, 'attractor'));
+  } else {
+    removeAddressType('attractor');
+  }
 }
 
 // Derives a stable observable-universe position for a supercluster from its seed.

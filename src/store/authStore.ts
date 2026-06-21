@@ -4,7 +4,7 @@ import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
-import { useUIStore } from './uiStore';
+import { useUIStore, computeStorageCap } from './uiStore';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
@@ -38,17 +38,26 @@ export function initAuth(): () => void {
         loadAllDiscoveries(user.uid),
         loadAllExtractors(user.uid),
       ]);
+      const cap = computeStorageCap(settings.storageA);
       useUIStore.setState({
         showOrbitRings: settings.showOrbitRings,
         showAttractorLabels: settings.showAttractorLabels,
         showHUD: settings.showHUD,
         infiniteExplore: settings.infiniteExplore,
-        exoticMatter: settings.exoticMatter,
+        exoticMatter: Math.min(settings.exoticMatter, cap),
         driveIntegrity: settings.driveIntegrity,
         railgunAmmo: settings.railgunAmmo,
-        helium3Reserves: settings.helium3Reserves,
-        alloys: settings.alloys,
-        nutrients: settings.nutrients,
+        helium3Reserves: Math.min(settings.helium3Reserves, cap),
+        alloys: Math.min(settings.alloys, cap),
+        nutrients: Math.min(settings.nutrients, cap),
+        storageA: settings.storageA,
+        storageB: settings.storageB,
+        driveA: settings.driveA,
+        driveB: settings.driveB,
+        weaponA: settings.weaponA,
+        weaponB: settings.weaponB,
+        logisticsA: settings.logisticsA,
+        logisticsB: settings.logisticsB,
       });
       useExtractorStore.getState().restoreExtractors(extractors);
       useCodexStore.getState().setAll(discoveries);

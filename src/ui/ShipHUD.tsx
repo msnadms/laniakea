@@ -1,8 +1,25 @@
-import { memo, useEffect, useRef } from 'react';
-import { useUIStore } from '../store/uiStore';
+import { memo, useEffect, useRef, useState } from 'react';
+import { useUIStore, computeStorageCap, computeWeaponCap, DELIVERY_UNLOCK_THRESHOLD } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
+import { useExtractorStore, AUTO_DELIVERY_COST_PER_STATION, peekAccumulated } from '../store/extractorStore';
+import { RESOURCE_LABELS } from '../game/types';
 import { Codex } from './Codex';
+import { ShipUpgradePanel } from './ShipUpgradePanel';
 import './ShipHUD.css';
+import './ShipUpgradePanel.css';
+
+const TrapezoidOutline = () => (
+  <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <polygon
+      vectorEffect="non-scaling-stroke"
+      points="1,0.1 0.39,0.1 0.05,1 0.65,1"
+      fill="transparent"
+      stroke="rgba(0, 190, 230, 0.55)"
+      strokeWidth="1"
+      pointerEvents="all"
+    />
+  </svg>
+);
 
 const StatBar = memo(function StatBar({ value, max }: { value: number; max: number }) {
   const pct = (value / max) * 100;
@@ -59,19 +76,119 @@ const NavBack = memo(function NavBack() {
   }
 
   return (
-    <button className={`nav-back-btn${disabled ? ' nav-back-btn--disabled' : ''}`} onClick={disabled ? undefined : handleBack}>
+    <button className={`side-btn nav-back-btn${disabled ? ' nav-back-btn--disabled' : ''}`} onClick={disabled ? undefined : handleBack}>
+      <TrapezoidOutline />
+      <span className="nav-back-btn-icon">◀</span>
+      <span className="nav-back-btn-label">Back</span>
+    </button>
+  );
+});
+
+function DeliveryPanel({ onClose }: { onClose: () => void }) {
+  const extractorMap = useExtractorStore((s) => s.extractors);
+  const remoteCollectExtractor = useExtractorStore((s) => s.remoteCollectExtractor);
+  const discardExtractor = useExtractorStore((s) => s.removeExtractor);
+  const exoticMatter = useUIStore((s) => s.exoticMatter);
+  const triggerHudFlash = useUIStore((s) => s.triggerHudFlash);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const extractors = Object.values(extractorMap);
+  const canAffordOne = exoticMatter >= AUTO_DELIVERY_COST_PER_STATION;
+
+  function handleExtractOne(key: string) {
+    const success = remoteCollectExtractor(key);
+    if (!success) triggerHudFlash();
+  }
+
+  return (
+    <div className="delivery-panel">
+      <div className="delivery-panel-header">
+        <span className="delivery-panel-title">Extraction Network</span>
+        <button className="delivery-panel-close" onClick={onClose}>✕</button>
+      </div>
+
+      {extractors.length === 0 ? (
+        <div className="delivery-panel-empty">No active mining stations</div>
+      ) : (
+        <div className="delivery-panel-list">
+          {extractors.map((ext) => {
+            const accumulated = peekAccumulated(ext);
+            return (
+              <div key={ext.key} className="delivery-panel-row">
+                <div className="delivery-panel-row-info">
+                  <span className="delivery-panel-planet">{ext.planetName}</span>
+                  <span className="delivery-panel-resource">{RESOURCE_LABELS[ext.resourceType]}</span>
+                </div>
+                <span className="delivery-panel-amount">+{accumulated}</span>
+                <button
+                  className={`delivery-panel-btn${!canAffordOne || accumulated <= 0 ? ' delivery-panel-btn--dim' : ''}`}
+                  onClick={() => handleExtractOne(ext.key)}
+                  disabled={!canAffordOne || accumulated <= 0}
+                >
+                  Collect
+                </button>
+                <button
+                  className="delivery-panel-btn delivery-panel-discard-btn"
+                  onClick={() => discardExtractor(ext.key)}
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const DeliveryButton = memo(function DeliveryButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className={`side-btn delivery-btn${open ? ' delivery-btn--active' : ''}`}
+      onClick={onToggle}
+      style={{ pointerEvents: 'all' }}
+    >
       <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
         <polygon
           vectorEffect="non-scaling-stroke"
-          points="1,0.1 0.39,0.1 0.05,1 0.65,1"
+          points="0,0.1 0.61,0.1 0.95,1 0.35,1"
           fill="transparent"
           stroke="rgba(0, 190, 230, 0.55)"
           strokeWidth="1"
           pointerEvents="all"
         />
       </svg>
-      <span className="nav-back-btn-icon">◂</span>
-      <span className="nav-back-btn-label">Back</span>
+      <span className="delivery-btn-icon">⊕</span>
+      <span className="nav-back-btn-label">AUTO</span>
+    </button>
+  );
+});
+
+function DeliverySystem() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <DeliveryButton open={open} onToggle={() => setOpen((o) => !o)} />
+      {open && <DeliveryPanel onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+const UpgradesButton = memo(function UpgradesButton() {
+
+  const toggleUpgradePanel = useUIStore((s) => s.toggleUpgradePanel);
+
+  return (
+    <button className="side-btn upgrades-btn" onClick={toggleUpgradePanel} style={{ pointerEvents: 'all' }}>
+      <TrapezoidOutline />
+      <span className="nav-back-btn-icon upg-label">▲</span>
+      <span className="nav-back-btn-label upg-label">WKSHP</span>
     </button>
   );
 });
@@ -84,7 +201,15 @@ export function ShipHUD() {
   const alloys = useUIStore((s) => s.alloys);
   const nutrients = useUIStore((s) => s.nutrients);
   const hudFlash = useUIStore((s) => s.hudFlash);
+  const storageA = useUIStore((s) => s.storageA);
+  const weaponA = useUIStore((s) => s.weaponA);
+  const weaponB = useUIStore((s) => s.weaponB);
+  const logisticsA = useUIStore((s) => s.logisticsA);
+  const logisticsB = useUIStore((s) => s.logisticsB);
   const hudRef = useRef<HTMLDivElement>(null);
+
+  const storageCap = computeStorageCap(storageA);
+  const weaponCap = computeWeaponCap(weaponA, weaponB);
 
   useEffect(() => {
     if (hudFlash === 0) return;
@@ -101,6 +226,9 @@ export function ShipHUD() {
   return (
     <div ref={hudRef} className="ship-hud" aria-hidden="true">
       <Codex />
+      <ShipUpgradePanel />
+      {logisticsA >= DELIVERY_UNLOCK_THRESHOLD && logisticsB >= DELIVERY_UNLOCK_THRESHOLD && <DeliverySystem />}
+      <UpgradesButton />
       <NavBack />
       {/* trapezoid outline: wide at top, narrows at bottom, no top edge */}
       <svg className="hud-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -122,14 +250,14 @@ export function ShipHUD() {
         <div className="hud-rows">
           <div className="hud-row">
             <span className="hud-label">EXOTIC MATTER</span>
-            <StatBar value={exoticMatter} max={100} />
-            <span className="hud-value">{exoticMatter}%</span>
+            <StatBar value={exoticMatter} max={storageCap} />
+            <span className="hud-value">{exoticMatter} <span className="hud-value-dim">/ {storageCap}</span></span>
           </div>
 
           <div className="hud-row">
             <span className="hud-label">HELIUM-3 RESERVES</span>
-            <StatBar value={helium3Reserves} max={500} />
-            <span className="hud-value">{helium3Reserves} <span className="hud-value-dim">/ 500</span></span>
+            <StatBar value={helium3Reserves} max={storageCap} />
+            <span className="hud-value">{helium3Reserves} <span className="hud-value-dim">/ {storageCap}</span></span>
           </div>
 
           <div className="hud-row">
@@ -140,14 +268,14 @@ export function ShipHUD() {
 
           <div className="hud-row">
             <span className="hud-label">RAILGUN RESERVES</span>
-            <StatBar value={railgunAmmo} max={500} />
-            <span className="hud-value">{railgunAmmo} <span className="hud-value-dim">/ 500</span></span>
+            <StatBar value={railgunAmmo} max={weaponCap} />
+            <span className="hud-value">{railgunAmmo} <span className="hud-value-dim">/ {weaponCap}</span></span>
           </div>
         </div>
 
         <div className="hud-cargo-bars">
-          <VerticalCargoBar label="ALLOYS" value={alloys} max={500} />
-          <VerticalCargoBar label="NUTR" value={nutrients} max={500} />
+          <VerticalCargoBar label="ALLOYS" value={alloys} max={storageCap} />
+          <VerticalCargoBar label="NUTR" value={nutrients} max={storageCap} />
         </div>
       </div>
     </div>

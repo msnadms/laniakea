@@ -3,6 +3,51 @@ import type { AddressComponent, AddressComponentType, Resource } from '../game/t
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
+// UPGRADE_POOL must match the length of every UPGRADE_COSTS array (currently 4 entries each).
+export const UPGRADE_POOL = 4;
+
+const STORAGE_BASE = 500;
+export const STORAGE_A_BONUS = [0, 300, 600, 1000, 1500];
+export function computeStorageCap(a: number): number {
+  return STORAGE_BASE + STORAGE_A_BONUS[a];
+}
+
+export const EXTRACTOR_HOLD_CAPS = [200, 300, 450, 600, 750];
+
+export const DRIVE_A_REDUCTION = [0.0, 0.15, 0.30, 0.45, 0.60];
+export const DRIVE_B_REDUCTION = [0.0, 0.15, 0.30, 0.45, 0.60];
+export function computeDriveMultiplier(a: number, b: number): [number, number] {
+  return [1.0 - DRIVE_A_REDUCTION[a], 1.0 - DRIVE_B_REDUCTION[b]]
+}
+
+const WEAPON_BASE = 20;
+export const WEAPON_A_BONUS = [0, 10, 20, 35, 60];
+export const WEAPON_B_BONUS = [0, 10, 20, 35, 60];
+export function computeWeaponCap(a: number, b: number): number {
+  return WEAPON_BASE + WEAPON_A_BONUS[a] + WEAPON_B_BONUS[b];
+}
+
+const LOGISTICS_BASE = 5;
+export const LOGISTICS_A_BONUS = [0, 1, 2, 3, 5];
+export function computeLogisticsCap(a: number): number {
+  return LOGISTICS_BASE + LOGISTICS_A_BONUS[a];
+}
+export const LOGISTICS_B_RATE = [1.0, 1.25, 1.5, 1.75, 2.0];
+
+// Unlock threshold for the remote delivery panel (requires both logistics paths ≥ this tier).
+export const DELIVERY_UNLOCK_THRESHOLD = 2;
+
+export const UPGRADE_COSTS = {
+  storageA:   [150, 300, 600, 1000] as const,
+  storageB:   [100, 250, 500,  900] as const,
+  driveA:     [150, 300, 600, 1000] as const,
+  driveB:     [150, 300, 600, 1000] as const,
+  weaponA:    [100, 200, 400,  800] as const,
+  weaponB:    [100, 200, 400,  800] as const,
+  logisticsA: [200, 400, 700, 1200] as const,
+  logisticsB: [200, 400, 700, 1200] as const,
+};
+
 interface UIState {
   showAttractorLabels: boolean;
   toggleAttractorLabels: () => void;
@@ -36,6 +81,25 @@ interface UIState {
   popAddress: () => void;
   removeAddressType: (type: AddressComponentType) => void;
   clearAddress: () => void;
+  storageA: number;
+  storageB: number;
+  driveA: number;
+  driveB: number;
+  weaponA: number;
+  weaponB: number;
+  logisticsA: number;
+  logisticsB: number;
+  showUpgradePanel: boolean;
+  toggleUpgradePanel: () => void;
+  resetUpgrades: () => void;
+  upgradeStorageA: () => void;
+  upgradeStorageB: () => void;
+  upgradeDriveA: () => void;
+  upgradeDriveB: () => void;
+  upgradeWeaponA: () => void;
+  upgradeWeaponB: () => void;
+  upgradeLogisticsA: () => void;
+  upgradeLogisticsB: () => void;
 }
 
 const obsUniverse: AddressComponent = {
@@ -52,7 +116,7 @@ function upsertAddress(address: AddressComponent[], component: AddressComponent)
   return [...address, component];
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   showAttractorLabels: true,
   toggleAttractorLabels: () => set((s) => ({ showAttractorLabels: !s.showAttractorLabels })),
   showOrbitRings: false,
@@ -62,18 +126,19 @@ export const useUIStore = create<UIState>((set) => ({
   alloys: 0,
   nutrients: 0,
   addCargo: (type, amount) => set((s) => {
-    if (type === 'exotic') return { exoticMatter: Math.min(100, s.exoticMatter + amount) };
-    if (type === 'helium-3') return { helium3Reserves: Math.min(500, s.helium3Reserves + amount) };
-    if (type === 'alloys') return { alloys: Math.min(500, s.alloys + amount) };
-    if (type === 'nutrients') return { nutrients: Math.min(500, s.nutrients + amount) };
+    const cap = computeStorageCap(s.storageA);
+    if (type === 'exotic') return { exoticMatter: Math.min(cap, s.exoticMatter + amount) };
+    if (type === 'helium-3') return { helium3Reserves: Math.min(cap, s.helium3Reserves + amount) };
+    if (type === 'alloys') return { alloys: Math.min(cap, s.alloys + amount) };
+    if (type === 'nutrients') return { nutrients: Math.min(cap, s.nutrients + amount) };
     return {};
   }),
   selectedPlanetKey: null,
   setSelectedPlanet: (key) => set({ selectedPlanetKey: key }),
-  exoticMatter: 75,
+  exoticMatter: 250,
   driveIntegrity: 98,
-  railgunAmmo: 350,
-  helium3Reserves: 220,
+  railgunAmmo: 20,
+  helium3Reserves: 200,
   setShipStats: (stats) => set(stats),
   consumeExoticMatter: (amount) => set((s) => ({ exoticMatter: Math.max(0, s.exoticMatter - amount) })),
   consumeHelium3: (amount) => set((s) => ({ helium3Reserves: Math.max(0, s.helium3Reserves - amount) })),
@@ -82,11 +147,9 @@ export const useUIStore = create<UIState>((set) => ({
     exoticMatter: Math.max(0, s.exoticMatter - exotic),
     helium3Reserves: Math.max(0, s.helium3Reserves - helium),
   })),
-  refillResources: () => set({
-    exoticMatter: 75,
-    helium3Reserves: 220,
-    alloys: 400,
-    nutrients: 100
+  refillResources: () => set((s) => {
+    const cap = computeStorageCap(s.storageA);
+    return { exoticMatter: cap, helium3Reserves: cap, alloys: cap, nutrients: cap };
   }),
   infiniteExplore: false,
   toggleInfiniteExplore: () => set((s) => ({ infiniteExplore: !s.infiniteExplore })),
@@ -99,4 +162,71 @@ export const useUIStore = create<UIState>((set) => ({
   popAddress: () => set((s) => ({ address: s.address.slice(0, -1) })),
   removeAddressType: (type) => set((s) => ({ address: s.address.filter((a) => a.type !== type) })),
   clearAddress: () => set({ address: [obsUniverse] }),
+  storageA: 0,
+  storageB: 0,
+  driveA: 0,
+  driveB: 0,
+  weaponA: 0,
+  weaponB: 0,
+  logisticsA: 0,
+  logisticsB: 0,
+  showUpgradePanel: false,
+  toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
+  resetUpgrades: () => set({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0 }),
+  upgradeStorageA: () => {
+    const { storageA, storageB, alloys } = get();
+    if (storageA + storageB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.storageA[storageA];
+    if (alloys < cost) return;
+    set((s) => ({ storageA: s.storageA + 1, alloys: s.alloys - cost }));
+  },
+  upgradeStorageB: () => {
+    const { storageA, storageB, alloys } = get();
+    if (storageA + storageB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.storageB[storageB];
+    if (alloys < cost) return;
+    set((s) => ({ storageB: s.storageB + 1, alloys: s.alloys - cost }));
+  },
+  upgradeDriveA: () => {
+    const { driveA, driveB, exoticMatter } = get();
+    if (driveA + driveB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.driveA[driveA];
+    if (exoticMatter < cost) return;
+    set((s) => ({ driveA: s.driveA + 1, exoticMatter: s.exoticMatter - cost }));
+  },
+  upgradeDriveB: () => {
+    const { driveA, driveB, helium3Reserves } = get();
+    if (driveA + driveB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.driveB[driveB];
+    if (helium3Reserves < cost) return;
+    set((s) => ({ driveB: s.driveB + 1, helium3Reserves: s.helium3Reserves - cost }));
+  },
+  upgradeWeaponA: () => {
+    const { weaponA, weaponB, alloys } = get();
+    if (weaponA + weaponB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.weaponA[weaponA];
+    if (alloys < cost) return;
+    set((s) => ({ weaponA: s.weaponA + 1, alloys: s.alloys - cost }));
+  },
+  upgradeWeaponB: () => {
+    const { weaponA, weaponB, alloys } = get();
+    if (weaponA + weaponB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.weaponB[weaponB];
+    if (alloys < cost) return;
+    set((s) => ({ weaponB: s.weaponB + 1, alloys: s.alloys - cost }));
+  },
+  upgradeLogisticsA: () => {
+    const { logisticsA, logisticsB, alloys } = get();
+    if (logisticsA + logisticsB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.logisticsA[logisticsA];
+    if (alloys < cost) return;
+    set((s) => ({ logisticsA: s.logisticsA + 1, alloys: s.alloys - cost }));
+  },
+  upgradeLogisticsB: () => {
+    const { logisticsA, logisticsB, alloys } = get();
+    if (logisticsA + logisticsB >= UPGRADE_POOL) return;
+    const cost = UPGRADE_COSTS.logisticsB[logisticsB];
+    if (alloys < cost) return;
+    set((s) => ({ logisticsB: s.logisticsB + 1, alloys: s.alloys - cost }));
+  },
 }));

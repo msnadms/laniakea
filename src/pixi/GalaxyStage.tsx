@@ -3,6 +3,7 @@ import { Container, Graphics, Ticker, Sprite, BlurFilter } from 'pixi.js';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
+import { galaxyTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import {
   GALAXY_RADIUS,
   GALAXY_RADIUS_LY,
@@ -33,6 +34,16 @@ import { generateGalaxyName } from '../game/superclusters';
 
 const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000];
 
+type Particle = { x: number; y: number; r: number; a: number };
+
+function flushParticleBatches(gfx: Graphics, batches: Map<number, Particle[]>) {
+  for (const [color, particles] of batches) {
+    const avgAlpha = particles.reduce((sum, p) => sum + p.a, 0) / particles.length;
+    for (const p of particles) gfx.circle(p.x, p.y, p.r);
+    gfx.fill({ color, alpha: avgAlpha });
+  }
+}
+
 extend({ Container, Graphics, Sprite });
 
 
@@ -56,16 +67,9 @@ export function GalaxyWorld() {
       const activeSystem = gameState.system;
       const fromX = activeSystem?.x ?? 0;
       const fromY = activeSystem?.y ?? 0;
+      const isCurrent = sys.current === true;
       const travelDist = Math.hypot(sys.x - fromX, sys.y - fromY);
-      const exoticCost = Math.max(1, Math.round((travelDist / GALAXY_RADIUS) * 5));
-      const store = useUIStore.getState();
-      if (!store.infiniteExplore) {
-        if (store.exoticMatter < exoticCost || store.helium3Reserves < 10) {
-          store.triggerHudFlash();
-          return;
-        }
-        store.consumeResources(exoticCost, 10);
-      }
+      if (!isCurrent && !trySpendTravelCost(galaxyTravelCost(travelDist))) return;
       if (activeSystem !== null) popAddress();
       gameState.markSystemVisited(sys.id);
       const galaxyName = generateGalaxyName(gameState.galaxy.seed);
@@ -101,7 +105,6 @@ export function GalaxyWorld() {
     const nebulaGfx = new Graphics();
     const rng = createRng((galaxySeed ^ 0x9e3779b9) >>> 0);
 
-    type Particle = { x: number; y: number; r: number; a: number };
     const nebulaBatches = new Map<number, Particle[]>();
 
     for (let arm = 0; arm < config.numArms; arm++) {
@@ -149,11 +152,7 @@ export function GalaxyWorld() {
       }
     }
 
-    for (const [color, particles] of nebulaBatches) {
-      const avgAlpha = particles.reduce((sum, p) => sum + p.a, 0) / particles.length;
-      for (const p of particles) nebulaGfx.circle(p.x, p.y, p.r);
-      nebulaGfx.fill({ color, alpha: avgAlpha });
-    }
+    flushParticleBatches(nebulaGfx, nebulaBatches);
 
     const coreGfx = new Graphics();
     const coreBatches = new Map<number, Particle[]>();
@@ -167,11 +166,7 @@ export function GalaxyWorld() {
       if (!batch) { batch = []; coreBatches.set(coreColor, batch); }
       batch.push({ x: offsetX, y: offsetY, r: particleRadius, a: alpha });
     }
-    for (const [color, particles] of coreBatches) {
-      const avgAlpha = particles.reduce((sum, p) => sum + p.a, 0) / particles.length;
-      for (const p of particles) coreGfx.circle(p.x, p.y, p.r);
-      coreGfx.fill({ color, alpha: avgAlpha });
-    }
+    flushParticleBatches(coreGfx, coreBatches);
 
     nebulaGfx.blendMode = 'screen';
     coreGfx.blendMode = 'screen';
