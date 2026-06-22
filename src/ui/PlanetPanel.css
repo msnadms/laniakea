@@ -99,10 +99,11 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.planet-panel-resource-dot.res-exotic   { background: #aa44cc; }
-.planet-panel-resource-dot.res-alloys   { background: #cc8833; }
-.planet-panel-resource-dot.res-nutrients{ background: #44bb55; }
-.planet-panel-resource-dot.res-helium-3 { background: #4488cc; }
+.planet-panel-resource-dot.res-exotic             { background: #aa44cc; }
+.planet-panel-resource-dot.res-alloys             { background: #cc8833; }
+.planet-panel-resource-dot.res-nutrients          { background: #44bb55; }
+.planet-panel-resource-dot.res-helium-3           { background: #4488cc; }
+.planet-panel-resource-dot.res-neutronStarMatter  { background: #88ddff; }
 
 .planet-panel-resource-label {
   flex: 1;
@@ -227,3 +228,29 @@
   text-transform: none;
   letter-spacing: 0.06em;
 }
+
+.planet-panel-extractor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  font-weight: bold;
+  border-radius: 2px;
+  letter-spacing: 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.tier-badge.tier-S { background: rgba(255, 220, 50, 0.12);  color: #ffdd33; border: 1px solid rgba(255, 220, 50, 0.6); }
+.tier-badge.tier-A { background: rgba(50, 220, 110, 0.10);  color: #33ee77; border: 1px solid rgba(50, 220, 110, 0.5); }
+.tier-badge.tier-B { background: rgba(50, 180, 220, 0.10);  color: #44bbcc; border: 1px solid rgba(50, 180, 220, 0.5); }
+.tier-badge.tier-C { background: rgba(150, 80, 220, 0.10);  color: #9966cc; border: 1px solid rgba(150, 80, 220, 0.5); }
+.tier-badge.tier-D { background: rgba(80, 110, 140, 0.10);  color: #668899; border: 1px solid rgba(80, 110, 140, 0.4); }
+.tier-badge.tier-F { background: rgba(40,  60,  80, 0.10);  color: #446677; border: 1px solid rgba(40, 60, 80, 0.35); }

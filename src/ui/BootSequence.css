@@ -1,0 +1,47 @@
+.boot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020610;
+  opacity: 1;
+  transition: opacity 0.7s ease;
+}
+
+.boot-overlay--exit {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.boot-line {
+  font-family: monospace;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: #00d8ff;
+  text-shadow: 0 0 12px rgba(0, 210, 255, 0.85), 0 0 32px rgba(0, 175, 255, 0.4);
+  min-height: 1.2em;
+}
+
+@keyframes boot-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.boot-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  background: #00d8ff;
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.9);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: boot-cursor-blink 0.7s step-start infinite;
+}

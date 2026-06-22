@@ -170,9 +170,21 @@
 
 .nav-back-btn {
   left: 107%;
+  height: calc(55% - 5px);
+  bottom: auto;
+  box-sizing: border-box;
+  padding-left: 17px;
+}
+
+.nav-regen-btn {
+  left: 107%;
+  top: calc(55% + 5px);
+  box-sizing: border-box;
+  padding-right: 10px;
 }
 
 .nav-back-btn:hover:not(.nav-back-btn--disabled),
+.nav-regen-btn:hover:not(.nav-back-btn--disabled),
 .upgrades-btn:hover,
 .delivery-btn:hover {
   color: rgba(0, 215, 255, 0.95);
@@ -352,7 +364,14 @@
   position: relative;
   font-size: 15px;
   line-height: 1;
-  margin-left: 5px;
+}
+
+.nav-back-content {
+  margin-top: 15px;
+}
+
+.nav-regen-icon {
+  font-size: 18px;
 }
 
 .delivery-btn-icon {

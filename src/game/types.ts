@@ -1,6 +1,6 @@
 import type { GalaxyConfig } from "./galaxyConfig";
 
-export type StarType = 'G' | 'K' | 'M' | 'F' | 'A' | 'L';
+export type StarType = 'G' | 'K' | 'M' | 'F' | 'A' | 'L' | 'N';
 
 export const STAR_TYPE_LABELS: Record<StarType, string> = {
   G: 'G-class (Yellow Dwarf)',
@@ -9,6 +9,7 @@ export const STAR_TYPE_LABELS: Record<StarType, string> = {
   F: 'F-class (Yellow-White)',
   A: 'A-class (White)',
   L: 'L-class (Brown Dwarf)',
+  N: 'N-class (Neutron Star)',
 };
 
 export interface StarSystem {
@@ -75,19 +76,19 @@ export interface SuperclusterData {
 }
 
 export interface Resource {
-  type: 'exotic' | 'alloys' | 'nutrients' | 'helium-3'
+  type: 'exotic' | 'alloys' | 'nutrients' | 'helium-3' | 'metallicHydrogen' | 'neutronStarMatter'
   count: number;
 }
 
 export interface Moon {
   name: string;
-  resources: Resource[];
+  resources: Resource[] | null;
 }
 
 export interface Planet {
   name: string;
   type: ZoneType;
-  resources: Resource[];
+  resources: Resource[] | null;
   moons: Moon[];
 }
 
@@ -129,4 +130,6 @@ export const RESOURCE_LABELS: Record<Resource['type'], string> = {
   alloys: 'Alloys',
   nutrients: 'Nutrients',
   'helium-3': 'Helium-3',
+  metallicHydrogen: 'Metallic Hydrogen',
+  neutronStarMatter: 'Neutron Star Matter'
 };

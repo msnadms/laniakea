@@ -3,11 +3,11 @@ import type { AddressComponent, AddressComponentType, Resource } from '../game/t
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
-// UPGRADE_POOL must match the length of every UPGRADE_COSTS array (currently 4 entries each).
-export const UPGRADE_POOL = 4;
+// UPGRADE_POOL is the shared pool cap. Each path caps at UPGRADE_POOL-1. COSTS arrays need UPGRADE_POOL entries; stat/name arrays need UPGRADE_POOL.
+export const UPGRADE_POOL = 5;
 
 const STORAGE_BASE = 500;
-export const STORAGE_A_BONUS = [0, 300, 600, 1000, 1500];
+export const STORAGE_A_BONUS = [0, 600, 1500, 2000, 3000]; 
 export function computeStorageCap(a: number): number {
   return STORAGE_BASE + STORAGE_A_BONUS[a];
 }
@@ -38,14 +38,14 @@ export const LOGISTICS_B_RATE = [1.0, 1.25, 1.5, 1.75, 2.0];
 export const DELIVERY_UNLOCK_THRESHOLD = 2;
 
 export const UPGRADE_COSTS = {
-  storageA:   [150, 300, 600, 1000] as const,
-  storageB:   [100, 250, 500,  900] as const,
-  driveA:     [150, 300, 600, 1000] as const,
-  driveB:     [150, 300, 600, 1000] as const,
-  weaponA:    [100, 200, 400,  800] as const,
-  weaponB:    [100, 200, 400,  800] as const,
-  logisticsA: [200, 400, 700, 1200] as const,
-  logisticsB: [200, 400, 700, 1200] as const,
+  storageA:   [150, 300, 600, 1000, 2000] as const,
+  storageB:   [100, 250, 500,  900, 1600] as const,
+  driveA:     [150, 300, 600, 1000, 1800] as const,
+  driveB:     [150, 300, 600, 1000, 1800] as const,
+  weaponA:    [100, 200, 400,  800, 2000] as const,
+  weaponB:    [100, 200, 400,  800, 2000] as const,
+  logisticsA: [200, 400, 700, 1200, 1800] as const,
+  logisticsB: [200, 400, 700, 1200, 1800] as const,
 };
 
 interface UIState {
@@ -61,6 +61,8 @@ interface UIState {
   helium3Reserves: number;
   alloys: number;
   nutrients: number;
+  metallicHydrogen: number;
+  neutronStarMatter: number;
   addCargo: (type: Resource['type'], amount: number) => void;
   selectedPlanetKey: string | null;
   setSelectedPlanet: (key: string | null) => void;
@@ -125,12 +127,16 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleHUD: () => set((s) => ({ showHUD: !s.showHUD })),
   alloys: 0,
   nutrients: 0,
+  metallicHydrogen: 0,
+  neutronStarMatter: 0,
   addCargo: (type, amount) => set((s) => {
     const cap = computeStorageCap(s.storageA);
     if (type === 'exotic') return { exoticMatter: Math.min(cap, s.exoticMatter + amount) };
     if (type === 'helium-3') return { helium3Reserves: Math.min(cap, s.helium3Reserves + amount) };
     if (type === 'alloys') return { alloys: Math.min(cap, s.alloys + amount) };
     if (type === 'nutrients') return { nutrients: Math.min(cap, s.nutrients + amount) };
+    if (type === 'metallicHydrogen') return { metallicHydrogen: Math.min(cap, s.metallicHydrogen + amount) };
+    if (type === 'neutronStarMatter') return { neutronStarMatter: Math.min(cap, s.neutronStarMatter + amount) };
     return {};
   }),
   selectedPlanetKey: null,
@@ -172,59 +178,59 @@ export const useUIStore = create<UIState>((set, get) => ({
   logisticsB: 0,
   showUpgradePanel: false,
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
-  resetUpgrades: () => set({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0 }),
+  resetUpgrades: () => set((s) => ({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
   upgradeStorageA: () => {
     const { storageA, storageB, alloys } = get();
-    if (storageA + storageB >= UPGRADE_POOL) return;
+    if (storageA >= UPGRADE_POOL - 1 || storageA + storageB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.storageA[storageA];
     if (alloys < cost) return;
     set((s) => ({ storageA: s.storageA + 1, alloys: s.alloys - cost }));
   },
   upgradeStorageB: () => {
     const { storageA, storageB, alloys } = get();
-    if (storageA + storageB >= UPGRADE_POOL) return;
+    if (storageB >= UPGRADE_POOL - 1 || storageA + storageB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.storageB[storageB];
     if (alloys < cost) return;
     set((s) => ({ storageB: s.storageB + 1, alloys: s.alloys - cost }));
   },
   upgradeDriveA: () => {
     const { driveA, driveB, exoticMatter } = get();
-    if (driveA + driveB >= UPGRADE_POOL) return;
+    if (driveA >= UPGRADE_POOL - 1 || driveA + driveB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.driveA[driveA];
     if (exoticMatter < cost) return;
     set((s) => ({ driveA: s.driveA + 1, exoticMatter: s.exoticMatter - cost }));
   },
   upgradeDriveB: () => {
     const { driveA, driveB, helium3Reserves } = get();
-    if (driveA + driveB >= UPGRADE_POOL) return;
+    if (driveB >= UPGRADE_POOL - 1 || driveA + driveB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.driveB[driveB];
     if (helium3Reserves < cost) return;
     set((s) => ({ driveB: s.driveB + 1, helium3Reserves: s.helium3Reserves - cost }));
   },
   upgradeWeaponA: () => {
     const { weaponA, weaponB, alloys } = get();
-    if (weaponA + weaponB >= UPGRADE_POOL) return;
+    if (weaponA >= UPGRADE_POOL - 1 || weaponA + weaponB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.weaponA[weaponA];
     if (alloys < cost) return;
     set((s) => ({ weaponA: s.weaponA + 1, alloys: s.alloys - cost }));
   },
   upgradeWeaponB: () => {
     const { weaponA, weaponB, alloys } = get();
-    if (weaponA + weaponB >= UPGRADE_POOL) return;
+    if (weaponB >= UPGRADE_POOL - 1 || weaponA + weaponB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.weaponB[weaponB];
     if (alloys < cost) return;
     set((s) => ({ weaponB: s.weaponB + 1, alloys: s.alloys - cost }));
   },
   upgradeLogisticsA: () => {
     const { logisticsA, logisticsB, alloys } = get();
-    if (logisticsA + logisticsB >= UPGRADE_POOL) return;
+    if (logisticsA >= UPGRADE_POOL - 1 || logisticsA + logisticsB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.logisticsA[logisticsA];
     if (alloys < cost) return;
     set((s) => ({ logisticsA: s.logisticsA + 1, alloys: s.alloys - cost }));
   },
   upgradeLogisticsB: () => {
     const { logisticsA, logisticsB, alloys } = get();
-    if (logisticsA + logisticsB >= UPGRADE_POOL) return;
+    if (logisticsB >= UPGRADE_POOL - 1 || logisticsA + logisticsB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.logisticsB[logisticsB];
     if (alloys < cost) return;
     set((s) => ({ logisticsB: s.logisticsB + 1, alloys: s.alloys - cost }));

@@ -24,6 +24,8 @@ export function useSettingsPersist() {
           helium3Reserves: s.helium3Reserves,
           alloys: s.alloys,
           nutrients: s.nutrients,
+          metallicHydrogen: s.metallicHydrogen,
+          neutronMatter: s.neutronStarMatter,
           storageA: s.storageA,
           storageB: s.storageB,
           driveA: s.driveA,

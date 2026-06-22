@@ -3,7 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import type { Extractor } from '../game/types';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap, computeStorageCap } from './uiStore';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / 60_000; // 1 unit per minute
+export const ACCUMULATION_RATE_PER_MS = 1 / 1_200_000; // 1 unit per 20 minutes
 export const AUTO_DELIVERY_COST_PER_STATION = 200;
 
 export function peekAccumulated(extractor: Extractor): number {
@@ -61,11 +61,14 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     if (ui.exoticMatter < AUTO_DELIVERY_COST_PER_STATION) return false;
     const storageCap = computeStorageCap(ui.storageA);
     const currentCargo = ({ exotic: ui.exoticMatter, 'helium-3': ui.helium3Reserves, alloys: ui.alloys, nutrients: ui.nutrients } as Record<string, number>)[extractor.resourceType];
-    const space = Math.max(0, storageCap - currentCargo);
-    if (space <= 0) return false;
+    if (storageCap <= currentCargo) return false;
     ui.consumeExoticMatter(AUTO_DELIVERY_COST_PER_STATION);
+    // Re-read state after deduction so exotic-type extractors get correct available space
+    const ui2 = useUIStore.getState();
+    const cargo2 = ({ exotic: ui2.exoticMatter, 'helium-3': ui2.helium3Reserves, alloys: ui2.alloys, nutrients: ui2.nutrients } as Record<string, number>)[extractor.resourceType];
+    const space = Math.max(0, storageCap - cargo2);
     const amount = get().collectExtractor(key, space);
-    if (amount > 0) ui.addCargo(extractor.resourceType, amount);
+    if (amount > 0) ui2.addCargo(extractor.resourceType, amount);
     return true;
   },
 

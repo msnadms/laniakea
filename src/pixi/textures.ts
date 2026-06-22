@@ -411,6 +411,60 @@ export function createMoonTexture(baseColor: number, seed: number): Texture {
   return Texture.from(canvas);
 }
 
+export function createNeutronStarTexture(seed: number): Texture {
+  const rng = createRng(seed);
+  const SIZE = 512;
+  const center = SIZE / 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d')!;
+
+  // Tight, intensely bright core
+  const coreGrad = ctx.createRadialGradient(center, center, 0, center, center, 55);
+  coreGrad.addColorStop(0,    'rgba(255,255,255,1)');
+  coreGrad.addColorStop(0.18, 'rgba(220,248,255,0.95)');
+  coreGrad.addColorStop(0.45, 'rgba(140,220,255,0.5)');
+  coreGrad.addColorStop(0.75, 'rgba(80,170,255,0.12)');
+  coreGrad.addColorStop(1,    'rgba(60,140,255,0)');
+  ctx.fillStyle = coreGrad;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  // Pulsar jets — two opposing beams at a seeded angle
+  const jetAngle = rng() * Math.PI;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let d = 0; d < 2; d++) {
+    const angle = jetAngle + d * Math.PI;
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.rotate(angle);
+
+    const jetLen = center * 0.88;
+    const jetGrad = ctx.createLinearGradient(0, 0, jetLen, 0);
+    jetGrad.addColorStop(0,    'rgba(255,255,255,0.9)');
+    jetGrad.addColorStop(0.12, 'rgba(180,240,255,0.7)');
+    jetGrad.addColorStop(0.45, 'rgba(100,200,255,0.3)');
+    jetGrad.addColorStop(0.78, 'rgba(70,160,255,0.08)');
+    jetGrad.addColorStop(1,    'rgba(50,130,255,0)');
+    ctx.fillStyle = jetGrad;
+    ctx.beginPath();
+    ctx.ellipse(jetLen / 2, 0, jetLen / 2, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Faint accretion halo ring
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.beginPath();
+  ctx.ellipse(center, center, 52, 52, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(120,210,255,0.12)';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  return Texture.from(canvas);
+}
+
 export function createBrownDwarfTexture(seed: number): Texture {
   const rng = createRng(seed);
   const SIZE = 256;

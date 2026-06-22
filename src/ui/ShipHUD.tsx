@@ -1,18 +1,21 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { useUIStore, computeStorageCap, computeWeaponCap, DELIVERY_UNLOCK_THRESHOLD } from '../store/uiStore';
+import { useUIStore, computeStorageCap, computeWeaponCap } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
+import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import { useExtractorStore, AUTO_DELIVERY_COST_PER_STATION, peekAccumulated } from '../store/extractorStore';
 import { RESOURCE_LABELS } from '../game/types';
+import { useAuthStore } from '../store/authStore';
+import { deleteExtractor } from '../firebase/extractors';
 import { Codex } from './Codex';
 import { ShipUpgradePanel } from './ShipUpgradePanel';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
 
-const TrapezoidOutline = () => (
+const TrapezoidOutline = ({ points = "1,0.1 0.39,0.1 0.05,1 0.65,1" }: { points?: string }) => (
   <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
     <polygon
       vectorEffect="non-scaling-stroke"
-      points="1,0.1 0.39,0.1 0.05,1 0.65,1"
+      points={points}
       fill="transparent"
       stroke="rgba(0, 190, 230, 0.55)"
       strokeWidth="1"
@@ -77,9 +80,33 @@ const NavBack = memo(function NavBack() {
 
   return (
     <button className={`side-btn nav-back-btn${disabled ? ' nav-back-btn--disabled' : ''}`} onClick={disabled ? undefined : handleBack}>
-      <TrapezoidOutline />
-      <span className="nav-back-btn-icon">◀</span>
+      <TrapezoidOutline points="0.99,0.19 0.38,0.19 0.22,1 0.825,1" />
+      <span className="nav-back-btn-icon nav-back-content">◀</span>
       <span className="nav-back-btn-label">Back</span>
+    </button>
+  );
+});
+
+const NavRegen = memo(function NavRegen() {
+  const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
+  const setView = useUIStore((s) => s.setView);
+  const clearAddress = useUIStore((s) => s.clearAddress);
+  const view = useUIStore((s) => s.view);
+
+  const disabled = view !== 'supercluster';
+
+  function handleRegen() {
+    if (!trySpendTravelCost(flatTravelCost(50))) return;
+    regenerateSupercluster();
+    clearAddress();
+    setView('supercluster');
+  }
+
+  return (
+    <button className={`side-btn nav-regen-btn${disabled ? ' nav-back-btn--disabled' : ''}`} onClick={disabled ? undefined : handleRegen}>
+      <TrapezoidOutline points="0.8,0 0.2,0 0.05,1 0.65,1" />
+      <span className="nav-back-btn-icon nav-regen-icon">⟳</span>
+      <span className="nav-back-btn-label">JUMP</span>
     </button>
   );
 });
@@ -87,9 +114,10 @@ const NavBack = memo(function NavBack() {
 function DeliveryPanel({ onClose }: { onClose: () => void }) {
   const extractorMap = useExtractorStore((s) => s.extractors);
   const remoteCollectExtractor = useExtractorStore((s) => s.remoteCollectExtractor);
-  const discardExtractor = useExtractorStore((s) => s.removeExtractor);
+  const removeExtractor = useExtractorStore((s) => s.removeExtractor);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const triggerHudFlash = useUIStore((s) => s.triggerHudFlash);
+  const user = useAuthStore((s) => s.user);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -134,7 +162,7 @@ function DeliveryPanel({ onClose }: { onClose: () => void }) {
                 </button>
                 <button
                   className="delivery-panel-btn delivery-panel-discard-btn"
-                  onClick={() => discardExtractor(ext.key)}
+                  onClick={() => { removeExtractor(ext.key); if (user) deleteExtractor(user.uid, ext.key); }}
                 >
                   ✕
                 </button>
@@ -204,6 +232,8 @@ export function ShipHUD() {
   const storageA = useUIStore((s) => s.storageA);
   const weaponA = useUIStore((s) => s.weaponA);
   const weaponB = useUIStore((s) => s.weaponB);
+  const driveA = useUIStore((s) => s.driveA);
+  const driveB = useUIStore((s) => s.driveB);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
   const hudRef = useRef<HTMLDivElement>(null);
@@ -227,9 +257,10 @@ export function ShipHUD() {
     <div ref={hudRef} className="ship-hud" aria-hidden="true">
       <Codex />
       <ShipUpgradePanel />
-      {logisticsA >= DELIVERY_UNLOCK_THRESHOLD && logisticsB >= DELIVERY_UNLOCK_THRESHOLD && <DeliverySystem />}
+      {driveA + driveB >= 3 && logisticsA + logisticsB >= 3 && <DeliverySystem />}
       <UpgradesButton />
       <NavBack />
+      <NavRegen />
       {/* trapezoid outline: wide at top, narrows at bottom, no top edge */}
       <svg className="hud-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
         <polyline

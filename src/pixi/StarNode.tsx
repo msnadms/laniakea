@@ -1,5 +1,5 @@
 import { memo, useMemo, useEffect, useCallback } from 'react';
-import { Graphics } from 'pixi.js';
+import { Circle, Graphics } from 'pixi.js';
 import type { StarSystem } from '../game/types';
 import { createStarTexture } from './textures';
 
@@ -51,6 +51,7 @@ export const StarNode = memo(function StarNode({
       y={system.y}
       eventMode="static"
       cursor="pointer"
+      hitArea={new Circle(0, 0, system.size + 10)}
       onClick={handleClick}
     >
       <pixiSprite texture={glowTexture} anchor={0.5} scale={0.25} />

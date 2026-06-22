@@ -55,8 +55,8 @@ export const DISK_GAP_SCATTER = 0.7;
 // Size multiplier applied to inter-arm disk stars to make them visibly dimmer.
 export const DISK_SIZE_SCALE = 0.6;
 
-// Fraction of numStars added as brown dwarfs at the galactic edge (rare).
-export const BROWN_DWARF_FRACTION = 0.015;
+// Number of brown dwarfs at the galactic edge (rare).
+export const NUM_BROWN_DWARFS = 3;
 
 
 // ─── Background starfield ────────────────────────────────────────────────────

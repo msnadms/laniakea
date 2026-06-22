@@ -13,6 +13,8 @@ export interface UserSettings {
   helium3Reserves: number;
   alloys: number;
   nutrients: number;
+  metallicHydrogen: number;
+  neutronMatter: number;
   storageA: number;
   storageB: number;
   driveA: number;
@@ -34,6 +36,8 @@ const defaultSettings: UserSettings = {
   helium3Reserves: 220,
   alloys: 400,
   nutrients: 200,
+  metallicHydrogen: 0,
+  neutronMatter: 0,
   storageA: 0,
   storageB: 0,
   driveA: 0,

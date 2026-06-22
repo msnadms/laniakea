@@ -11,7 +11,7 @@ import { BackgroundStars } from "./BackgroundStars";
 import { ScaleBar } from "./ScaleBar";
 import { generateSystemLayout, ORBITAL_K, MOON_K } from "../game/planetGen";
 import { createRng } from "../game/galaxyGen";
-import { createSunTexture, createBrownDwarfTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
+import { createSunTexture, createBrownDwarfTexture, createNeutronStarTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
 import { createExtractorGfx } from "./extractorGfx";
 import type { PlanetLayout } from "../game/planetGen";
 
@@ -268,9 +268,12 @@ export function SolarSystem() {
       : null;
 
     const isBrownDwarf = system.starType === 'L';
-    const sunRadius  = system.size * 120 * (isBrownDwarf ? 0.5 : 1);
+    const isNeutronStar = system.starType === 'N';
+    const sunRadius  = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
     const sunTexture = isBrownDwarf
       ? createBrownDwarfTexture(system.seed)
+      : isNeutronStar
+      ? createNeutronStarTexture(system.seed)
       : createSunTexture(system.color);
     const sunSprite  = new Sprite(sunTexture);
     sunSprite.anchor.set(0.5);
@@ -280,11 +283,11 @@ export function SolarSystem() {
 
     const nebulaSprite  = createNebulaSprite(system.color, sunRadius);
     const nebulaTexture = nebulaSprite.texture;
-    const coronaContainer = createCorona(system.seed, system.color, sunRadius);
+    const coronaContainer = isNeutronStar ? null : createCorona(system.seed, system.color, sunRadius);
     systemContainer.addChildAt(nebulaSprite, 0);
     systemContainer.addChildAt(systemGfx, 1);
     if (asteroidBelt) systemContainer.addChildAt(asteroidBelt, 2);
-    systemContainer.addChild(coronaContainer);
+    if (coronaContainer) systemContainer.addChild(coronaContainer);
     systemContainer.addChild(sunSprite);
     world.addChildAt(systemContainer, 0);
 
@@ -293,8 +296,10 @@ export function SolarSystem() {
       const dt = ticker.deltaMS / 1000;
       elapsed += dt;
       sunSprite.scale.set(sunBaseScale * (1 + Math.sin(elapsed * 0.9) * 0.07));
-      coronaContainer.rotation += 0.018 * dt;
-      coronaContainer.alpha = 0.8 + 0.2 * Math.sin(elapsed * 0.55);
+      if (coronaContainer) {
+        coronaContainer.rotation += 0.018 * dt;
+        coronaContainer.alpha = 0.8 + 0.2 * Math.sin(elapsed * 0.55);
+      }
       nebulaSprite.alpha    = 0.65 + 0.15 * Math.sin(elapsed * 0.22);
       if (asteroidBelt) asteroidBelt.rotation += 0.025 * dt;
       for (const p of planets) {

@@ -129,9 +129,11 @@ const LOGISTICS_B_DESCS = [
 
 // ── Components ────────────────────────────────────────────────────────────────
 
+const PATH_MAX = UPGRADE_POOL - 1; // each path caps at 4; shared pool caps at UPGRADE_POOL
+
 interface PathProps {
   level: number;
-  maxLevel: number; // UPGRADE_POOL - otherLevel for shared-pool paths
+  maxLevel: number; // min(PATH_MAX, UPGRADE_POOL - otherLevel)
   names: string[];
   descs: string[];
   stat: (level: number) => string;
@@ -168,7 +170,7 @@ function UpgradeSection({ title, pool, pathA, pathB }: SectionProps) {
           <div className="ship-upgrade-subcell ship-upgrade-subcell--current">
             <div className="ship-upgrade-cell-name">
               {pathA.names[pathA.level]}
-              <span className="ship-upgrade-level-count">{pathA.level}/{UPGRADE_POOL}</span>
+              <span className="ship-upgrade-level-count">{pathA.level}/{PATH_MAX}</span>
             </div>
             <div className="ship-upgrade-cell-stat">{pathA.stat(pathA.level)}</div>
             <div className="ship-upgrade-cell-desc">{pathA.descs[pathA.level]}</div>
@@ -176,7 +178,7 @@ function UpgradeSection({ title, pool, pathA, pathB }: SectionProps) {
           <div className="ship-upgrade-subcell ship-upgrade-subcell--current">
             <div className="ship-upgrade-cell-name">
               {pathB.names[pathB.level]}
-              <span className="ship-upgrade-level-count">{pathB.level}/{UPGRADE_POOL}</span>
+              <span className="ship-upgrade-level-count">{pathB.level}/{PATH_MAX}</span>
             </div>
             <div className="ship-upgrade-cell-stat">{pathB.stat(pathB.level)}</div>
             <div className="ship-upgrade-cell-desc">{pathB.descs[pathB.level]}</div>
@@ -260,14 +262,14 @@ function ShipUpgradePanelInner() {
   const upgradeLogisticsA = useUIStore((s) => s.upgradeLogisticsA);
   const upgradeLogisticsB = useUIStore((s) => s.upgradeLogisticsB);
 
-  const storageACost = UPGRADE_COSTS.storageA[storageA] ?? 0;
-  const storageBCost = UPGRADE_COSTS.storageB[storageB] ?? 0;
-  const driveACost = UPGRADE_COSTS.driveA[driveA] ?? 0;
-  const driveBCost = UPGRADE_COSTS.driveB[driveB] ?? 0;
-  const weaponACost = UPGRADE_COSTS.weaponA[weaponA] ?? 0;
-  const weaponBCost = UPGRADE_COSTS.weaponB[weaponB] ?? 0;
-  const logisticsACost = UPGRADE_COSTS.logisticsA[logisticsA] ?? 0;
-  const logisticsBCost = UPGRADE_COSTS.logisticsB[logisticsB] ?? 0;
+  const storageACost = UPGRADE_COSTS.storageA[storageA] ?? Infinity;
+  const storageBCost = UPGRADE_COSTS.storageB[storageB] ?? Infinity;
+  const driveACost = UPGRADE_COSTS.driveA[driveA] ?? Infinity;
+  const driveBCost = UPGRADE_COSTS.driveB[driveB] ?? Infinity;
+  const weaponACost = UPGRADE_COSTS.weaponA[weaponA] ?? Infinity;
+  const weaponBCost = UPGRADE_COSTS.weaponB[weaponB] ?? Infinity;
+  const logisticsACost = UPGRADE_COSTS.logisticsA[logisticsA] ?? Infinity;
+  const logisticsBCost = UPGRADE_COSTS.logisticsB[logisticsB] ?? Infinity;
 
   return createPortal(
     <div className="ship-upgrade-overlay" onClick={toggle}>
@@ -287,7 +289,7 @@ function ShipUpgradePanelInner() {
             pool={storageA + storageB}
             pathA={{
               level: storageA,
-              maxLevel: UPGRADE_POOL - storageB,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - storageB),
               names: STORAGE_A_NAMES,
               descs: STORAGE_A_DESCS,
               stat: (lvl) => `${computeStorageCap(lvl)} / resource`,
@@ -298,7 +300,7 @@ function ShipUpgradePanelInner() {
             }}
             pathB={{
               level: storageB,
-              maxLevel: UPGRADE_POOL - storageA,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - storageA),
               names: STORAGE_B_NAMES,
               descs: STORAGE_B_DESCS,
               stat: (lvl) => `${EXTRACTOR_HOLD_CAPS[lvl]} / station`,
@@ -314,7 +316,7 @@ function ShipUpgradePanelInner() {
             pool={driveA + driveB}
             pathA={{
               level: driveA,
-              maxLevel: UPGRADE_POOL - driveB,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - driveB),
               names: DRIVE_A_NAMES,
               descs: DRIVE_A_DESCS,
               stat: (lvl) => { const pct = Math.round((1 - computeDriveMultiplier(lvl, driveB)[0]) * 100); return pct === 0 ? 'Stock efficiency' : `-${pct}% fuel cost`; },
@@ -325,7 +327,7 @@ function ShipUpgradePanelInner() {
             }}
             pathB={{
               level: driveB,
-              maxLevel: UPGRADE_POOL - driveA,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - driveA),
               names: DRIVE_B_NAMES,
               descs: DRIVE_B_DESCS,
               stat: (lvl) => { const pct = Math.round((1 - computeDriveMultiplier(driveA, lvl)[1]) * 100); return pct === 0 ? 'Stock efficiency' : `-${pct}% fuel cost`; },
@@ -341,7 +343,7 @@ function ShipUpgradePanelInner() {
             pool={weaponA + weaponB}
             pathA={{
               level: weaponA,
-              maxLevel: UPGRADE_POOL - weaponB,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - weaponB),
               names: WEAPON_A_NAMES,
               descs: WEAPON_A_DESCS,
               stat: (lvl) => `${computeWeaponCap(lvl, weaponB)} rounds`,
@@ -352,7 +354,7 @@ function ShipUpgradePanelInner() {
             }}
             pathB={{
               level: weaponB,
-              maxLevel: UPGRADE_POOL - weaponA,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - weaponA),
               names: WEAPON_B_NAMES,
               descs: WEAPON_B_DESCS,
               stat: (lvl) => `${computeWeaponCap(weaponA, lvl)} rounds`,
@@ -368,7 +370,7 @@ function ShipUpgradePanelInner() {
             pool={logisticsA + logisticsB}
             pathA={{
               level: logisticsA,
-              maxLevel: UPGRADE_POOL - logisticsB,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - logisticsB),
               names: LOGISTICS_A_NAMES,
               descs: LOGISTICS_A_DESCS,
               stat: (lvl) => `${computeLogisticsCap(lvl)} station cap`,
@@ -379,7 +381,7 @@ function ShipUpgradePanelInner() {
             }}
             pathB={{
               level: logisticsB,
-              maxLevel: UPGRADE_POOL - logisticsA,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - logisticsA),
               names: LOGISTICS_B_NAMES,
               descs: LOGISTICS_B_DESCS,
               stat: (lvl) => `${LOGISTICS_B_RATE[lvl]}× collection rate`,
