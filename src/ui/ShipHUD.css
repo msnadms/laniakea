@@ -41,7 +41,7 @@
   color: #2a6a8a;
   text-transform: uppercase;
   white-space: nowrap;
-  width: 148px;
+  width: 120px;
   flex-shrink: 0;
 }
 
@@ -91,11 +91,28 @@
   flex: 1;
 }
 
+.hud-cargo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-left: 15px;
+}
+
+.hud-cargo-title {
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  color: rgba(0, 180, 220, 0.4);
+  text-transform: uppercase;
+  margin-top: -20px;
+  margin-bottom: 6px;
+}
+
 .hud-cargo-bars {
   display: flex;
   gap: 20px;
   align-items: stretch;
-  margin-left: 15px;
+  flex: 1;
 }
 
 .hud-vcargo-col {

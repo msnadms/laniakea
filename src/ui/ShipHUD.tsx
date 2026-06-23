@@ -11,6 +11,10 @@ import { ShipUpgradePanel } from './ShipUpgradePanel';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
 
+function fmt(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+}
+
 const TrapezoidOutline = ({ points = "1,0.1 0.39,0.1 0.05,1 0.65,1" }: { points?: string }) => (
   <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
     <polygon
@@ -42,7 +46,7 @@ const VerticalCargoBar = memo(function VerticalCargoBar({ label, value, max }: {
   const low = pct < 25;
   return (
     <div className="hud-vcargo-col">
-      <span className="hud-vcargo-value">{value}</span>
+      <span className="hud-vcargo-value">{fmt(value)}</span>
       <div className="hud-vbar-track">
         <div
           className={`hud-vbar-fill${low ? ' hud-vbar-low' : ''}`}
@@ -228,6 +232,8 @@ export function ShipHUD() {
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
   const alloys = useUIStore((s) => s.alloys);
   const nutrients = useUIStore((s) => s.nutrients);
+  const metallicHydrogen = useUIStore((s) => s.metallicHydrogen);
+  const neutronStarMatter = useUIStore((s) => s.neutronStarMatter);
   const hudFlash = useUIStore((s) => s.hudFlash);
   const storageA = useUIStore((s) => s.storageA);
   const weaponA = useUIStore((s) => s.weaponA);
@@ -282,13 +288,13 @@ export function ShipHUD() {
           <div className="hud-row">
             <span className="hud-label">EXOTIC MATTER</span>
             <StatBar value={exoticMatter} max={storageCap} />
-            <span className="hud-value">{exoticMatter} <span className="hud-value-dim">/ {storageCap}</span></span>
+            <span className="hud-value">{fmt(exoticMatter)} <span className="hud-value-dim">/ {fmt(storageCap)}</span></span>
           </div>
 
           <div className="hud-row">
             <span className="hud-label">HELIUM-3 RESERVES</span>
             <StatBar value={helium3Reserves} max={storageCap} />
-            <span className="hud-value">{helium3Reserves} <span className="hud-value-dim">/ {storageCap}</span></span>
+            <span className="hud-value">{fmt(helium3Reserves)} <span className="hud-value-dim">/ {fmt(storageCap)}</span></span>
           </div>
 
           <div className="hud-row">
@@ -300,13 +306,18 @@ export function ShipHUD() {
           <div className="hud-row">
             <span className="hud-label">RAILGUN RESERVES</span>
             <StatBar value={railgunAmmo} max={weaponCap} />
-            <span className="hud-value">{railgunAmmo} <span className="hud-value-dim">/ {weaponCap}</span></span>
+            <span className="hud-value">{fmt(railgunAmmo)} <span className="hud-value-dim">/ {fmt(weaponCap)}</span></span>
           </div>
         </div>
 
-        <div className="hud-cargo-bars">
-          <VerticalCargoBar label="ALLOYS" value={alloys} max={storageCap} />
-          <VerticalCargoBar label="NUTR" value={nutrients} max={storageCap} />
+        <div className="hud-cargo-section">
+          <span className="hud-cargo-title">CARGO</span>
+          <div className="hud-cargo-bars">
+            <VerticalCargoBar label="ALLOYS" value={alloys} max={storageCap} />
+            <VerticalCargoBar label="NUTR" value={nutrients} max={storageCap} />
+            <VerticalCargoBar label="MH" value={metallicHydrogen} max={storageCap} />
+            <VerticalCargoBar label="NSM" value={neutronStarMatter} max={storageCap} />
+          </div>
         </div>
       </div>
     </div>

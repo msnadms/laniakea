@@ -4,10 +4,14 @@ import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
+import { loadAllSettlements } from '../firebase/settlements';
+import { loadQuests } from '../firebase/quests';
 import { useUIStore, computeStorageCap } from './uiStore';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
+import { useSettlementStore } from './settlementStore';
+import { useQuestStore } from './questStore';
 
 interface AuthState {
   user: User | null;
@@ -33,10 +37,12 @@ export const useAuthStore = create<AuthState>()(() => ({
 export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
-      const [settings, discoveries, extractors] = await Promise.all([
+      const [settings, discoveries, extractors, settlements, quests] = await Promise.all([
         initUserDoc(user),
         loadAllDiscoveries(user.uid),
         loadAllExtractors(user.uid),
+        loadAllSettlements(user.uid),
+        loadQuests(user.uid),
       ]);
       const cap = computeStorageCap(settings.storageA);
       useUIStore.setState({
@@ -50,6 +56,8 @@ export function initAuth(): () => void {
         helium3Reserves: Math.min(settings.helium3Reserves, cap),
         alloys: Math.min(settings.alloys, cap),
         nutrients: Math.min(settings.nutrients, cap),
+        metallicHydrogen: Math.min(settings.metallicHydrogen, cap),
+        neutronStarMatter: Math.min(settings.neutronMatter, cap),
         storageA: settings.storageA,
         storageB: settings.storageB,
         driveA: settings.driveA,
@@ -60,7 +68,9 @@ export function initAuth(): () => void {
         logisticsB: settings.logisticsB,
       });
       useExtractorStore.getState().restoreExtractors(extractors);
+      useSettlementStore.getState().restoreSettlements(settlements);
       useCodexStore.getState().setAll(discoveries);
+      useQuestStore.getState().restoreQuests(quests);
 
       const visitedSystems: Record<number, number[]> = {};
       const visitedGalaxies: Record<number, number[]> = {};

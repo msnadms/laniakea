@@ -9,6 +9,7 @@ import { AuthButton } from './ui/AuthButton';
 import { ShipHUD } from './ui/ShipHUD';
 import { PlanetPanel } from './ui/PlanetPanel';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
+import { useQuestPersist } from './hooks/useQuestPersist';
 import { initAuth } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
 import { BootSequence } from './ui/BootSequence';
@@ -40,6 +41,7 @@ function AddressBar() {
 
 export default function App() {
   useSettingsPersist();
+  useQuestPersist();
   useEffect(() => initAuth(), []);
   const view = useUIStore((s) => s.view);
   const showHUD = useUIStore((s) => s.showHUD);
@@ -60,7 +62,7 @@ export default function App() {
   return (
     <div className="app">
       <PixiApp />
-      {showBoot && <BootSequence onComplete={handleBootComplete} />}
+      {showBoot && <BootSequence onComplete={handleBootComplete} isFirstVisit={isFirstVisit} />}
       <InfoPanel onOpenChange={setInfoOpen} openRequest={infoPanelOpenReq} />
       <div className="top-left">
         <ConfigPanel hidden={infoOpen} />

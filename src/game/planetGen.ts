@@ -173,20 +173,28 @@ export const RESOURCE_MAX_RATE: Record<Resource['type'], number> = {
 };
 
 function resourcesForZone(rng: () => number, zone: ZoneType, isBrownDwarf = false, isNeutronStar = false): Resource[] | null {
-  if (rng() > 0.1) return null;
   switch (zone) {
     case 'hot':
+      if (rng() > 0.1) return null;
       if (isNeutronStar) return [{ type: 'neutronStarMatter', count: rcRoll(RC.nsmHot, rng) }];
       return [{ type: 'alloys', count: rcRoll(RC.hotAlloys, rng) }];
-    case 'marginal': return [{ type: 'alloys',    count: rcRoll(RC.marginalAlloys, rng) }];
-    case 'habitable': return [
-      { type: 'nutrients', count: rcRoll(RC.habitableNutrients, rng) },
-      { type: 'alloys',    count: rcRoll(RC.habitableAlloys, rng) },
-    ];
-    case 'gas': return [{ type: 'helium-3', count: rcRoll(RC.gasHelium3, rng) }];
-    case 'ice': return isBrownDwarf
-      ? [{ type: 'exotic',    count: rcRoll(RC.bdExotic, rng) }]
-      : [{ type: 'metallicHydrogen', count: rcRoll(RC.iceHydrogen, rng) }];
+    case 'marginal':
+      if (rng() > 0.1) return null;
+      return [{ type: 'alloys', count: rcRoll(RC.marginalAlloys, rng) }];
+    case 'habitable':
+      if (rng() > 0.5) return null;
+      return [
+        { type: 'nutrients', count: rcRoll(RC.habitableNutrients, rng) },
+        { type: 'alloys',    count: rcRoll(RC.habitableAlloys, rng) },
+      ];
+    case 'gas':
+      if (rng() > 0.1) return null;
+      return [{ type: 'helium-3', count: rcRoll(RC.gasHelium3, rng) }];
+    case 'ice':
+      if (rng() > 0.1) return null;
+      return isBrownDwarf
+        ? [{ type: 'exotic',    count: rcRoll(RC.bdExotic, rng) }]
+        : [{ type: 'metallicHydrogen', count: rcRoll(RC.iceHydrogen, rng) }];
   }
 }
 
@@ -207,8 +215,11 @@ export function generatePlanets(layout: SystemLayout): Planet[] {
   const rng = createRng(layout.seed);
   const nameRng = createRng((layout.seed ^ 0xb1a2c3d4) >>> 0);
 
+  const usedNames = new Set<string>();
   return layout.planets.map((planet) => {
-    const planetName = makePlanetName(nameRng);
+    let planetName = makePlanetName(nameRng);
+    while (usedNames.has(planetName)) planetName = makePlanetName(nameRng);
+    usedNames.add(planetName);
     const moons: Moon[] = planet.moons.map((_, m) => ({
       name: `${planetName} ${ROMAN[m]}`,
       resources: moonResourcesForZone(rng, planet.zone),

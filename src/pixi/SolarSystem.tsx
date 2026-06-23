@@ -6,13 +6,15 @@ import { useEffect, useRef } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useUIStore } from "../store/uiStore";
 import { useExtractorStore } from "../store/extractorStore";
-import { makeExtractorKey } from "../game/types";
+import { useSettlementStore } from "../store/settlementStore";
+import { makeExtractorKey, makeSettlementKey } from "../game/types";
 import { BackgroundStars } from "./BackgroundStars";
 import { ScaleBar } from "./ScaleBar";
 import { generateSystemLayout, ORBITAL_K, MOON_K } from "../game/planetGen";
 import { createRng } from "../game/galaxyGen";
 import { createSunTexture, createBrownDwarfTexture, createNeutronStarTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
 import { createExtractorGfx } from "./extractorGfx";
+import { createSettlementGfx } from "./settlementGfx";
 import type { PlanetLayout } from "../game/planetGen";
 
 type MoonState   = { gfx: Sprite; angle: number; speed: number; dist: number };
@@ -129,6 +131,7 @@ export function SolarSystem() {
   const orbitGfxRef = useRef<Graphics[]>([]);
   const { camera } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
   const extractorGfxRef = useRef<Map<string, Graphics>>(new Map());
+  const settlementGfxRef = useRef<Map<string, Graphics>>(new Map());
 
   useEffect(() => {
     for (const gfx of orbitGfxRef.current) gfx.visible = showOrbitRings;
@@ -230,6 +233,13 @@ export function SolarSystem() {
           planetContainer.addChild(stationGfx);
           extractorGfxRef.current.set(key, stationGfx);
         }
+
+        // render existing settlement if already placed (habitable only)
+        if (pl.zone === 'habitable' && useSettlementStore.getState().settlements[key]) {
+          const factoryGfx = createSettlementGfx(pr);
+          planetContainer.addChild(factoryGfx);
+          settlementGfxRef.current.set(key, factoryGfx);
+        }
       }
 
       systemContainer.addChild(planetContainer);
@@ -254,6 +264,28 @@ export function SolarSystem() {
           } else if (!hasExtractor && existing) {
             existing.destroy();
             extractorGfxRef.current.delete(key);
+          }
+        }
+      },
+    );
+
+    const unsubSettlements = useSettlementStore.subscribe(
+      (state) => Object.keys(state.settlements).sort().join('\0'),
+      () => {
+        const { settlements } = useSettlementStore.getState();
+        for (let ring = 0; ring < generatedPlanets.length; ring++) {
+          if (layout.planets[ring].zone !== 'habitable') continue;
+          const key = makeSettlementKey(galaxySeed, system.id, generatedPlanets[ring].name);
+          const hasSettlement = !!settlements[key];
+          const existing = settlementGfxRef.current.get(key);
+          if (hasSettlement && !existing) {
+            const pr = layout.planets[ring].radius;
+            const factoryGfx = createSettlementGfx(pr);
+            planets[ring].container.addChild(factoryGfx);
+            settlementGfxRef.current.set(key, factoryGfx);
+          } else if (!hasSettlement && existing) {
+            existing.destroy();
+            settlementGfxRef.current.delete(key);
           }
         }
       },
@@ -320,7 +352,9 @@ export function SolarSystem() {
 
     return () => {
       unsubExtractors();
+      unsubSettlements();
       extractorGfxRef.current.clear();
+      settlementGfxRef.current.clear();
       orbitGfxRef.current = [];
       Ticker.shared.remove(onTick);
       world.removeChild(systemContainer);

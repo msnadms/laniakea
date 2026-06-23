@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useQuestStore } from '../store/questStore';
+import { QUESTS } from '../game/quests';
 import './InfoPanel.css';
 
-type SubviewKey = 'origins' | 'star-types' | 'phenomena' | 'species' | 'history' | 'artifacts';
+type SubviewKey = 'origins' | 'star-types' | 'phenomena' | 'species' | 'quests' | 'artifacts';
 
 interface StarTypeEntry {
   key: string;
@@ -16,11 +18,11 @@ interface StarTypeEntry {
 }
 
 const SUBVIEWS: { key: SubviewKey; label: string; icon: string }[] = [
+  { key: 'quests',     label: 'Quests',   icon: '◉' },
   { key: 'origins',    label: 'Origins',  icon: '◎' },
   { key: 'star-types', label: 'Stars',    icon: '★' },
   { key: 'phenomena',  label: 'Phenom',   icon: '⌬' },
   { key: 'species',    label: 'Species',  icon: '⬡' },
-  { key: 'history',    label: 'History',  icon: '◷' },
   { key: 'artifacts',  label: 'Artifacts',icon: '⌖' },
 ];
 
@@ -246,22 +248,34 @@ function SpeciesView() {
   );
 }
 
-function HistoryView() {
-  const entries = [
-    { time: 'T+000:00:00', msg: 'Exploration protocol initialized.' },
-    { time: 'T+000:00:01', msg: 'Alcubierre drive calibration complete.' },
-    { time: 'T+000:00:02', msg: 'Supercluster coordinates locked.' },
-    { time: 'T+000:00:03', msg: 'Navigation console online.' },
-  ];
+function QuestsView() {
+  const completed = useQuestStore((s) => s.completed);
+  const active = QUESTS.filter((q) => !completed[q.id]);
+  const done = QUESTS.filter((q) => completed[q.id]);
+
   return (
     <div className="info-section">
-      <div className="info-section-title">Expedition Log</div>
-      {entries.map((e, i) => (
-        <div key={i} className="info-log-entry">
-          <span className="info-log-time">{e.time}</span>
-          <span className="info-log-msg">{e.msg}</span>
+      <div className="info-section-title">Mission Objectives</div>
+      {active.map((q) => (
+        <div key={q.id} className="info-quest-entry">
+          <div className="info-quest-title">{q.title}</div>
+          <div className="info-quest-desc">{q.description}</div>
         </div>
       ))}
+      {done.length > 0 && (
+        <>
+          <div className="info-section-title info-section-title--completed">Completed</div>
+          {done.map((q) => (
+            <div key={q.id} className="info-quest-entry info-quest-entry--done">
+              <div className="info-quest-title"><span className="info-quest-check">✓</span> {q.title}</div>
+              <div className="info-quest-desc">{q.description}</div>
+            </div>
+          ))}
+        </>
+      )}
+      {active.length === 0 && done.length === 0 && (
+        <div className="info-empty">No objectives assigned</div>
+      )}
     </div>
   );
 }
@@ -281,7 +295,7 @@ function SubviewContent({ subview }: { subview: SubviewKey }) {
     case 'star-types': return <StarTypesView />;
     case 'phenomena':  return <PhenomenaView />;
     case 'species':    return <SpeciesView />;
-    case 'history':    return <HistoryView />;
+    case 'quests':     return <QuestsView />;
     case 'artifacts':  return <ArtifactsView />;
   }
 }

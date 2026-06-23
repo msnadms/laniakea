@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AddressComponent, AddressComponentType, Resource } from '../game/types';
+import { useQuestStore } from './questStore';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
@@ -70,6 +71,8 @@ interface UIState {
   consumeExoticMatter: (amount: number) => void;
   consumeHelium3: (amount: number) => void;
   spendAlloys: (amount: number) => void;
+  spendNutrients: (amount: number) => void;
+  spendMetallicHydrogen: (amount: number) => void;
   consumeResources: (exotic: number, helium: number) => void;
   refillResources: () => void;
   infiniteExplore: boolean;
@@ -130,8 +133,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   metallicHydrogen: 0,
   neutronStarMatter: 0,
   addCargo: (type, amount) => set((s) => {
+    if (type === 'exotic') {
+      useQuestStore.getState().completeQuest('first_exotic');
+      return { exoticMatter: Math.min(computeStorageCap(s.storageA), s.exoticMatter + amount) };
+    }
     const cap = computeStorageCap(s.storageA);
-    if (type === 'exotic') return { exoticMatter: Math.min(cap, s.exoticMatter + amount) };
     if (type === 'helium-3') return { helium3Reserves: Math.min(cap, s.helium3Reserves + amount) };
     if (type === 'alloys') return { alloys: Math.min(cap, s.alloys + amount) };
     if (type === 'nutrients') return { nutrients: Math.min(cap, s.nutrients + amount) };
@@ -149,13 +155,15 @@ export const useUIStore = create<UIState>((set, get) => ({
   consumeExoticMatter: (amount) => set((s) => ({ exoticMatter: Math.max(0, s.exoticMatter - amount) })),
   consumeHelium3: (amount) => set((s) => ({ helium3Reserves: Math.max(0, s.helium3Reserves - amount) })),
   spendAlloys: (amount) => set((s) => ({ alloys: Math.max(0, s.alloys - amount) })),
+  spendNutrients: (amount) => set((s) => ({ nutrients: Math.max(0, s.nutrients - amount) })),
+  spendMetallicHydrogen: (amount) => set((s) => ({ metallicHydrogen: Math.max(0, s.metallicHydrogen - amount) })),
   consumeResources: (exotic, helium) => set((s) => ({
     exoticMatter: Math.max(0, s.exoticMatter - exotic),
     helium3Reserves: Math.max(0, s.helium3Reserves - helium),
   })),
   refillResources: () => set((s) => {
     const cap = computeStorageCap(s.storageA);
-    return { exoticMatter: cap, helium3Reserves: cap, alloys: cap, nutrients: cap };
+    return { exoticMatter: cap, helium3Reserves: cap, alloys: cap, nutrients: cap, metallicHydrogen: cap, neutronStarMatter: cap };
   }),
   infiniteExplore: false,
   toggleInfiniteExplore: () => set((s) => ({ infiniteExplore: !s.infiniteExplore })),
@@ -185,6 +193,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.storageA[storageA];
     if (alloys < cost) return;
     set((s) => ({ storageA: s.storageA + 1, alloys: s.alloys - cost }));
+    useQuestStore.getState().completeQuest('upgrade_storage');
   },
   upgradeStorageB: () => {
     const { storageA, storageB, alloys } = get();
@@ -192,6 +201,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.storageB[storageB];
     if (alloys < cost) return;
     set((s) => ({ storageB: s.storageB + 1, alloys: s.alloys - cost }));
+    useQuestStore.getState().completeQuest('upgrade_storage');
   },
   upgradeDriveA: () => {
     const { driveA, driveB, exoticMatter } = get();
@@ -199,6 +209,9 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.driveA[driveA];
     if (exoticMatter < cost) return;
     set((s) => ({ driveA: s.driveA + 1, exoticMatter: s.exoticMatter - cost }));
+    const s = get();
+    useQuestStore.getState().completeQuest('upgrade_drive');
+    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeDriveB: () => {
     const { driveA, driveB, helium3Reserves } = get();
@@ -206,6 +219,9 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.driveB[driveB];
     if (helium3Reserves < cost) return;
     set((s) => ({ driveB: s.driveB + 1, helium3Reserves: s.helium3Reserves - cost }));
+    const s = get();
+    useQuestStore.getState().completeQuest('upgrade_drive');
+    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeWeaponA: () => {
     const { weaponA, weaponB, alloys } = get();
@@ -227,6 +243,8 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.logisticsA[logisticsA];
     if (alloys < cost) return;
     set((s) => ({ logisticsA: s.logisticsA + 1, alloys: s.alloys - cost }));
+    const s = get();
+    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeLogisticsB: () => {
     const { logisticsA, logisticsB, alloys } = get();
@@ -234,5 +252,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.logisticsB[logisticsB];
     if (alloys < cost) return;
     set((s) => ({ logisticsB: s.logisticsB + 1, alloys: s.alloys - cost }));
+    const s = get();
+    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
 }));

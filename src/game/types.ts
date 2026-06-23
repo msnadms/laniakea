@@ -125,6 +125,20 @@ export function makeExtractorKey(galaxySeed: number, systemId: number, planetNam
   return `${galaxySeed}|${systemId}|${planetName}`;
 }
 
+export type SettlementKey = string;
+
+export interface Settlement {
+  key: SettlementKey;
+  galaxySeed: number;
+  systemId: number;
+  planetName: string;
+  settledAt: number;
+}
+
+export function makeSettlementKey(galaxySeed: number, systemId: number, planetName: string): SettlementKey {
+  return `${galaxySeed}|${systemId}|${planetName}`;
+}
+
 export const RESOURCE_LABELS: Record<Resource['type'], string> = {
   exotic: 'Exotic Matter',
   alloys: 'Alloys',

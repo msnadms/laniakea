@@ -3,6 +3,7 @@ import type { Galaxy, StarSystem, SuperclusterData } from '../game/types';
 import { generateGalaxy } from '../game/galaxyGen';
 import { generateSupercluster } from '../game/superclusters';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
+import { useQuestStore } from './questStore';
 
 interface GameState {
   galaxy: Galaxy;
@@ -51,15 +52,28 @@ export const useGameStore = create<GameState>((set) => ({
     };
   }),
   regenerateSupercluster: (seed) => set((state) => {
+    if (seed !== undefined && seed !== state.supercluster.seed) {
+      useQuestStore.getState().completeQuest('new_supercluster');
+    }
     const sc = generateSupercluster(seed);
     return {
       supercluster: applyVisitedDots(sc, state.visitedGalaxyBySuperclusterSeed[sc.seed]),
     };
   }),
-  setSystem: (system) => set({
-    system: system ? { ...system, planets: generatePlanets(generateSystemLayout(system.seed, system.starType)) } : null,
-  }),
-  markDotVisited: (seed) => set((state) => { 
+  setSystem: (system) => {
+    if (system) {
+      const layout = generateSystemLayout(system.seed, system.starType);
+      const planets = generatePlanets(layout);
+      const q = useQuestStore.getState();
+      q.completeQuest('first_system');
+      if (layout.planets.some((p) => p.zone === 'habitable')) q.completeQuest('first_habitable');
+      set({ system: { ...system, planets } });
+    } else {
+      set({ system: null });
+    }
+  },
+  markDotVisited: (seed) => set((state) => {
+    useQuestStore.getState().completeQuest('first_galaxy');
     const scSeed = state.supercluster.seed;
     const existing = state.visitedGalaxyBySuperclusterSeed[scSeed];
     const alreadyVisited = existing?.has(seed);

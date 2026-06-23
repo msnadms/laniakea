@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Extractor } from '../game/types';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap, computeStorageCap } from './uiStore';
+import { useQuestStore } from './questStore';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / 1_200_000; // 1 unit per 20 minutes
+export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
 export const AUTO_DELIVERY_COST_PER_STATION = 200;
 
 export function peekAccumulated(extractor: Extractor): number {
@@ -30,6 +31,7 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     const maxStations = computeLogisticsCap(useUIStore.getState().logisticsA);
     if (Object.keys(get().extractors).length >= maxStations) return;
     set((s) => ({ extractors: { ...s.extractors, [extractor.key]: extractor } }));
+    useQuestStore.getState().completeQuest('first_extractor');
   },
 
   collectExtractor: (key, maxAmount?) => {

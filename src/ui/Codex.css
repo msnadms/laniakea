@@ -388,6 +388,16 @@
   flex-shrink: 0;
 }
 
+.codex-settlement-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: #44cc77;
+  box-shadow: 0 0 5px rgba(68, 204, 119, 0.75);
+  flex-shrink: 0;
+}
+
 .codex-planet-name {
   color: #2a6a8a;
   font-size: 10px;

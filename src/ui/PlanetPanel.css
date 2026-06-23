@@ -254,3 +254,49 @@
 .tier-badge.tier-C { background: rgba(150, 80, 220, 0.10);  color: #9966cc; border: 1px solid rgba(150, 80, 220, 0.5); }
 .tier-badge.tier-D { background: rgba(80, 110, 140, 0.10);  color: #668899; border: 1px solid rgba(80, 110, 140, 0.4); }
 .tier-badge.tier-F { background: rgba(40,  60,  80, 0.10);  color: #446677; border: 1px solid rgba(40, 60, 80, 0.35); }
+
+/* Settlement styles */
+.planet-panel-settlement {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.planet-panel-settlement-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: #44aa66;
+  text-transform: uppercase;
+}
+
+.planet-panel-settlement-since {
+  font-size: 9px;
+  color: #2a6a4a;
+  letter-spacing: 0.06em;
+}
+
+.planet-panel-settle-section {
+  margin-top: 4px;
+}
+
+.planet-panel-btn--settle {
+  background: rgba(30, 100, 50, 0.14);
+  border-color: rgba(68, 170, 102, 0.5);
+  color: #44cc77;
+}
+
+.planet-panel-btn--settle:hover:not(:disabled) {
+  background: rgba(30, 100, 50, 0.28);
+  box-shadow: 0 0 10px rgba(68, 170, 102, 0.3);
+}
+
+.planet-panel-btn--abandon {
+  background: rgba(180, 40, 40, 0.08);
+  border-color: rgba(200, 60, 60, 0.35);
+  color: #cc4444;
+}
+
+.planet-panel-btn--abandon:hover:not(:disabled) {
+  background: rgba(180, 40, 40, 0.2);
+  box-shadow: 0 0 10px rgba(200, 60, 60, 0.25);
+}

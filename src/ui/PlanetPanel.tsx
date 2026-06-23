@@ -5,8 +5,10 @@ import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import { EXTRACTOR_HOLD_CAPS, computeStorageCap, computeLogisticsCap, UPGRADE_POOL } from '../store/uiStore';
-import { makeExtractorKey, RESOURCE_LABELS } from '../game/types';
-import type { Extractor, Resource } from '../game/types';
+import { makeExtractorKey, makeSettlementKey, RESOURCE_LABELS } from '../game/types';
+import type { Extractor, Resource, Settlement } from '../game/types';
+import { useSettlementStore } from '../store/settlementStore';
+import { saveSettlement, deleteSettlement } from '../firebase/settlements';
 import { RESOURCE_MAX_RATE } from '../game/planetGen';
 import { saveExtractor, updateExtractorCollected, deleteExtractor } from '../firebase/extractors';
 import './PlanetPanel.css';
@@ -43,15 +45,19 @@ export function PlanetPanel() {
   const setSelectedPlanet = useUIStore((s) => s.setSelectedPlanet);
   const addCargo = useUIStore((s) => s.addCargo);
   const spendAlloys = useUIStore((s) => s.spendAlloys);
+  const consumeHelium3 = useUIStore((s) => s.consumeHelium3);
   const alloys = useUIStore((s) => s.alloys);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
   const nutrients = useUIStore((s) => s.nutrients);
-  const hydrogen = 0;
+  const metallicHydrogen = useUIStore((s) => s.metallicHydrogen);
   const neutronMatter = 0;
   const system = useGameStore((s) => s.system);
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
   const extractor = useExtractorStore((s) => selectedKey ? s.extractors[selectedKey] : undefined);
+  const settlement = useSettlementStore((s) => selectedKey ? s.settlements[selectedKey] : undefined);
+  const spendNutrients = useUIStore((s) => s.spendNutrients);
+  const spendMetallicHydrogen = useUIStore((s) => s.spendMetallicHydrogen);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
   const maxStations = computeLogisticsCap(logisticsA);
@@ -101,13 +107,17 @@ export function PlanetPanel() {
 
   const STATION_COST = 200;
   const STATION_REFUND = 50;
+  const SETTLE_COST = { alloys: 2000, helium3: 500, nutrients: 2000, metallicHydrogen: 500 } as const;
+  const canAffordSettle = planet?.type === 'habitable' && !settlement
+    && alloys >= SETTLE_COST.alloys && helium3Reserves >= SETTLE_COST.helium3
+    && nutrients >= SETTLE_COST.nutrients && metallicHydrogen >= SETTLE_COST.metallicHydrogen;
 
   const currentCargo: Record<Resource['type'], number> = {
     exotic: exoticMatter,
     'helium-3': helium3Reserves,
     alloys,
     nutrients,
-    metallicHydrogen: hydrogen,
+    metallicHydrogen,
     neutronStarMatter: neutronMatter
   };
   const cargoSpace = extractor ? Math.max(0, cap - currentCargo[extractor.resourceType]) : 0;
@@ -149,6 +159,31 @@ export function PlanetPanel() {
     removeExtractor(selectedKey);
     addCargo('alloys', STATION_REFUND);
     if (user) deleteExtractor(user.uid, selectedKey);
+  }
+
+  function handleSettle() {
+    if (!system || !planet || planet.type !== 'habitable') return;
+    if (!canAffordSettle) return;
+    spendAlloys(SETTLE_COST.alloys);
+    consumeHelium3(SETTLE_COST.helium3);
+    spendNutrients(SETTLE_COST.nutrients);
+    spendMetallicHydrogen(SETTLE_COST.metallicHydrogen);
+    const key = makeSettlementKey(galaxySeed, system.id, planet.name);
+    const newSettlement: Settlement = {
+      key,
+      galaxySeed,
+      systemId: system.id,
+      planetName: planet.name,
+      settledAt: Date.now(),
+    };
+    useSettlementStore.getState().placeSettlement(newSettlement);
+    if (user) saveSettlement(user.uid, newSettlement);
+  }
+
+  function handleAbandon() {
+    if (!selectedKey) return;
+    useSettlementStore.getState().removeSettlement(selectedKey);
+    if (user) deleteSettlement(user.uid, selectedKey);
   }
 
   return createPortal(
@@ -194,80 +229,134 @@ export function PlanetPanel() {
 
         <div className="planet-panel-divider" />
 
-        {!extractor ? (
-          atMax ? (
-            <button className="planet-panel-btn planet-panel-btn--dim" disabled>
-              Max stations reached ({maxStations})
-            </button>
-          ) : allResources.length === 1 ? (
-            allResources[0].type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL ? (
-              <button className="planet-panel-btn planet-panel-btn--dim" disabled>
-                Requires full logistics upgrade ({logisticsA + logisticsB}/{UPGRADE_POOL})
-              </button>
-            ) : (
-              <button
-                className={`planet-panel-btn${alloys < STATION_COST ? ' planet-panel-btn--dim' : ''}`}
-                onClick={() => handlePlace(allResources[0])}
-                disabled={alloys < STATION_COST}
-              >
-                {alloys < STATION_COST ? `Need ${STATION_COST} alloys` : `Place Mining Station (${STATION_COST} alloys)`}
-                {alloys >= STATION_COST && <TierBadge type={allResources[0].type} count={allResources[0].count} />}
-              </button>
-            )
-          ) : (
-            <>
-              <div className="planet-panel-section-label">
-                MINE WHICH RESOURCE? · {STATION_COST} alloys
+        {settlement ? (
+          <div className="planet-panel-settlement">
+            <div className="planet-panel-settlement-label">COLONY ACTIVE</div>
+            <span className="planet-panel-settlement-since">
+              Established {new Date(settlement.settledAt).toLocaleDateString()}
+            </span>
+            {extractor && (
+              <div className="planet-panel-extractor">
+                <div className="planet-panel-extractor-info">
+                  <div className="planet-panel-extractor-header">
+                    <span className="planet-panel-extractor-label">MINING STATION ACTIVE</span>
+                    <TierBadge type={extractor.resourceType} count={extractor.rate} />
+                  </div>
+                  <span className="planet-panel-extractor-resource">
+                    Harvesting: {RESOURCE_LABELS[extractor.resourceType]}
+                  </span>
+                  <span className="planet-panel-extractor-rate">+{extractor.rate} / hour · stores up to {EXTRACTOR_HOLD_CAPS[storageB]} · cargo cap {cap}</span>
+                </div>
+                <button
+                  className={`planet-panel-btn${collectable === 0 ? ' planet-panel-btn--dim' : ''}`}
+                  onClick={handleCollect}
+                  disabled={collectable === 0}
+                >
+                  {collectable > 0
+                    ? `Collect ${collectable} ${RESOURCE_LABELS[extractor.resourceType]}`
+                    : cargoSpace === 0 ? 'Cargo full' : '(nothing yet)'}
+                </button>
+                <button className="planet-panel-btn planet-panel-btn--dismantle" onClick={handleDismantle}>
+                  Dismantle Station (+{STATION_REFUND} alloys)
+                </button>
               </div>
-              <div className="planet-panel-resource-picker">
-                {allResources.map((r) => {
-                  const neutronLocked = r.type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL;
-                  return (
-                    <button
-                      key={r.type}
-                      className={`planet-panel-btn planet-panel-btn--pick${alloys < STATION_COST || neutronLocked ? ' planet-panel-btn--dim' : ''}`}
-                      onClick={() => handlePlace(r)}
-                      disabled={alloys < STATION_COST || neutronLocked}
-                    >
-                      <span className={`planet-panel-resource-dot res-${r.type}`} />
-                      {neutronLocked
-                        ? `${RESOURCE_LABELS[r.type]} (logistics ${logisticsA + logisticsB}/${UPGRADE_POOL})`
-                        : `${RESOURCE_LABELS[r.type]} (${r.count}/min)`}
-                      {!neutronLocked && <TierBadge type={r.type} count={r.count} />}
-                    </button>
-                  );
-                })}
-                {alloys < STATION_COST && (
-                  <span className="planet-panel-extractor-rate">Need {STATION_COST} alloys to build</span>
-                )}
-              </div>
-            </>
-          )
-        ) : (
-          <div className="planet-panel-extractor">
-            <div className="planet-panel-extractor-info">
-              <div className="planet-panel-extractor-header">
-                <span className="planet-panel-extractor-label">MINING STATION ACTIVE</span>
-                <TierBadge type={extractor.resourceType} count={extractor.rate} />
-              </div>
-              <span className="planet-panel-extractor-resource">
-                Harvesting: {RESOURCE_LABELS[extractor.resourceType]}
-              </span>
-              <span className="planet-panel-extractor-rate">+{extractor.rate * 3} / hour · stores up to {EXTRACTOR_HOLD_CAPS[storageB]} · cargo cap {cap}</span>
-            </div>
-            <button
-              className={`planet-panel-btn${collectable === 0 ? ' planet-panel-btn--dim' : ''}`}
-              onClick={handleCollect}
-              disabled={collectable === 0}
-            >
-              {collectable > 0
-                ? `Collect ${collectable} ${RESOURCE_LABELS[extractor.resourceType]}`
-                : cargoSpace === 0 ? 'Cargo full' : '(nothing yet)'}
-            </button>
-            <button className="planet-panel-btn planet-panel-btn--dismantle" onClick={handleDismantle}>
-              Dismantle Station (+{STATION_REFUND} alloys)
+            )}
+            <button className="planet-panel-btn planet-panel-btn--abandon" onClick={handleAbandon}>
+              Abandon Colony
             </button>
           </div>
+        ) : (
+          <>
+            {!extractor ? (
+              atMax ? (
+                <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                  Max stations reached ({maxStations})
+                </button>
+              ) : allResources.length === 1 ? (
+                allResources[0].type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL ? (
+                  <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                    Requires full logistics upgrade ({logisticsA + logisticsB}/{UPGRADE_POOL})
+                  </button>
+                ) : (
+                  <button
+                    className={`planet-panel-btn${alloys < STATION_COST ? ' planet-panel-btn--dim' : ''}`}
+                    onClick={() => handlePlace(allResources[0])}
+                    disabled={alloys < STATION_COST}
+                  >
+                    {alloys < STATION_COST ? `Need ${STATION_COST} alloys` : `Place Mining Station (${STATION_COST} alloys)`}
+                    {alloys >= STATION_COST && <TierBadge type={allResources[0].type} count={allResources[0].count} />}
+                  </button>
+                )
+              ) : (
+                <>
+                  <div className="planet-panel-section-label">
+                    MINE WHICH RESOURCE? · {STATION_COST} alloys
+                  </div>
+                  <div className="planet-panel-resource-picker">
+                    {allResources.map((r) => {
+                      const neutronLocked = r.type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL;
+                      return (
+                        <button
+                          key={r.type}
+                          className={`planet-panel-btn planet-panel-btn--pick${alloys < STATION_COST || neutronLocked ? ' planet-panel-btn--dim' : ''}`}
+                          onClick={() => handlePlace(r)}
+                          disabled={alloys < STATION_COST || neutronLocked}
+                        >
+                          <span className={`planet-panel-resource-dot res-${r.type}`} />
+                          {neutronLocked
+                            ? `${RESOURCE_LABELS[r.type]} (logistics ${logisticsA + logisticsB}/${UPGRADE_POOL})`
+                            : `${RESOURCE_LABELS[r.type]} (${r.count}/min)`}
+                          {!neutronLocked && <TierBadge type={r.type} count={r.count} />}
+                        </button>
+                      );
+                    })}
+                    {alloys < STATION_COST && (
+                      <span className="planet-panel-extractor-rate">Need {STATION_COST} alloys to build</span>
+                    )}
+                  </div>
+                </>
+              )
+            ) : (
+              <div className="planet-panel-extractor">
+                <div className="planet-panel-extractor-info">
+                  <div className="planet-panel-extractor-header">
+                    <span className="planet-panel-extractor-label">MINING STATION ACTIVE</span>
+                    <TierBadge type={extractor.resourceType} count={extractor.rate} />
+                  </div>
+                  <span className="planet-panel-extractor-resource">
+                    Harvesting: {RESOURCE_LABELS[extractor.resourceType]}
+                  </span>
+                  <span className="planet-panel-extractor-rate">+{extractor.rate} / hour · stores up to {EXTRACTOR_HOLD_CAPS[storageB]} · cargo cap {cap}</span>
+                </div>
+                <button
+                  className={`planet-panel-btn${collectable === 0 ? ' planet-panel-btn--dim' : ''}`}
+                  onClick={handleCollect}
+                  disabled={collectable === 0}
+                >
+                  {collectable > 0
+                    ? `Collect ${collectable} ${RESOURCE_LABELS[extractor.resourceType]}`
+                    : cargoSpace === 0 ? 'Cargo full' : '(nothing yet)'}
+                </button>
+                <button className="planet-panel-btn planet-panel-btn--dismantle" onClick={handleDismantle}>
+                  Dismantle Station (+{STATION_REFUND} alloys)
+                </button>
+              </div>
+            )}
+            {planet.type === 'habitable' && (
+              <div className="planet-panel-settle-section">
+                <div className="planet-panel-divider" />
+                {canAffordSettle ? (
+                  <button className="planet-panel-btn planet-panel-btn--settle" onClick={handleSettle}>
+                    Establish Colony (2000 alloys · 500 He-3 · 2000 nutrients · 500 MH)
+                  </button>
+                ) : (
+                  <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                    Colony requires: 2000 alloys · 500 He-3 · 2000 nutrients · 500 MH
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>,
