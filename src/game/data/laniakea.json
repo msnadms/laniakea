@@ -1,0 +1,20 @@
+{
+  "superclusiterName": "Laniakea Supercluster",
+  "superclusiterSeed": 1279345481,
+  "milkyWayDotOffsetX": 30,
+  "milkyWayDotOffsetY": 20,
+  "attractorNames": [
+    "Virgo Supercluster",
+    "Hydra-Centaurus Supercluster",
+    "Norma Cluster",
+    "Pavo-Indus Supercluster",
+    "Southern Supercluster",
+    "Centaurus A Group",
+    "Antlia Cluster",
+    "Fornax Cluster",
+    "Sculptor Group",
+    "Eridanus Cluster",
+    "Telescopium Group",
+    "Pegasus Cluster"
+  ]
+}

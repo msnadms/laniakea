@@ -20,9 +20,13 @@
   cursor: pointer;
   letter-spacing: 0.04em;
   backdrop-filter: blur(4px);
+  opacity: 0.2;
+  transition: opacity 0.2s ease;
 }
 
-.config-header:hover {
+.config-header:hover,
+.config-header--open {
+  opacity: 1;
   color: #99bbdd;
   border-color: rgba(60, 110, 160, 0.7);
 }

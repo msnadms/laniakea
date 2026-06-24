@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AddressComponent, AddressComponentType, Resource } from '../game/types';
 import { useQuestStore } from './questStore';
+import { DEFAULT_ADDRESS } from '../game/hardcoded';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
@@ -81,6 +82,10 @@ interface UIState {
   triggerHudFlash: () => void;
   view: AppView;
   setView: (view: AppView) => void;
+  viewTransitioning: boolean;
+  setViewTransitioning: (v: boolean) => void;
+  transitionBack: boolean;
+  setTransitionBack: (v: boolean) => void;
   address: AddressComponent[];
   pushAddress: (segment: AddressComponent) => void;
   popAddress: () => void;
@@ -169,9 +174,13 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleInfiniteExplore: () => set((s) => ({ infiniteExplore: !s.infiniteExplore })),
   hudFlash: 0,
   triggerHudFlash: () => set((s) => ({ hudFlash: s.hudFlash + 1 })),
-  view: 'supercluster',
+  view: 'system',
   setView: (view) => set({ view }),
-  address: [obsUniverse],
+  viewTransitioning: false,
+  setViewTransitioning: (v) => set({ viewTransitioning: v }),
+  transitionBack: false,
+  setTransitionBack: (v) => set({ transitionBack: v }),
+  address: DEFAULT_ADDRESS,
   pushAddress: (segment) => set((s) => ({ address: upsertAddress(s.address, segment) })),
   popAddress: () => set((s) => ({ address: s.address.slice(0, -1) })),
   removeAddressType: (type) => set((s) => ({ address: s.address.filter((a) => a.type !== type) })),

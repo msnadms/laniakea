@@ -21,7 +21,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   return (
     <div className="config-panel">
       <button
-        className="config-header"
+        className={`config-header${settingsExpanded ? ' config-header--open' : ''}`}
         onClick={() => setSettingsExpanded((e) => !e)}
         title="Settings"
       >
@@ -100,7 +100,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
 
         </div>
       )}
-      <button className="config-header" onClick={() => setTutorialExpanded((e) => !e)}>
+      <button className={`config-header${tutorialExpanded ? ' config-header--open' : ''}`} onClick={() => setTutorialExpanded((e) => !e)}>
         <span className="config-label">Tutorial</span>
         <span className="config-chevron">{tutorialExpanded ? '▲' : '▼'}</span>
       </button>

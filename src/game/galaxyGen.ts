@@ -1,4 +1,5 @@
 import type { Galaxy, StarSystem, StarType, BackgroundStar, Rng } from './types';
+import { MILKY_WAY_SEED, NEARBY_SYSTEMS_DATA, MILKY_WAY_NEBULA_COLOR_INDEX, MILKY_WAY_INNER_NEBULA_COLOR_INDEX } from './hardcoded';
 import {
   GALAXY_RADIUS,
   BULGE_FRACTION,
@@ -16,6 +17,8 @@ import {
   DISK_SIZE_SCALE,
   DISK_GAP_SCATTER,
   NUM_BROWN_DWARFS,
+  NEBULA_COLORS,
+  INNER_NEBULA_COLORS,
 } from './constants';
 import { GalaxyConfig } from './galaxyConfig';
 
@@ -222,6 +225,19 @@ export function generateGalaxy(seed = Date.now()): Galaxy {
     y: (rng() - 0.5) * BACKGROUND_STAR_AREA_Y,
     brightness: rng(),
   }));
+
+  if (seed === MILKY_WAY_SEED) {
+    config.nebulaColors = NEBULA_COLORS[MILKY_WAY_NEBULA_COLOR_INDEX];
+    config.innerNebulaColors = INNER_NEBULA_COLORS[MILKY_WAY_INNER_NEBULA_COLOR_INDEX];
+    for (const s of NEARBY_SYSTEMS_DATA) {
+      systems[s.id] = {
+        ...s,
+        seed: (seed ^ (s.id * 2654435761)) >>> 0,
+        visited: false,
+        current: false,
+      };
+    }
+  }
 
   return { systems, backgroundStars, config, seed };
 }

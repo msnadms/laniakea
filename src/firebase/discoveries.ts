@@ -72,24 +72,35 @@ export async function saveGalaxyDiscovery(
 export async function saveSystemDiscovery(
   uid: string,
   superclusterSeed: number,
+  superclusterName: string,
   galaxySeed: number,
+  galaxyName: string,
   system: StarSystem,
 ): Promise<void> {
-  const ref = doc(db, 'users', uid, 'discoveries', String(superclusterSeed), 'galaxies', String(galaxySeed));
-  await setDoc(
-    ref,
-    {
-      systems: {
-        [String(system.id)]: {
-          name: system.name,
-          starType: system.starType,
-          seed: system.seed,
-          discoveredAt: serverTimestamp(),
+  // Ensure the supercluster doc exists so loadAllDiscoveries can reach the galaxy
+  // subcollection. We deliberately omit discoveredAt here so we don't overwrite
+  // the original discovery timestamp on repeat visits.
+  const scRef = doc(db, 'users', uid, 'discoveries', String(superclusterSeed));
+  const gRef = doc(db, 'users', uid, 'discoveries', String(superclusterSeed), 'galaxies', String(galaxySeed));
+  await Promise.all([
+    setDoc(scRef, { superclusterSeed, superclusterName }, { merge: true }),
+    setDoc(
+      gRef,
+      {
+        galaxySeed,
+        galaxyName,
+        systems: {
+          [String(system.id)]: {
+            name: system.name,
+            starType: system.starType,
+            seed: system.seed,
+            discoveredAt: serverTimestamp(),
+          },
         },
       },
-    },
-    { merge: true },
-  );
+      { merge: true },
+    ),
+  ]);
 }
 
 export async function deleteSystemDiscovery(

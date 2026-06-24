@@ -1,6 +1,8 @@
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { type User } from 'firebase/auth';
 import { db } from './firebase';
+import { MILKY_WAY_SEED, LANIAKEA_SEED, DEFAULT_ADDRESS } from '../game/hardcoded';
+import type { AddressComponent } from '../game/types';
 
 export interface UserSettings {
   showOrbitRings: boolean;
@@ -23,6 +25,11 @@ export interface UserSettings {
   weaponB: number;
   logisticsA: number;
   logisticsB: number;
+  lastView: 'system' | 'galaxy' | 'supercluster';
+  lastSuperclusterSeed: number;
+  lastGalaxySeed: number;
+  lastSystemId: number | null;
+  address: AddressComponent[];
 }
 
 const defaultSettings: UserSettings = {
@@ -46,6 +53,11 @@ const defaultSettings: UserSettings = {
   weaponB: 0,
   logisticsA: 0,
   logisticsB: 0,
+  lastView: 'system',
+  lastSuperclusterSeed: LANIAKEA_SEED,
+  lastGalaxySeed: MILKY_WAY_SEED,
+  lastSystemId: 0,
+  address: DEFAULT_ADDRESS,
 };
 
 export async function initUserDoc(user: User): Promise<UserSettings> {

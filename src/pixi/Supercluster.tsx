@@ -9,6 +9,8 @@ import { useCodexStore } from '../store/codexStore';
 import { buildAddressComponent, type SuperclusterDot } from '../game/types';
 import { useCamera } from './useCamera';
 import { SC_CAMERA_INITIAL_SCALE, SC_WORLD_HALF, SC_WORLD_HALF_MLY, OBS_UNIVERSE_RADIUS } from '../game/constants';
+import { animateZoomTo } from './zoomAnim';
+import { useZoomController } from './useZoomController';
 import { ScaleBar } from './ScaleBar';
 import { createRng } from '../game/galaxyGen';
 import { createPointerLabel } from './labels';
@@ -67,6 +69,10 @@ export function SuperclusterWorld() {
   const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE);
   const showAttractorLabelsRef = useRef(showAttractorLabels);
   showAttractorLabelsRef.current = showAttractorLabels;
+
+  const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, {
+    getCurrentPos: () => useGameStore.getState().supercluster.dots.find(d => d.current),
+  });
 
   const visitedGfxRef = useRef<Graphics | null>(null);
   const currentGfxRef = useRef<Graphics | null>(null);
@@ -242,6 +248,7 @@ export function SuperclusterWorld() {
     const stage = app.stage;
 
     const onTap = (e: { global: { x: number; y: number } }) => {
+      if (isAnimatingRef.current) return;
       if (camera.current.scale < 0.5) return;
       const local = world.toLocal(e.global);
       const sc = useGameStore.getState().supercluster;
@@ -269,13 +276,33 @@ export function SuperclusterWorld() {
       regenerateGalaxy(nearest.seed);
 
       pushAttractorAddress(sc.attractors, nearest.x, nearest.y, pushAddress, removeAddressType);
-
       pushAddress(buildAddressComponent(nearest.name, nearest.x, nearest.y, nearest.z, 'galaxy'));
-      setView('galaxy');
+
+      isAnimatingRef.current = true;
+      cancelZoomRef.current = animateZoomTo(
+        camera, world,
+        nearest.x, nearest.y,
+        e.global.x, e.global.y,
+        24, 500,
+        () => useUIStore.getState().setViewTransitioning(true),
+        () => {
+          isAnimatingRef.current = false;
+          cancelZoomRef.current = null;
+          useUIStore.getState().setView('galaxy');
+        },
+      );
     };
 
     stage.on('pointertap', onTap);
-    return () => { stage.off('pointertap', onTap); };
+    return () => {
+      stage.off('pointertap', onTap);
+      if (cancelZoomRef.current) {
+        cancelZoomRef.current();
+        cancelZoomRef.current = null;
+        isAnimatingRef.current = false;
+        useUIStore.getState().setViewTransitioning(false);
+      }
+    };
   }, [app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType]);
 
   return (

@@ -10,6 +10,7 @@ import { useSettlementStore } from "../store/settlementStore";
 import { makeExtractorKey, makeSettlementKey } from "../game/types";
 import { BackgroundStars } from "./BackgroundStars";
 import { ScaleBar } from "./ScaleBar";
+import { useZoomController } from "./useZoomController";
 import { generateSystemLayout, ORBITAL_K, MOON_K } from "../game/planetGen";
 import { createRng } from "../game/galaxyGen";
 import { createSunTexture, createBrownDwarfTexture, createNeutronStarTexture, createNebulaGlowTexture, createGasGiantTexture, createRockyPlanetTexture, createHabitablePlanetTexture, createMoonTexture } from "./textures";
@@ -54,8 +55,8 @@ function createAsteroidBelt(gapIdx: number, planets: PlanetLayout[], seed: numbe
 
   const numAsteroids = (Math.floor(rng() * 1250) + 1250) * (gapIdx + 1);
   for (let i = 0; i < numAsteroids; i++) {
-    const u1     = Math.max(rng(), 1e-10);
-    const u2     = rng();
+    const u1 = Math.max(rng(), 1e-10);
+    const u2 = rng();
     const radius = beltCenter + beltSigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
     if (radius <= 0) continue;
     const theta = rng() * Math.PI * 2;
@@ -129,7 +130,15 @@ export function SolarSystem() {
   const showOrbitRingsRef = useRef(showOrbitRings);
   showOrbitRingsRef.current = showOrbitRings;
   const orbitGfxRef = useRef<Graphics[]>([]);
-  const { camera } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
+  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
+  useZoomController(camera, worldRef, isReady, {
+    onNavigateBack: () => {
+      useUIStore.getState().setSelectedPlanet(null);
+      useUIStore.getState().removeAddressType('system');
+      useGameStore.getState().setSystem(null);
+      useUIStore.getState().setView('galaxy');
+    },
+  });
   const extractorGfxRef = useRef<Map<string, Graphics>>(new Map());
   const settlementGfxRef = useRef<Map<string, Graphics>>(new Map());
 

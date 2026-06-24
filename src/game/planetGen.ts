@@ -1,5 +1,6 @@
 import { createRng } from "./galaxyGen";
 import type { Planet, Moon, Resource, StarType, ZoneType } from "./types";
+import { SOL_SEED, SOL_SYSTEM_LAYOUT, SOL_SYSTEM_PLANETS } from "./hardcoded";
 
 export interface MoonLayout {
   dist: number;
@@ -69,6 +70,7 @@ export const ORBITAL_K = 3500;
 export const MOON_K = 430;
 
 export function generateSystemLayout(seed: number, starType?: StarType): SystemLayout {
+  if (seed === SOL_SEED) return SOL_SYSTEM_LAYOUT;
   const rng = createRng(seed);
   const isBrownDwarf = starType === 'L';
   const isNeutronStar = starType === 'N';
@@ -210,6 +212,7 @@ function moonResourcesForZone(rng: () => number, zone: ZoneType): Resource[] | n
 }
 
 export function generatePlanets(layout: SystemLayout): Planet[] {
+  if (layout.seed === SOL_SEED) return SOL_SYSTEM_PLANETS;
   const isBrownDwarf = layout.starType === 'L';
   const isNeutronStar = layout.starType === 'N';
   const rng = createRng(layout.seed);

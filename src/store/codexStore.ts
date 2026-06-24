@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { StarSystem } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
+import { LANIAKEA_SEED, LANIAKEA_NAME, MILKY_WAY_SEED, MILKY_WAY_NAME, SOL_SEED } from '../game/hardcoded';
+import { generateGalaxyName } from '../game/superclusters';
 
 interface CodexState {
   superclusters: Record<string, SuperclusterRecord>;
@@ -27,8 +29,13 @@ function upsertSupercluster(
   return { ...superclusters, [scKey]: updated };
 }
 
+const _solRecord: SystemRecord = { name: 'Sol', starType: 'G', seed: SOL_SEED, discoveredAt: 0 };
+const _mwGalaxy: GalaxyRecord = { galaxySeed: MILKY_WAY_SEED, galaxyName: MILKY_WAY_NAME, discoveredAt: 0, systems: { '0': _solRecord } };
+const _laniakea: SuperclusterRecord = { superclusterSeed: LANIAKEA_SEED, superclusterName: LANIAKEA_NAME, discoveredAt: 0, galaxies: { [String(MILKY_WAY_SEED)]: _mwGalaxy } };
+const _initialSuperclusters: Record<string, SuperclusterRecord> = { [String(LANIAKEA_SEED)]: _laniakea };
+
 export const useCodexStore = create<CodexState>((set) => ({
-  superclusters: {},
+  superclusters: _initialSuperclusters,
 
   addGalaxyRecord: (superclusterSeed, superclusterName, galaxySeed, galaxyName) =>
     set((state) => {
@@ -59,8 +66,20 @@ export const useCodexStore = create<CodexState>((set) => ({
     }),
 
   setAll: (records) => {
-    const superclusters: Record<string, SuperclusterRecord> = {};
-    for (const sc of records) superclusters[String(sc.superclusterSeed)] = sc;
+    const superclusters: Record<string, SuperclusterRecord> = { ..._initialSuperclusters };
+    for (const sc of records) {
+      const key = String(sc.superclusterSeed);
+      const initial = superclusters[key];
+      // Patch galaxy records that are missing metadata due to old saves where
+      // saveSystemDiscovery was called without a prior saveGalaxyDiscovery.
+      const patchedGalaxies: Record<string, GalaxyRecord> = {};
+      for (const [gKey, g] of Object.entries(sc.galaxies)) {
+        const galaxySeed = g.galaxySeed ?? initial?.galaxies[gKey]?.galaxySeed ?? Number(gKey);
+        const galaxyName = g.galaxyName ?? initial?.galaxies[gKey]?.galaxyName ?? generateGalaxyName(galaxySeed);
+        patchedGalaxies[gKey] = { ...g, galaxySeed, galaxyName };
+      }
+      superclusters[key] = { ...sc, galaxies: patchedGalaxies };
+    }
     set({ superclusters });
   },
 

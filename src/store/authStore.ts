@@ -85,6 +85,28 @@ export function initAuth(): () => void {
       }
       useGameStore.getState().restoreVisited(visitedSystems, visitedGalaxies);
 
+      const lastSuperclusterSeed = settings.lastSuperclusterSeed;
+      const lastGalaxySeed = settings.lastGalaxySeed;
+      const lastSystemId = settings.lastSystemId;
+
+      useGameStore.getState().regenerateSupercluster(lastSuperclusterSeed);
+      useGameStore.setState((state) => ({
+        supercluster: {
+          ...state.supercluster,
+          dots: state.supercluster.dots.map((d) =>
+            d.seed === lastGalaxySeed ? { ...d, current: true } : d.current ? { ...d, current: false } : d,
+          ),
+        },
+      }));
+
+      useGameStore.getState().restoreGalaxyAndSystem(lastGalaxySeed, lastSystemId);
+
+      const restoredSystem = useGameStore.getState().system;
+      const restoredView = settings.lastView === 'system' && restoredSystem === null
+        ? 'galaxy'
+        : settings.lastView;
+      useUIStore.setState({ view: restoredView, address: settings.address });
+
       useAuthStore.setState({ user, loading: false, settingsLoaded: true });
     } else {
       useAuthStore.setState({ user: null, loading: false, settingsLoaded: false });

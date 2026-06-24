@@ -1,5 +1,6 @@
 import { Delaunay } from 'd3-delaunay';
 import { createRng } from './galaxyGen';
+import { LANIAKEA_SEED, LANIAKEA_NAME, MILKY_WAY_SEED, MILKY_WAY_NAME, LANIAKEA_ATTRACTOR_NAMES, MW_DOT_OFFSET } from './hardcoded';
 import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, BackgroundStar, Rng, AddressComponent, AddressComponentType } from './types';
 import { buildAddressComponent } from './types';
 import {
@@ -89,6 +90,7 @@ export function getSuperclusterCoords(seed: number): [number, number, number] {
 }
 
 export function generateGalaxyName(seed: number): string {
+  if (seed === MILKY_WAY_SEED) return MILKY_WAY_NAME;
   const rng = createRng(seed);
   const root   = CLUSTER_ROOTS[Math.floor(rng() * CLUSTER_ROOTS.length)];
   const ending = CLUSTER_ENDINGS[Math.floor(rng() * CLUSTER_ENDINGS.length)];
@@ -111,7 +113,7 @@ function makeClusterName(rng: Rng): string {
 export function generateSupercluster(seed: number = Date.now()): SuperclusterData {
   const rng = createRng(seed);
 
-  const name = makeSupercusterName(rng);
+  let name = makeSupercusterName(rng);
 
   const attractors: SuperclusterAttractor[] = [];
   for (let i = 0; i < SC_ATTRACTOR_COUNT; i++) {
@@ -243,6 +245,23 @@ export function generateSupercluster(seed: number = Date.now()): SuperclusterDat
       x: (bgRng() - 0.5) * BACKGROUND_STAR_AREA_X,
       y: (bgRng() - 0.5) * BACKGROUND_STAR_AREA_Y,
       brightness: bgRng(),
+    });
+  }
+
+  if (seed === LANIAKEA_SEED) {
+    name = LANIAKEA_NAME;
+    for (let i = 0; i < Math.min(attractors.length, LANIAKEA_ATTRACTOR_NAMES.length); i++) {
+      attractors[i].name = LANIAKEA_ATTRACTOR_NAMES[i];
+    }
+    dots.push({
+      x: attractors[0].x + MW_DOT_OFFSET[0],
+      y: attractors[0].y + MW_DOT_OFFSET[1],
+      z: attractors[0].z,
+      brightness: 0.9,
+      seed: MILKY_WAY_SEED,
+      name: MILKY_WAY_NAME,
+      visited: false,
+      current: false,
     });
   }
 

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useUIStore, computeStorageCap, computeWeaponCap } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
@@ -6,8 +6,10 @@ import { useExtractorStore, AUTO_DELIVERY_COST_PER_STATION, peekAccumulated } fr
 import { RESOURCE_LABELS } from '../game/types';
 import { useAuthStore } from '../store/authStore';
 import { deleteExtractor } from '../firebase/extractors';
+import { fireBackZoom } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { ShipUpgradePanel } from './ShipUpgradePanel';
+import { AlloysIcon, NutrientsIcon, MetallicHydrogenIcon, NeutronStarMatterIcon } from './CargoIcons';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
 
@@ -41,11 +43,11 @@ const StatBar = memo(function StatBar({ value, max }: { value: number; max: numb
   );
 });
 
-const VerticalCargoBar = memo(function VerticalCargoBar({ label, value, max }: { label: string; value: number; max: number }) {
+const VerticalCargoBar = memo(function VerticalCargoBar({ icon, label, value, max }: { icon: ReactNode; label: string; value: number; max: number }) {
   const pct = Math.min((value / max) * 100, 100);
   const low = pct < 25;
   return (
-    <div className="hud-vcargo-col">
+    <div className="hud-vcargo-col" data-tooltip={label}>
       <span className="hud-vcargo-value">{fmt(value)}</span>
       <div className="hud-vbar-track">
         <div
@@ -53,7 +55,7 @@ const VerticalCargoBar = memo(function VerticalCargoBar({ label, value, max }: {
           style={{ height: `${pct}%` }}
         />
       </div>
-      <span className="hud-vcargo-label">{label}</span>
+      <span className="hud-vcargo-label">{icon}</span>
     </div>
   );
 });
@@ -70,6 +72,7 @@ const NavBack = memo(function NavBack() {
   const setSelectedPlanet = useUIStore((s) => s.setSelectedPlanet);
 
   function handleBack() {
+    if (fireBackZoom()) return;
     if (view === 'system') {
       setSelectedPlanet(null);
       removeAddressType('system');
@@ -313,10 +316,10 @@ export function ShipHUD() {
         <div className="hud-cargo-section">
           <span className="hud-cargo-title">CARGO</span>
           <div className="hud-cargo-bars">
-            <VerticalCargoBar label="ALLOYS" value={alloys} max={storageCap} />
-            <VerticalCargoBar label="NUTR" value={nutrients} max={storageCap} />
-            <VerticalCargoBar label="MH" value={metallicHydrogen} max={storageCap} />
-            <VerticalCargoBar label="NSM" value={neutronStarMatter} max={storageCap} />
+            <VerticalCargoBar icon={<AlloysIcon />} label="Alloys" value={alloys} max={storageCap} />
+            <VerticalCargoBar icon={<NutrientsIcon />} label="Nutrients" value={nutrients} max={storageCap} />
+            <VerticalCargoBar icon={<MetallicHydrogenIcon />} label="Metallic Hydrogen" value={metallicHydrogen} max={storageCap} />
+            <VerticalCargoBar icon={<NeutronStarMatterIcon />} label="Neutron Star Matter" value={neutronStarMatter} max={storageCap} />
           </div>
         </div>
       </div>

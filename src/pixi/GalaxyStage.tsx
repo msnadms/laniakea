@@ -24,6 +24,8 @@ import { createDisplacementSetup } from './textures';
 import { createRng } from '../game/galaxyGen';
 import { StarNode } from './StarNode';
 import { useCamera } from './useCamera';
+import { animateZoomTo } from './zoomAnim';
+import { useZoomController } from './useZoomController';
 import { ScaleBar } from './ScaleBar';
 import { buildAddressComponent } from '../game/types';
 import { BackgroundStars } from './BackgroundStars';
@@ -60,7 +62,23 @@ export function GalaxyWorld() {
   const setView = useUIStore((s) => s.setView);
   const config = galaxyConfig;
 
+  const worldRef = useRef<Container>(null);
+  const handleSelectSystemRef = useRef<(id: number | null) => void>(() => {});
+  const stableStageTap = useCallback(() => handleSelectSystemRef.current(null), []);
+
+  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, stableStageTap);
+
+  const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, {
+    onNavigateBack: () => {
+      useUIStore.getState().popAddress();
+      useUIStore.getState().removeAddressType('attractor');
+      useUIStore.getState().setView('supercluster');
+    },
+    getCurrentPos: () => useGameStore.getState().galaxy.systems.find(s => s.current),
+  });
+
   const handleSelectSystem = useCallback((id: number | null) => {
+    if (isAnimatingRef.current) return;
     if (id !== null) {
       const gameState = useGameStore.getState();
       const sys = gameState.galaxy.systems[id];
@@ -75,21 +93,37 @@ export function GalaxyWorld() {
       const galaxyName = generateGalaxyName(gameState.galaxy.seed);
       useCodexStore.getState().addSystemRecord(gameState.supercluster.seed, gameState.supercluster.name, gameState.galaxy.seed, galaxyName, sys);
       const user = useAuthStore.getState().user;
-      if (user) saveSystemDiscovery(user.uid, gameState.supercluster.seed, gameState.galaxy.seed, sys);
+      if (user) saveSystemDiscovery(user.uid, gameState.supercluster.seed, gameState.supercluster.name, gameState.galaxy.seed, galaxyName, sys);
       pushAddress(buildAddressComponent(sys.name, sys.x, sys.y, 0, 'system'));
       setSystem(sys);
-      setView('system');
+
+      if (worldRef.current) {
+        isAnimatingRef.current = true;
+        const anchorX = camera.current.x + sys.x * camera.current.scale;
+        const anchorY = camera.current.y + sys.y * camera.current.scale;
+        cancelZoomRef.current = animateZoomTo(
+          camera, worldRef.current,
+          sys.x, sys.y,
+          anchorX, anchorY,
+          24, 700,
+          () => useUIStore.getState().setViewTransitioning(true),
+          () => {
+            isAnimatingRef.current = false;
+            cancelZoomRef.current = null;
+            useUIStore.getState().setView('system');
+          }
+        );
+      } else {
+        setView('system');
+      }
     } else {
       const activeSystem = useGameStore.getState().system;
       if (activeSystem !== null) popAddress();
       setSystem(null);
     }
-  }, [pushAddress, popAddress, setSystem, setView]);
+  }, [pushAddress, popAddress, setSystem, setView, camera]);
 
-  const handleStageTap = useCallback(() => handleSelectSystem(null), [handleSelectSystem]);
-
-  const worldRef = useRef<Container>(null);
-  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, handleStageTap);
+  handleSelectSystemRef.current = handleSelectSystem;
 
   const radiusLy = useMemo(() => {
     const rng = createRng(galaxySeed);
