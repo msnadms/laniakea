@@ -1,0 +1,39 @@
+.top-nav-bar {
+  position: absolute;
+  top: 35px;
+  left: 20%;
+  right: 20%;
+  height: 56px;
+  z-index: 90;
+  pointer-events: none;
+  user-select: none;
+}
+
+.top-nav-ol {
+  position: absolute;
+  top: 0;
+  overflow: visible;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.35));
+}
+
+.top-nav-ol-left {
+  left: 0;
+  width: 128px;
+  height: 56px;
+}
+
+.top-nav-ol-center {
+  position: absolute;
+  left: 128px;
+  right: 128px;
+  top: 27px;
+  height: 1px;
+  background: rgba(0, 190, 230, 0.55);
+  filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.35));
+}
+
+.top-nav-ol-right {
+  right: 0;
+  width: 128px;
+  height: 56px;
+}

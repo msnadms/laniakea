@@ -12,6 +12,8 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const toggleOrbitRings = useUIStore((s) => s.toggleOrbitRings);
   const showHUD = useUIStore((s) => s.showHUD);
   const toggleHUD = useUIStore((s) => s.toggleHUD);
+  const showScanlines = useUIStore((s) => s.showScanlines);
+  const toggleScanlines = useUIStore((s) => s.toggleScanlines);
   const refillResources = useUIStore((s) => s.refillResources);
   const resetUpgrades = useUIStore((s) => s.resetUpgrades);
   const infiniteExplore = useUIStore((s) => s.infiniteExplore);
@@ -41,6 +43,19 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
               onChange={toggleHUD}
             />
             <div className={`config-toggle ${showHUD ? 'on' : 'off'}`} aria-hidden="true">
+              <div className="config-toggle-thumb" />
+            </div>
+          </label>
+
+          <label className="config-row">
+            <span className="config-row-label">Scan Lines</span>
+            <input
+              type="checkbox"
+              className="config-toggle-checkbox"
+              checked={showScanlines}
+              onChange={toggleScanlines}
+            />
+            <div className={`config-toggle ${showScanlines ? 'on' : 'off'}`} aria-hidden="true">
               <div className="config-toggle-thumb" />
             </div>
           </label>

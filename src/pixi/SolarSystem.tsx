@@ -325,6 +325,9 @@ export function SolarSystem() {
     const nebulaSprite  = createNebulaSprite(system.color, sunRadius);
     const nebulaTexture = nebulaSprite.texture;
     const coronaContainer = isNeutronStar ? null : createCorona(system.seed, system.color, sunRadius);
+    nebulaSprite.eventMode = 'none';
+    sunSprite.eventMode = 'none';
+    if (coronaContainer) coronaContainer.eventMode = 'none';
     systemContainer.addChildAt(nebulaSprite, 0);
     systemContainer.addChildAt(systemGfx, 1);
     if (asteroidBelt) systemContainer.addChildAt(asteroidBelt, 2);

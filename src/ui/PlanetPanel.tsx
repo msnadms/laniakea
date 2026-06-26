@@ -305,7 +305,7 @@ export function PlanetPanel() {
                           <span className={`planet-panel-resource-dot res-${r.type}`} />
                           {neutronLocked
                             ? `${RESOURCE_LABELS[r.type]} (logistics ${logisticsA + logisticsB}/${UPGRADE_POOL})`
-                            : `${RESOURCE_LABELS[r.type]} (${r.count}/min)`}
+                            : `${RESOURCE_LABELS[r.type]} (${r.count}/hour)`}
                           {!neutronLocked && <TierBadge type={r.type} count={r.count} />}
                         </button>
                       );

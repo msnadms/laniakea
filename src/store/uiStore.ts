@@ -57,6 +57,8 @@ interface UIState {
   toggleOrbitRings: () => void;
   showHUD: boolean;
   toggleHUD: () => void;
+  showScanlines: boolean;
+  toggleScanlines: () => void;
   exoticMatter: number;
   driveIntegrity: number;
   railgunAmmo: number;
@@ -136,6 +138,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleOrbitRings: () => set((s) => ({ showOrbitRings: !s.showOrbitRings })),
   showHUD: true,
   toggleHUD: () => set((s) => ({ showHUD: !s.showHUD })),
+  showScanlines: true,
+  toggleScanlines: () => set((s) => ({ showScanlines: !s.showScanlines })),
   alloys: 0,
   nutrients: 0,
   metallicHydrogen: 0,

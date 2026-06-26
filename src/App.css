@@ -5,6 +5,21 @@
   position: relative;
 }
 
+.app-scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(0, 190, 230, 0.06) 0px,
+      rgba(0, 190, 230, 0.06) 1px,
+      transparent 1px,
+      transparent 5px
+    )
+}
+
 .top-left {
   position: absolute;
   top: 16px;

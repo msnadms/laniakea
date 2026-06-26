@@ -20,7 +20,7 @@ export function PixiApp() {
         opacity: viewTransitioning ? 1 : 0,
         transition: 'opacity 150ms ease',
         pointerEvents: 'none',
-        zIndex: 9999,
+        zIndex: 4,
       }} />
     </>
   );

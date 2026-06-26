@@ -281,7 +281,7 @@ export function SuperclusterWorld() {
         saveSuperclusterDiscovery(user.uid, sc.seed, sc.name);
         saveGalaxyDiscovery(user.uid, sc.seed, nearest.seed, nearest.name);
       }
-      regenerateGalaxy(nearest.seed);
+      if (!isCurrent) regenerateGalaxy(nearest.seed);
 
       pushAttractorAddress(sc.attractors, nearest.x, nearest.y, pushAddress, removeAddressType);
       pushAddress(buildAddressComponent(nearest.name, nearest.x, nearest.y, nearest.z, 'galaxy'));

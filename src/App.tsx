@@ -14,12 +14,23 @@ import { initAuth, useAuthStore } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
 import { BootSequence } from './ui/BootSequence';
 import { LoginScreen } from './ui/LoginScreen';
+import { TopNavBar } from './ui/TopNavBar';
 
 const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
 
-const GalaxyTitle = memo(function GalaxyTitle() {
-  const galaxySeed = useGameStore((s) => s.galaxy.seed);
-  return <div className="galaxy-title">{generateGalaxyName(galaxySeed)}</div>;
+const ViewTitle = memo(function ViewTitle() {
+  const view = useUIStore((s) => s.view);
+  const supercluterName = useGameStore((s) => s.supercluster.name);
+  const galaxyName = useGameStore((s) => generateGalaxyName(s.galaxy.seed));
+  const systemName = useGameStore((s) => s.system?.name ?? null);
+
+  const title =
+    view === 'supercluster' ? supercluterName :
+    view === 'galaxy' ? galaxyName :
+    systemName;
+
+  if (!title) return null;
+  return <div className="galaxy-title">{title}</div>;
 });
 
 function AddressBar() {
@@ -53,6 +64,7 @@ export default function App() {
   const authLoading = useAuthStore((s) => s.loading);
   const view = useUIStore((s) => s.view);
   const showHUD = useUIStore((s) => s.showHUD);
+  const showScanlines = useUIStore((s) => s.showScanlines);
   const [infoOpen, setInfoOpen] = useState(false);
   const [showBoot] = useState(true);
   const [isFirstVisit] = useState(() => {
@@ -71,7 +83,9 @@ export default function App() {
   return (
     <div className="app">
       <PixiApp />
+      {showScanlines && <div className="app-scanlines" />}
       {showBoot && <BootSequence onComplete={handleBootComplete} isFirstVisit={isFirstVisit} />}
+      <TopNavBar />
       <InfoPanel onOpenChange={setInfoOpen} openRequest={infoPanelOpenReq} />
       <div className="top-left">
         <ConfigPanel hidden={infoOpen} />
@@ -85,7 +99,7 @@ export default function App() {
         </div>
       )}
       {showHUD && <AddressBar />}
-      {view === 'galaxy' && <GalaxyTitle />}
+      <ViewTitle />
       {view === 'system' && <PlanetPanel />}
     </div>
   );
