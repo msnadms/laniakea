@@ -107,10 +107,10 @@ const LOGISTICS_A_NAMES = [
 ];
 const LOGISTICS_A_DESCS = [
   'Direct telemetry links to up to five simultaneous mining stations within standard coordination range.',
-  'A sparse network of relay beacons extends the ship\'s coordination bandwidth, adding a synchronized mining station to the extraction mesh.',
+  'A sparse network of relay beacons extends the ship\'s coordination bandwidth, adding synchronized mining stations to the extraction mesh.',
   'Quantum-paired subspace relays maintain phase-locked telemetry across wider deployment zones, pushing station capacity further.',
   'A distributed relay mesh extends coordination across multiple star systems, enabling additional simultaneous mining operations.',
-  'Quantum-entangled coordination nodes maintain zero-latency telemetry across any distance, supporting ten simultaneous extraction platforms.',
+  'Quantum-entangled coordination nodes maintain zero-latency telemetry across any distance, supporting the full extraction mesh at maximum capacity.',
 ];
 const LOGISTICS_B_NAMES = [
   'Standard Drill Rate',

@@ -66,7 +66,7 @@ export default function App() {
   const showHUD = useUIStore((s) => s.showHUD);
   const showScanlines = useUIStore((s) => s.showScanlines);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [showBoot] = useState(true);
+  const showBoot = useUIStore((s) => s.showBootSequence);
   const [isFirstVisit] = useState(() => {
     const firstTime = !localStorage.getItem('galaxy-game-booted');
     if (firstTime) localStorage.setItem('galaxy-game-booted', '1');

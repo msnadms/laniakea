@@ -14,6 +14,8 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const toggleHUD = useUIStore((s) => s.toggleHUD);
   const showScanlines = useUIStore((s) => s.showScanlines);
   const toggleScanlines = useUIStore((s) => s.toggleScanlines);
+  const showBootSequence = useUIStore((s) => s.showBootSequence);
+  const toggleBootSequence = useUIStore((s) => s.toggleBootSequence);
   const refillResources = useUIStore((s) => s.refillResources);
   const resetUpgrades = useUIStore((s) => s.resetUpgrades);
   const infiniteExplore = useUIStore((s) => s.infiniteExplore);
@@ -56,6 +58,19 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
               onChange={toggleScanlines}
             />
             <div className={`config-toggle ${showScanlines ? 'on' : 'off'}`} aria-hidden="true">
+              <div className="config-toggle-thumb" />
+            </div>
+          </label>
+
+          <label className="config-row">
+            <span className="config-row-label">Boot Sequence</span>
+            <input
+              type="checkbox"
+              className="config-toggle-checkbox"
+              checked={showBootSequence}
+              onChange={toggleBootSequence}
+            />
+            <div className={`config-toggle ${showBootSequence ? 'on' : 'off'}`} aria-hidden="true">
               <div className="config-toggle-thumb" />
             </div>
           </label>

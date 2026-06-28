@@ -134,9 +134,9 @@ function OriginsView() {
             at its destination.
           </p>
           <p>
-            You were in orbit when it happened, the captain of the <b>UNSS Peregrine</b> - a highly experimental warp-equipped cruiser - the apex of humanity's technological capabilities. The greatest minds humanity has are 
-            with you, serving as the crew of your ship. Altogether, there are 873 humans left in the universe. Not sure what to do, the only place you can go is into the dark, 
-            empty space around you. First, you have to survive - then you can seek revenge.
+            You were in orbit when it happened, the captain of the UNSS Peregrine - a highly experimental warp-equipped cruiser - the apex of humanity's technological capabilities. 
+            The greatest minds humanity has are with you, serving as the crew of your ship. Altogether, there are 873 humans left in the universe. Not sure what to do, the only place 
+            you can go is into the dark, empty space around you. First, you have to survive - then you can seek justice.
           </p>
         </div>
       </div>

@@ -1,0 +1,1194 @@
+@keyframes logistics-slide-up {
+  from {
+    transform: translateY(6%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.logistics-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: all;
+}
+
+.logistics-panel {
+  position: absolute;
+  inset: 0;
+  animation: logistics-slide-up 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  background: rgba(6, 12, 28, 0.96);
+  box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
+  font-family: monospace;
+  color: #c0dde8;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.logistics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.35);
+  flex-shrink: 0;
+}
+
+.logistics-title {
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: rgba(0, 180, 220, 0.55);
+  text-transform: uppercase;
+}
+
+.logistics-close {
+  background: none;
+  border: none;
+  color: rgba(0, 180, 220, 0.5);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  pointer-events: all;
+}
+
+.logistics-close:hover {
+  color: rgba(0, 215, 255, 0.95);
+}
+
+.logistics-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Left panel (route list) ─────────────────────────────────── */
+
+.logistics-routes-panel {
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(0, 100, 150, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.logistics-routes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+  flex-shrink: 0;
+}
+
+.logistics-routes-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: rgba(0, 180, 220, 0.4);
+  text-transform: uppercase;
+}
+
+.logistics-routes-cap {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 160, 200, 0.55);
+}
+
+.logistics-new-btn {
+  width: calc(100% - 28px);
+  margin: 10px 14px 6px;
+  background: transparent;
+  border: 1px solid rgba(0, 190, 230, 0.4);
+  color: rgba(0, 180, 220, 0.7);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 6px 0;
+  cursor: pointer;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.logistics-new-btn:hover:not(:disabled) {
+  color: rgba(0, 215, 255, 0.95);
+  border-color: rgba(0, 215, 255, 0.7);
+}
+
+.logistics-new-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.logistics-routes-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.logistics-route-card {
+  margin: 4px 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 100, 150, 0.35);
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.logistics-route-card:hover {
+  border-color: rgba(0, 190, 230, 0.55);
+}
+
+.logistics-route-card--active {
+  border-color: rgba(0, 190, 230, 0.7);
+  background: rgba(0, 100, 160, 0.08);
+}
+
+.logistics-route-card-name {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #00c8e8;
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.45);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logistics-route-card-meta {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 160, 200, 0.55);
+  margin-bottom: 4px;
+}
+
+.logistics-route-card-meta span + span::before {
+  content: ' · ';
+}
+
+.logistics-route-card-detection-warn {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(220, 100, 60, 0.9);
+  margin-bottom: 4px;
+}
+
+.logistics-route-card-cost {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 180, 220, 0.6);
+  margin-bottom: 8px;
+}
+
+.logistics-route-card-actions {
+  display: grid;
+  grid-template-columns: 5fr 1fr;
+  gap: 6px;
+}
+
+.logistics-card-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid rgba(0, 190, 230, 0.35);
+  color: rgba(0, 180, 220, 0.65);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 4px 0;
+  cursor: pointer;
+  font-family: monospace;
+}
+
+.logistics-card-btn:hover:not(:disabled) {
+  color: rgba(0, 215, 255, 0.95);
+  border-color: rgba(0, 215, 255, 0.6);
+}
+
+.logistics-card-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.logistics-card-btn--danger {
+  border-color: rgba(170, 30, 30, 0.4);
+  color: rgba(180, 50, 50, 0.7);
+}
+
+.logistics-card-btn--danger:hover {
+  border-color: rgba(210, 50, 50, 0.7);
+  color: rgba(220, 60, 60, 0.95);
+}
+
+/* ── Right panel (editor) ────────────────────────────────────── */
+
+.logistics-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px 18px 14px;
+  gap: 10px;
+}
+
+.logistics-editor-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+}
+
+.logistics-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 20px;
+}
+
+.logistics-locked-title {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: rgba(0, 180, 220, 0.4);
+  text-transform: uppercase;
+}
+
+.logistics-locked-desc {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+  max-width: 280px;
+  line-height: 1.7;
+}
+
+.logistics-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.logistics-editor-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(0, 180, 220, 0.4);
+  text-transform: uppercase;
+  white-space: nowrap;
+  width: 48px;
+  flex-shrink: 0;
+}
+
+.logistics-name-input {
+  flex: 1;
+  background: rgba(0, 80, 120, 0.12);
+  border: 1px solid rgba(0, 190, 230, 0.3);
+  color: #00c8e8;
+  font-size: 11px;
+  font-family: monospace;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  outline: none;
+  text-transform: uppercase;
+}
+
+.logistics-name-input:focus {
+  border-color: rgba(0, 190, 230, 0.65);
+}
+
+/* ── Station map ──────────────────────────────────────────────── */
+
+.logistics-map-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.logistics-col-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(0, 180, 220, 0.35);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.station-map-container {
+  flex: 1;
+  position: relative;
+  border: 1px solid rgba(0, 100, 150, 0.3);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.station-map-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.station-map-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+  border: 1px solid rgba(0, 100, 150, 0.3);
+}
+
+/* ── Route order chain ────────────────────────────────────────── */
+
+.logistics-route-order {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  min-width: 0;
+  padding-bottom: 2px;
+}
+
+.logistics-order-chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.logistics-order-chain-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.logistics-order-node {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(0, 200, 232, 0.75);
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 130, 170, 0.3);
+  background: rgba(0, 70, 100, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.logistics-order-node:hover {
+  color: rgba(220, 80, 80, 0.85);
+  border-color: rgba(180, 50, 50, 0.4);
+  background: rgba(80, 20, 20, 0.15);
+}
+
+.logistics-order-num {
+  font-size: 9px;
+  color: rgba(0, 140, 180, 0.5);
+  flex-shrink: 0;
+}
+
+.logistics-order-overflow {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border: 1px solid rgba(0, 100, 150, 0.25);
+}
+
+.logistics-order-arrow {
+  font-size: 9px;
+  color: rgba(0, 160, 200, 0.55);
+  flex-shrink: 0;
+}
+
+.logistics-order-placeholder {
+  font-size: 9px;
+  color: rgba(0, 160, 200, 0.55);
+}
+
+/* ── Footer (cost + order + save) ───────────────────────────── */
+
+.logistics-editor-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 100, 150, 0.25);
+  flex-shrink: 0;
+}
+
+.logistics-cost-display {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.logistics-cost-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(0, 180, 220, 0.35);
+  text-transform: uppercase;
+}
+
+.logistics-cost-value {
+  font-size: 11px;
+  font-family: monospace;
+  color: #00c8e8;
+  text-shadow: 0 0 6px rgba(0, 200, 232, 0.4);
+}
+
+.logistics-cost-value--zero {
+  color: rgba(0, 160, 200, 0.55);
+  text-shadow: none;
+}
+
+.logistics-save-btn {
+  background: transparent;
+  border: 1px solid rgba(0, 190, 230, 0.5);
+  color: rgba(0, 180, 220, 0.8);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 7px 18px;
+  cursor: pointer;
+  font-family: monospace;
+}
+
+.logistics-save-btn:hover:not(:disabled) {
+  color: rgba(0, 215, 255, 0.95);
+  border-color: rgba(0, 215, 255, 0.75);
+}
+
+.logistics-save-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── Resources panel (right column) ─────────────────────────── */
+
+.logistics-resources-panel {
+  width: 200px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(0, 100, 150, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.logistics-resources-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+  flex-shrink: 0;
+}
+
+.logistics-resources-header--sub {
+  border-top: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.logistics-reserves-section {
+  flex-shrink: 0;
+  padding: 6px 0 2px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.logistics-reserve-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 14px;
+}
+
+.logistics-resources-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.logistics-resources-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+}
+
+.logistics-system-group {
+  border-bottom: 1px solid rgba(0, 100, 150, 0.18);
+  padding: 6px 0 2px;
+}
+
+.logistics-system-group-name {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 200, 232, 0.65);
+  text-transform: uppercase;
+  padding: 0 14px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logistics-resource-row {
+  padding: 4px 14px;
+  border-bottom: none;
+}
+
+.logistics-resource-name {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 200, 232, 0.7);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.logistics-resource-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.logistics-resource-type {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.logistics-resource-amount {
+  font-size: 10px;
+  font-family: monospace;
+  color: #00c8e8;
+  text-shadow: 0 0 6px rgba(0, 200, 232, 0.35);
+  white-space: nowrap;
+}
+
+.logistics-resource-amount--zero {
+  color: rgba(0, 160, 200, 0.55);
+  text-shadow: none;
+}
+
+/* scrollbar */
+.logistics-routes-list::-webkit-scrollbar,
+.logistics-route-order::-webkit-scrollbar,
+.logistics-resources-list::-webkit-scrollbar,
+.lm-inventory-list::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+.logistics-routes-list::-webkit-scrollbar-track,
+.logistics-route-order::-webkit-scrollbar-track,
+.logistics-resources-list::-webkit-scrollbar-track,
+.lm-inventory-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.logistics-routes-list::-webkit-scrollbar-thumb,
+.logistics-route-order::-webkit-scrollbar-thumb,
+.logistics-resources-list::-webkit-scrollbar-thumb,
+.lm-inventory-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 150, 200, 0.25);
+}
+
+/* ── Node sidebar ──────────────────────────────────────────────── */
+
+.lm-submodal {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 210px;
+  background: rgba(4, 10, 24, 0.96);
+  border-left: 1px solid rgba(0, 150, 190, 0.4);
+  border-bottom: 1px solid rgba(0, 150, 190, 0.4);
+  font-family: monospace;
+  padding: 12px 13px 10px;
+  pointer-events: all;
+  z-index: 2;
+}
+
+.lm-submodal-header {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: rgba(0, 200, 232, 0.9);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-submodal-rate {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 180, 220, 0.5);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.lm-submodal-extractor {
+  margin-bottom: 10px;
+}
+
+.lm-submodal-extractor + .lm-submodal-extractor {
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.lm-submodal-resource-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.lm-submodal-res-label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lm-submodal-res-val {
+  font-size: 11px;
+  color: #00c8e8;
+  white-space: nowrap;
+}
+
+.lm-submodal-res-rate {
+  font-size: 9px;
+  color: rgba(0, 180, 220, 0.45);
+}
+
+.lm-submodal-slots {
+  display: flex;
+  gap: 6px;
+}
+
+.lm-submodal-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px dashed rgba(0, 130, 170, 0.4);
+  color: rgba(0, 160, 200, 0.55);
+  cursor: pointer;
+  font-family: monospace;
+  min-height: 48px;
+  text-align: left;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.lm-submodal-slot:hover {
+  border-color: rgba(0, 200, 232, 0.65);
+  color: rgba(0, 200, 232, 0.8);
+}
+
+.lm-submodal-slot--filled {
+  border-style: solid;
+  border-color: transparent;
+  color: rgba(0, 200, 232, 0.75);
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.lm-submodal-slot--filled svg {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.lm-submodal-slot--filled:hover {
+  border-color: rgba(210, 80, 60, 0.35);
+  color: rgba(220, 80, 60, 0.85);
+}
+
+.lm-submodal-slot-label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.lm-submodal-slot-value {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── Inventory panel ───────────────────────────────────────────── */
+
+.lm-inventory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+  flex-shrink: 0;
+}
+
+.lm-inventory-context {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: rgba(0, 160, 200, 0.45);
+  text-transform: uppercase;
+  padding: 6px 14px 4px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.15);
+  flex-shrink: 0;
+}
+
+.lm-inventory-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.lm-inventory-item {
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.15);
+}
+
+.lm-inventory-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lm-inventory-item-name {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 200, 232, 0.8);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-inventory-item-count {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(60, 200, 100, 0.65);
+  text-transform: uppercase;
+}
+
+.lm-inventory-item-desc {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 160, 200, 0.55);
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.lm-inventory-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.lm-inventory-item-status {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 160, 200, 0.45);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.lm-inventory-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(0, 190, 230, 0.4);
+  color: rgba(0, 180, 220, 0.7);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.lm-inventory-btn:hover:not(:disabled) {
+  color: rgba(0, 215, 255, 0.95);
+  border-color: rgba(0, 215, 255, 0.65);
+}
+
+.lm-inventory-btn--owned {
+  border-color: rgba(60, 180, 80, 0.5);
+  color: rgba(60, 200, 80, 0.7);
+  cursor: default;
+}
+
+.lm-inventory-btn--equipped {
+  border-color: rgba(0, 190, 230, 0.6);
+  color: rgba(0, 200, 232, 0.9);
+}
+
+.lm-inventory-btn--equipped:hover:not(:disabled) {
+  border-color: rgba(210, 60, 50, 0.6);
+  color: rgba(210, 60, 50, 0.9);
+}
+
+.lm-inventory-btn--disabled,
+.lm-inventory-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── Tab bar (right panel header) ────────────────────────────── */
+
+.lm-tab-header {
+  gap: 0;
+  padding: 0;
+}
+
+.lm-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+  color: rgba(0, 160, 200, 0.4);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 10px 6px;
+  cursor: pointer;
+  font-family: monospace;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.lm-tab-btn:hover {
+  color: rgba(0, 200, 232, 0.75);
+}
+
+.lm-tab-btn--active {
+  color: rgba(0, 200, 232, 0.85);
+  border-bottom-color: rgba(0, 190, 230, 0.6);
+}
+
+.lm-tab-close {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+  font-size: 12px;
+}
+
+/* ── Colony sidebar ───────────────────────────────────────────── */
+
+.lm-submodal--colony {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.lm-colony-title-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: rgba(60, 200, 100, 0.45);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.lm-colony-entry {
+  margin-bottom: 6px;
+}
+
+.lm-colony-entry + .lm-colony-entry {
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.lm-colony-slot-block {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(30, 100, 60, 0.3);
+  background: rgba(0, 20, 10, 0.3);
+}
+
+.lm-colony-slot-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(60, 180, 80, 0.45);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.lm-colony-unlock-btn {
+  width: 100%;
+  margin-top: 6px;
+  background: transparent;
+  border: 1px dashed rgba(60, 180, 80, 0.4);
+  color: rgba(60, 200, 80, 0.6);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 0;
+  cursor: pointer;
+  font-family: monospace;
+}
+
+.lm-colony-unlock-btn:hover:not(:disabled) {
+  border-color: rgba(60, 220, 100, 0.7);
+  color: rgba(60, 240, 100, 0.9);
+}
+
+.lm-colony-unlock-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.lm-colony-planet-name {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(60, 200, 100, 0.7);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.lm-colony-target-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.lm-colony-target-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: rgba(0, 160, 200, 0.45);
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lm-colony-target-select {
+  flex: 1;
+  background: rgba(0, 40, 60, 0.6);
+  border: 1px solid rgba(60, 180, 100, 0.4);
+  color: rgba(60, 220, 100, 0.85);
+  font-size: 9px;
+  font-family: monospace;
+  letter-spacing: 0.06em;
+  padding: 3px 5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.lm-colony-target-select:focus {
+  border-color: rgba(60, 220, 100, 0.7);
+}
+
+.lm-colony-recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.lm-colony-recipe-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lm-colony-recipe-label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 52px;
+  max-width: 80px;
+  flex-shrink: 0;
+}
+
+.lm-colony-progress-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(0, 80, 60, 0.4);
+  border: 1px solid rgba(30, 120, 70, 0.35);
+  overflow: hidden;
+}
+
+.lm-colony-progress-fill {
+  height: 100%;
+  background: rgba(60, 200, 100, 0.7);
+  transition: width 0.3s ease;
+}
+
+.lm-colony-recipe-val {
+  font-size: 9px;
+  font-family: monospace;
+  color: rgba(60, 200, 100, 0.65);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lm-colony-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.lm-colony-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.lm-colony-queue-name {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(60, 200, 100, 0.65);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-colony-queue-time {
+  font-size: 9px;
+  font-family: monospace;
+  color: rgba(0, 160, 200, 0.55);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lm-colony-queue-time--ready {
+  color: rgba(60, 220, 100, 0.85);
+}
+
+/* ── Pending upgrades (Colony Production section) ─────────────── */
+
+.lm-pending-list {
+  flex-shrink: 0;
+  padding: 4px 0;
+}
+
+.lm-pending-item {
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.12);
+}
+
+.lm-pending-item-name {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(60, 200, 100, 0.75);
+  text-transform: uppercase;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-pending-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.lm-pending-item-status {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(0, 160, 200, 0.55);
+  text-transform: uppercase;
+}
+
+.lm-pending-item-status--ready {
+  color: rgba(60, 200, 100, 0.75);
+}
+
+.lm-pending-claim-btn {
+  background: transparent;
+  border: 1px solid rgba(60, 180, 100, 0.5);
+  color: rgba(60, 200, 100, 0.8);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  cursor: pointer;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.lm-pending-claim-btn:hover {
+  border-color: rgba(60, 220, 100, 0.8);
+  color: rgba(60, 240, 120, 0.95);
+}
+
+/* ── Slot hover tooltip ────────────────────────────────────────── */
+
+.lm-slot-tooltip {
+  position: fixed;
+  z-index: 300;
+  width: 190px;
+  background: rgba(4, 10, 24, 0.98);
+  border: 1px solid rgba(0, 150, 190, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  font-family: monospace;
+  padding: 8px 10px;
+  pointer-events: none;
+}
+
+.lm-slot-tooltip-name {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: rgba(0, 200, 232, 0.9);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.lm-slot-tooltip-desc {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(0, 160, 200, 0.55);
+  line-height: 1.55;
+  margin-bottom: 5px;
+}
+
+.lm-slot-tooltip-hint {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: rgba(210, 80, 60, 0.6);
+  text-transform: uppercase;
+}

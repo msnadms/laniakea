@@ -30,7 +30,7 @@ export function computeWeaponCap(a: number, b: number): number {
 }
 
 const LOGISTICS_BASE = 5;
-export const LOGISTICS_A_BONUS = [0, 1, 2, 3, 5];
+export const LOGISTICS_A_BONUS = [0, 3, 6, 9, 12];
 export function computeLogisticsCap(a: number): number {
   return LOGISTICS_BASE + LOGISTICS_A_BONUS[a];
 }
@@ -59,6 +59,8 @@ interface UIState {
   toggleHUD: () => void;
   showScanlines: boolean;
   toggleScanlines: () => void;
+  showBootSequence: boolean;
+  toggleBootSequence: () => void;
   exoticMatter: number;
   detectionRating: number;
   railgunAmmo: number;
@@ -141,6 +143,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleHUD: () => set((s) => ({ showHUD: !s.showHUD })),
   showScanlines: true,
   toggleScanlines: () => set((s) => ({ showScanlines: !s.showScanlines })),
+  showBootSequence: true,
+  toggleBootSequence: () => set((s) => ({ showBootSequence: !s.showBootSequence })),
   alloys: 0,
   nutrients: 0,
   metallicHydrogen: 0,

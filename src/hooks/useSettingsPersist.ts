@@ -35,6 +35,7 @@ export function useSettingsPersist() {
           showOrbitRings: s.showOrbitRings,
           showAttractorLabels: s.showAttractorLabels,
           showHUD: s.showHUD,
+          showBootSequence: s.showBootSequence,
           infiniteExplore: s.infiniteExplore,
           exoticMatter: s.exoticMatter,
           detectionRating: s.detectionRating,

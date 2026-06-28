@@ -54,6 +54,8 @@ export function PlanetPanel() {
   const neutronMatter = 0;
   const system = useGameStore((s) => s.system);
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
+  const galaxy = useGameStore((s) => s.galaxy);
+  const supercluster = useGameStore((s) => s.supercluster);
   const extractor = useExtractorStore((s) => selectedKey ? s.extractors[selectedKey] : undefined);
   const settlement = useSettlementStore((s) => selectedKey ? s.settlements[selectedKey] : undefined);
   const spendNutrients = useUIStore((s) => s.spendNutrients);
@@ -128,15 +130,22 @@ export function PlanetPanel() {
     spendAlloys(STATION_COST);
     const now = Date.now();
     const key = makeExtractorKey(galaxySeed, system.id, planet!.name);
+    const galaxyDot = supercluster.dots.find((d) => d.seed === galaxy.seed);
     const newExtractor: Extractor = {
       key,
       galaxySeed,
       systemId: system.id,
+      systemName: system.name,
       planetName: planet!.name,
       resourceType: resource.type,
       rate: resource.count,
       placedAt: now,
       lastCollectedAt: now,
+      systemX: system.x,
+      systemY: system.y,
+      galaxyX: galaxyDot?.x ?? 0,
+      galaxyY: galaxyDot?.y ?? 0,
+      superclusSeed: supercluster.seed,
     };
     placeExtractor(newExtractor);
     if (user) saveExtractor(user.uid, newExtractor);
@@ -169,12 +178,19 @@ export function PlanetPanel() {
     spendNutrients(SETTLE_COST.nutrients);
     spendMetallicHydrogen(SETTLE_COST.metallicHydrogen);
     const key = makeSettlementKey(galaxySeed, system.id, planet.name);
+    const galaxyDot = supercluster.dots.find((d) => d.seed === galaxy.seed);
     const newSettlement: Settlement = {
       key,
       galaxySeed,
       systemId: system.id,
+      systemName: system.name,
       planetName: planet.name,
       settledAt: Date.now(),
+      systemX: system.x,
+      systemY: system.y,
+      galaxyX: galaxyDot?.x ?? 0,
+      galaxyY: galaxyDot?.y ?? 0,
+      superclusSeed: supercluster.seed,
     };
     useSettlementStore.getState().placeSettlement(newSettlement);
     if (user) saveSettlement(user.uid, newSettlement);

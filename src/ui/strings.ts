@@ -1,3 +1,7 @@
 export const MSG_DRIVE_REQUIRED_GALAXY = 'TOROIDAL WARP GEOMETRY REQUIRED FOR INTER-GALACTIC TRAVEL';
 export const MSG_DRIVE_REQUIRED_SUPERCLUSTER = 'VAN DEN BROECK COMPRESSION REQUIRED FOR SUPERCLUSTER JUMP';
 export const SHIP_NAME = 'UNSS PEREGRINE';
+
+export function fmt(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+}

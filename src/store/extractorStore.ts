@@ -1,27 +1,61 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Extractor } from '../game/types';
-import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap, computeStorageCap } from './uiStore';
+import type { Extractor, ColonyProductionItem } from '../game/types';
+import { EXTRACTOR_UPGRADES } from '../game/types';
+import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap } from './uiStore';
 import { useQuestStore } from './questStore';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
-export const AUTO_DELIVERY_COST_PER_STATION = 200;
+export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 1000) // 1 unit per hour
+
+export function getExtractorMultipliers(
+  extractorKey: string,
+  nodeEquipped: Record<string, [string | null, string | null]>,
+): { rateMultiplier: number; storageMultiplier: number; dampened: boolean } {
+  const slots = nodeEquipped[extractorKey] ?? [null, null];
+  let rateMultiplier = 1;
+  let storageMultiplier = 1;
+  let dampened = false;
+  for (const upgradeId of slots) {
+    if (!upgradeId) continue;
+    const def = EXTRACTOR_UPGRADES.find((u) => u.id === upgradeId);
+    if (!def) continue;
+    if (def.effect.upgType === 'rate') rateMultiplier *= def.effect.multiplier;
+    if (def.effect.upgType === 'storage') storageMultiplier *= def.effect.multiplier;
+    if (def.effect.upgType === 'detection') dampened = true;
+  }
+  return { rateMultiplier, storageMultiplier, dampened };
+}
 
 export function peekAccumulated(extractor: Extractor): number {
   const { storageB, logisticsB } = useUIStore.getState();
+  const { nodeEquipped } = useExtractorStore.getState();
+  const { rateMultiplier, storageMultiplier } = getExtractorMultipliers(extractor.key, nodeEquipped);
   return Math.min(
-    EXTRACTOR_HOLD_CAPS[storageB],
-    Math.floor((Date.now() - extractor.lastCollectedAt) * ACCUMULATION_RATE_PER_MS * extractor.rate * LOGISTICS_B_RATE[logisticsB]),
+    Math.floor(EXTRACTOR_HOLD_CAPS[storageB] * storageMultiplier),
+    Math.floor((Date.now() - extractor.lastCollectedAt) * ACCUMULATION_RATE_PER_MS * extractor.rate * rateMultiplier * LOGISTICS_B_RATE[logisticsB]),
   );
+}
+
+export interface PendingUpgrade {
+  id: string;
+  upgradeId: string;
+  availableAt: number;
 }
 
 interface ExtractorState {
   extractors: Record<string, Extractor>;
   placeExtractor: (extractor: Extractor) => void;
   collectExtractor: (key: string, maxAmount?: number) => number;
-  remoteCollectExtractor: (key: string) => boolean;
   removeExtractor: (key: string) => void;
   restoreExtractors: (list: Extractor[]) => void;
+  ownedUpgrades: string[];
+  nodeEquipped: Record<string, [string | null, string | null]>;  // keyed by ExtractorKey
+  pendingUpgrades: PendingUpgrade[];
+  purchaseUpgrade: (upgradeId: string) => boolean;
+  equipUpgrade: (extractorKey: string, slot: 0 | 1, upgradeId: string | null) => void;
+  receiveColonyItems: (items: ColonyProductionItem[]) => void;
+  claimPendingUpgrade: (id: string) => boolean;
+  restoreUpgrades: (ownedUpgrades: string[], nodeEquipped: Record<string, [string | null, string | null]>, pendingUpgrades?: PendingUpgrade[]) => void;
 }
 
 export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector((set, get) => ({
@@ -39,8 +73,9 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     if (!extractor) return 0;
     const now = Date.now();
     const { storageB, logisticsB } = useUIStore.getState();
-    const extractorMax = EXTRACTOR_HOLD_CAPS[storageB];
-    const unitsPerMs = ACCUMULATION_RATE_PER_MS * extractor.rate * LOGISTICS_B_RATE[logisticsB];
+    const { rateMultiplier, storageMultiplier } = getExtractorMultipliers(key, get().nodeEquipped);
+    const extractorMax = Math.floor(EXTRACTOR_HOLD_CAPS[storageB] * storageMultiplier);
+    const unitsPerMs = ACCUMULATION_RATE_PER_MS * extractor.rate * rateMultiplier * LOGISTICS_B_RATE[logisticsB];
     const rawAmount = Math.min(Math.floor((now - extractor.lastCollectedAt) * unitsPerMs), extractorMax);
     const amount = maxAmount !== undefined ? Math.min(rawAmount, maxAmount) : rawAmount;
     if (amount <= 0) return 0;
@@ -54,26 +89,6 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     return amount;
   },
 
-  remoteCollectExtractor: (key) => {
-    const extractor = get().extractors[key];
-    if (!extractor) return false;
-    const potential = peekAccumulated(extractor);
-    if (potential <= 0) return false;
-    const ui = useUIStore.getState();
-    if (ui.exoticMatter < AUTO_DELIVERY_COST_PER_STATION) return false;
-    const storageCap = computeStorageCap(ui.storageA);
-    const currentCargo = ({ exotic: ui.exoticMatter, 'helium-3': ui.helium3Reserves, alloys: ui.alloys, nutrients: ui.nutrients } as Record<string, number>)[extractor.resourceType];
-    if (storageCap <= currentCargo) return false;
-    ui.consumeExoticMatter(AUTO_DELIVERY_COST_PER_STATION);
-    // Re-read state after deduction so exotic-type extractors get correct available space
-    const ui2 = useUIStore.getState();
-    const cargo2 = ({ exotic: ui2.exoticMatter, 'helium-3': ui2.helium3Reserves, alloys: ui2.alloys, nutrients: ui2.nutrients } as Record<string, number>)[extractor.resourceType];
-    const space = Math.max(0, storageCap - cargo2);
-    const amount = get().collectExtractor(key, space);
-    if (amount > 0) ui2.addCargo(extractor.resourceType, amount);
-    return true;
-  },
-
   removeExtractor: (key) =>
     set((s) => {
       const { [key]: _, ...rest } = s.extractors;
@@ -84,5 +99,57 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     const map: Record<string, Extractor> = {};
     for (const e of list) map[e.key] = e;
     set({ extractors: map });
+  },
+
+  ownedUpgrades: [],
+  nodeEquipped: {},
+  pendingUpgrades: [],
+
+  receiveColonyItems: (items) => {
+    const newPending: PendingUpgrade[] = items.map((item) => ({
+      id: crypto.randomUUID(),
+      upgradeId: item.upgradeId,
+      availableAt: item.availableAt,
+    }));
+    set((s) => ({ pendingUpgrades: [...s.pendingUpgrades, ...newPending] }));
+  },
+
+  claimPendingUpgrade: (id) => {
+    const pending = get().pendingUpgrades.find((p) => p.id === id);
+    if (!pending || pending.availableAt > Date.now()) return false;
+    set((s) => ({
+      pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id),
+      ownedUpgrades: [...s.ownedUpgrades, pending.upgradeId],
+    }));
+    return true;
+  },
+
+  restoreUpgrades: (ownedUpgrades, nodeEquipped, pendingUpgrades = []) =>
+    set({ ownedUpgrades, nodeEquipped, pendingUpgrades }),
+
+  purchaseUpgrade: (upgradeId) => {
+    const def = EXTRACTOR_UPGRADES.find((u) => u.id === upgradeId);
+    if (!def) return false;
+    const ui = useUIStore.getState();
+    if ((def.cost.alloys ?? 0) > ui.alloys) return false;
+    if ((def.cost.exotic ?? 0) > ui.exoticMatter) return false;
+    if ((def.cost.helium ?? 0) > ui.helium3Reserves) return false;
+    if (def.cost.alloys) ui.spendAlloys(def.cost.alloys);
+    if (def.cost.exotic) ui.consumeExoticMatter(def.cost.exotic);
+    if (def.cost.helium) ui.consumeHelium3(def.cost.helium);
+    set((s) => ({ ownedUpgrades: [...s.ownedUpgrades, upgradeId] }));
+    return true;
+  },
+
+  equipUpgrade: (extractorKey, slot, upgradeId) => {
+    set((s) => {
+      const equipped = { ...s.nodeEquipped };
+      const current: [string | null, string | null] = equipped[extractorKey]
+        ? [...equipped[extractorKey]] as [string | null, string | null]
+        : [null, null];
+      current[slot] = upgradeId;
+      equipped[extractorKey] = current;
+      return { nodeEquipped: equipped };
+    });
   },
 })));

@@ -6,11 +6,14 @@ import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
 import { loadAllSettlements } from '../firebase/settlements';
 import { loadQuests } from '../firebase/quests';
+import { loadLogisticsRoutes } from '../firebase/logisticsRoutes';
+import { loadExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { useUIStore, computeStorageCap } from './uiStore';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
 import { useSettlementStore } from './settlementStore';
+import { useLogisticsStore } from './logisticsStore';
 import { useQuestStore } from './questStore';
 import { loadNav } from '../lib/navLocalStorage';
 
@@ -38,12 +41,14 @@ export const useAuthStore = create<AuthState>()(() => ({
 export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
-      const [baseSettings, discoveries, extractors, settlements, quests] = await Promise.all([
+      const [baseSettings, discoveries, extractors, settlements, quests, logisticsRoutes, extractorUpgrades] = await Promise.all([
         initUserDoc(user),
         loadAllDiscoveries(user.uid),
         loadAllExtractors(user.uid),
         loadAllSettlements(user.uid),
         loadQuests(user.uid),
+        loadLogisticsRoutes(user.uid),
+        loadExtractorUpgrades(user.uid),
       ]);
       // localStorage nav is more recent than Firebase's debounced write — prefer
       // it for galaxy/system/view when the entry is fresh (< 30s old).
@@ -63,6 +68,7 @@ export function initAuth(): () => void {
         showOrbitRings: settings.showOrbitRings,
         showAttractorLabels: settings.showAttractorLabels,
         showHUD: settings.showHUD,
+        showBootSequence: settings.showBootSequence,
         infiniteExplore: settings.infiniteExplore,
         exoticMatter: Math.min(settings.exoticMatter, cap),
         detectionRating: settings.detectionRating,
@@ -82,7 +88,10 @@ export function initAuth(): () => void {
         logisticsB: settings.logisticsB,
       });
       useExtractorStore.getState().restoreExtractors(extractors);
-      useSettlementStore.getState().restoreSettlements(settlements);
+      useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped, extractorUpgrades.pendingUpgrades ?? []);
+      useSettlementStore.getState().restoreSettlements(settlements.settlements);
+      useSettlementStore.getState().restoreColonyStates(settlements.colonyStates);
+      useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
       useCodexStore.getState().setAll(discoveries);
       useQuestStore.getState().restoreQuests(quests);
 

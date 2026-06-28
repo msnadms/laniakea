@@ -2,21 +2,14 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useUIStore, computeStorageCap, computeWeaponCap } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
-import { useExtractorStore, AUTO_DELIVERY_COST_PER_STATION, peekAccumulated } from '../store/extractorStore';
-import { RESOURCE_LABELS } from '../game/types';
-import { MSG_DRIVE_REQUIRED_SUPERCLUSTER, SHIP_NAME } from './strings';
-import { useAuthStore } from '../store/authStore';
-import { deleteExtractor } from '../firebase/extractors';
+import { LogisticsModal } from './LogisticsModal';
+import { MSG_DRIVE_REQUIRED_SUPERCLUSTER, SHIP_NAME, fmt } from './strings';
 import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { ShipUpgradePanel } from './ShipUpgradePanel';
 import { AlloysIcon, NutrientsIcon, MetallicHydrogenIcon, NeutronStarMatterIcon } from './CargoIcons';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
-
-function fmt(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
-}
 
 const TrapezoidOutline = ({ points = "1,0.1 0.39,0.1 0.05,1 0.65,1" }: { points?: string }) => (
   <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -136,71 +129,7 @@ const NavRegen = memo(function NavRegen() {
   );
 });
 
-function DeliveryPanel({ onClose }: { onClose: () => void }) {
-  const extractorMap = useExtractorStore((s) => s.extractors);
-  const remoteCollectExtractor = useExtractorStore((s) => s.remoteCollectExtractor);
-  const removeExtractor = useExtractorStore((s) => s.removeExtractor);
-  const exoticMatter = useUIStore((s) => s.exoticMatter);
-  const triggerHudFlash = useUIStore((s) => s.triggerHudFlash);
-  const user = useAuthStore((s) => s.user);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const extractors = Object.values(extractorMap);
-  const canAffordOne = exoticMatter >= AUTO_DELIVERY_COST_PER_STATION;
-
-  function handleExtractOne(key: string) {
-    const success = remoteCollectExtractor(key);
-    if (!success) triggerHudFlash();
-  }
-
-  return (
-    <div className="delivery-panel">
-      <div className="delivery-panel-header">
-        <span className="delivery-panel-title">Extraction Network</span>
-        <button className="delivery-panel-close" onClick={onClose}>✕</button>
-      </div>
-
-      {extractors.length === 0 ? (
-        <div className="delivery-panel-empty">No active mining stations</div>
-      ) : (
-        <div className="delivery-panel-list">
-          {extractors.map((ext) => {
-            const accumulated = peekAccumulated(ext);
-            return (
-              <div key={ext.key} className="delivery-panel-row">
-                <div className="delivery-panel-row-info">
-                  <span className="delivery-panel-planet">{ext.planetName}</span>
-                  <span className="delivery-panel-resource">{RESOURCE_LABELS[ext.resourceType]}</span>
-                </div>
-                <span className="delivery-panel-amount">+{accumulated}</span>
-                <button
-                  className={`delivery-panel-btn${!canAffordOne || accumulated <= 0 ? ' delivery-panel-btn--dim' : ''}`}
-                  onClick={() => handleExtractOne(ext.key)}
-                  disabled={!canAffordOne || accumulated <= 0}
-                >
-                  Collect
-                </button>
-                <button
-                  className="delivery-panel-btn delivery-panel-discard-btn"
-                  onClick={() => { removeExtractor(ext.key); if (user) deleteExtractor(user.uid, ext.key); }}
-                >
-                  ✕
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const DeliveryButton = memo(function DeliveryButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+const LogisticsButton = memo(function LogisticsButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <button
       className={`side-btn delivery-btn${open ? ' delivery-btn--active' : ''}`}
@@ -223,12 +152,12 @@ const DeliveryButton = memo(function DeliveryButton({ open, onToggle }: { open: 
   );
 });
 
-function DeliverySystem() {
+function LogisticsSystem() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <DeliveryButton open={open} onToggle={() => setOpen((o) => !o)} />
-      {open && <DeliveryPanel onClose={() => setOpen(false)} />}
+      <LogisticsButton open={open} onToggle={() => setOpen((o) => !o)} />
+      {open && <LogisticsModal onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -261,10 +190,6 @@ export function ShipHUD() {
   const storageA = useUIStore((s) => s.storageA);
   const weaponA = useUIStore((s) => s.weaponA);
   const weaponB = useUIStore((s) => s.weaponB);
-  const driveA = useUIStore((s) => s.driveA);
-  const driveB = useUIStore((s) => s.driveB);
-  const logisticsA = useUIStore((s) => s.logisticsA);
-  const logisticsB = useUIStore((s) => s.logisticsB);
   const hudRef = useRef<HTMLDivElement>(null);
 
   const storageCap = computeStorageCap(storageA);
@@ -286,7 +211,7 @@ export function ShipHUD() {
     <div ref={hudRef} className="ship-hud" aria-hidden="true">
       <Codex />
       <ShipUpgradePanel />
-      {driveA + driveB >= 3 && logisticsA + logisticsB >= 3 && <DeliverySystem />}
+      <LogisticsSystem />
       <UpgradesButton />
       <NavBack />
       <NavRegen />

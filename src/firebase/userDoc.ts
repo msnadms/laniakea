@@ -8,6 +8,7 @@ export interface UserSettings {
   showOrbitRings: boolean;
   showAttractorLabels: boolean;
   showHUD: boolean;
+  showBootSequence: boolean;
   infiniteExplore: boolean;
   exoticMatter: number;
   detectionRating: number;
@@ -36,6 +37,7 @@ const defaultSettings: UserSettings = {
   showOrbitRings: false,
   showAttractorLabels: true,
   showHUD: true,
+  showBootSequence: true,
   infiniteExplore: false,
   exoticMatter: 75,
   detectionRating: 0,
