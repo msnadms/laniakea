@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Extractor, LogisticsRoute, ExtractorKey, Settlement, SettlementKey, Resource, ColonyProductionItem } from '../game/types';
-import { EXTRACTOR_UPGRADES, COST_KEY_TO_RESOURCE } from '../game/types';
+import { COST_KEY_TO_RESOURCE } from '../game/types';
+import { EXTRACTOR_UPGRADES } from '../data/upgrades';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers } from './extractorStore';
 import { useSettlementStore } from './settlementStore';
 import { useUIStore, computeStorageCap, computeDriveMultiplier } from './uiStore';

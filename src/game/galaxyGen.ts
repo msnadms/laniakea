@@ -73,7 +73,7 @@ function pickStarType(rng: Rng, armFraction: number | null, isDisk: boolean): St
       N: 0,
     };
   }
-  const total = (Object.values(weights) as number[]).reduce((a, b) => a + b, 0);
+  const total = (Object.values(weights) as number[]).reduce((a, b) => a + b, 1);
   const roll = rng() * total;
   let cumulative = 0;
   for (const [type, weight] of Object.entries(weights) as [StarType, number][]) {

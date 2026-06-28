@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Settlement, ColonyState, ColonyProductionItem } from '../game/types';
-import { EXTRACTOR_UPGRADES, COST_KEY_TO_RESOURCE, MAX_COLONY_SLOTS, makeEmptyColonySlot } from '../game/types';
+import { COST_KEY_TO_RESOURCE, MAX_COLONY_SLOTS, makeEmptyColonySlot } from '../game/types';
+import { EXTRACTOR_UPGRADES } from '../data/upgrades';
 import { useQuestStore } from './questStore';
 
 interface FeedResult {

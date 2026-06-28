@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Extractor, ColonyProductionItem } from '../game/types';
-import { EXTRACTOR_UPGRADES } from '../game/types';
+import { EXTRACTOR_UPGRADES } from '../data/upgrades';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap } from './uiStore';
 import { useQuestStore } from './questStore';
 

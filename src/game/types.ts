@@ -198,49 +198,16 @@ export const RESOURCE_LABELS: Record<Resource['type'], string> = {
   neutronStarMatter: 'Neutron Star Matter'
 };
 
-type UpgradeType = 'rate' | 'storage' | 'detection';
+export type UpgradeType = 'rate' | 'storage' | 'detection';
 
-interface Effect {
-  upgType: UpgradeType,
-  multiplier: number
+export interface UpgradeEffect {
+  upgType: UpgradeType;
+  multiplier: number;
 }
 
 export interface ExtractorUpgrade {
   id: string;
   name: string;
   cost: { alloys?: number; exotic?: number; helium?: number };
-  effect: Effect;
+  effect: UpgradeEffect;
 }
-
-export const EXTRACTOR_UPGRADES: ExtractorUpgrade[] = [
-  {
-    id: 'resonance_drill',
-    name: 'Resonance Drill Head',
-    cost: { alloys: 1 },
-    effect: { upgType: 'rate', multiplier: 1.25 }
-  },
-  {
-    id: 'thermal_coil',
-    name: 'Thermal Extraction Coil',
-    cost: { alloys: 1 },
-    effect: { upgType: 'rate', multiplier: 1.5 }
-  },
-  {
-    id: 'compression_manifold',
-    name: 'Compression Manifold',
-    cost: { alloys: 1500, exotic: 1500 },
-    effect: { upgType: 'storage', multiplier: 1.25 }
-  },
-  {
-    id: 'signal_dampener',
-    name: 'Signal Dampener',
-    cost: { exotic: 2500 },
-    effect: { upgType: 'detection', multiplier: 1 }
-  },
-  {
-    id: 'overcharge_module',
-    name: 'Overcharge Module',
-    cost: { alloys: 2000, helium: 2000 },
-    effect: { upgType: 'rate', multiplier: 2 }
-  },
-];
