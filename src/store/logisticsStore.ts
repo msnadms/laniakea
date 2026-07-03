@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Extractor, LogisticsRoute, ExtractorKey, Settlement, SettlementKey, Resource, ColonyProductionItem } from '../game/types';
+import type { Extractor, LogisticsRoute, ExtractorKey, Settlement, Resource, ColonyProductionItem } from '../game/types';
 import { COST_KEY_TO_RESOURCE } from '../game/types';
 import { EXTRACTOR_UPGRADES } from '../data/upgrades';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers } from './extractorStore';
@@ -74,13 +74,11 @@ export function computeRouteCost(
     .map((k) => resolveNodePos(k, extractors, settlements))
     .filter(Boolean) as NodePos[];
   if (nodes.length === 0) return { exotic: 0, helium: 0 };
-  // Deduplicate consecutive same-system nodes for cost calculation
   const hops: NodePos[] = [];
   for (const n of nodes) {
     const last = hops[hops.length - 1];
     if (!last || last.galaxySeed !== n.galaxySeed || last.systemId !== n.systemId) hops.push(n);
   }
-  // Base dispatch fee applies to all routes (including same-system), scaled by drive tier
   const { driveA, driveB } = useUIStore.getState();
   const [me, mh] = computeDriveMultiplier(driveA, driveB);
   let totalExotic = Math.max(1, Math.round(100 * me));
@@ -98,7 +96,7 @@ interface LogisticsState {
   addRoute: (route: LogisticsRoute) => void;
   updateRoute: (id: string, patch: Partial<Pick<LogisticsRoute, 'name' | 'nodeKeys'>>) => void;
   removeRoute: (id: string) => void;
-  dispatchRoute: (id: string) => string[] | false;
+  dispatchRoute: (id: string) => { key: ExtractorKey; amount: number }[] | false;
   restoreRoutes: (routes: LogisticsRoute[]) => void;
 }
 
@@ -124,7 +122,6 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     const colonyKeys = route.nodeKeys.filter((k) => !!settlements[k]);
     const stations = extractorKeys.map((k) => extractors[k]) as Extractor[];
 
-    // FIX: include completed slots — they deliver and immediately accept resources for the next cycle
     const colonyCapacity: Partial<Record<Resource['type'], number>> = {};
     for (const colonyKey of colonyKeys) {
       const cs = colonyStates[colonyKey];
@@ -134,7 +131,6 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
         if (slot.inProduction && slot.inProduction.availableAt > Date.now()) continue;
         const recipe = EXTRACTOR_UPGRADES.find((u) => u.id === slot.targetUpgradeId);
         if (!recipe) continue;
-        // Completed slots have empty pendingResources (consumed when production started)
         const isCompleted = !!slot.inProduction;
         for (const [costKey, costAmt] of Object.entries(recipe.cost)) {
           if (!costAmt) continue;
@@ -147,19 +143,14 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       }
     }
 
-    // FIX: evaluate colony readiness before the stations guard so colony-only dispatches work
     const hasReadyColonyItems = colonyKeys.some((k) =>
       (colonyStates[k]?.slots ?? []).some(
         (slot) => slot.inProduction && slot.inProduction.availableAt <= Date.now(),
       ),
     );
 
-    // FIX: only bail early when there are no stations AND no ready colony items
     if (stations.length < 1 && !hasReadyColonyItems) return false;
 
-    // FIX: compute cost up front so we can subtract it from the pre-check cargo map;
-    // this prevents exotic/helium collectors being refused because cargo is currently full
-    // when paying the dispatch fee would immediately free that space
     const cost = computeRouteCost(route.nodeKeys, extractors, settlements);
     const ui = useUIStore.getState();
 
@@ -185,7 +176,6 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       return cargoSpace + colonySpace > 0;
     });
 
-    // FIX: flash on all dead-end paths (not just unaffordable)
     if (!hasReadyColonyItems && !stationsCanDeliver) {
       ui.triggerHudFlash();
       return false;
@@ -207,7 +197,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     };
 
     const pool: Partial<Record<Resource['type'], number>> = {};
-    const collectedKeys: string[] = [];
+    const collected: { key: ExtractorKey; amount: number }[] = [];
 
     for (const station of stations) {
       const type = station.resourceType;
@@ -218,9 +208,10 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       const amount = useExtractorStore.getState().collectExtractor(station.key, maxCollect);
       if (amount > 0) {
         pool[type] = (pool[type] ?? 0) + amount;
-        collectedKeys.push(station.key);
-        // FIX: update cargoMap so subsequent same-resource stations see the reduced available space
-        cargoMap[type] = (cargoMap[type] ?? 0) + amount;
+        collected.push({ key: station.key, amount });
+        const toColony = Math.min(amount, colonySpace);
+        colonyCapacity[type] = colonySpace - toColony;
+        cargoMap[type] = (cargoMap[type] ?? 0) + (amount - toColony);
       }
     }
 
@@ -242,7 +233,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       useExtractorStore.getState().receiveColonyItems(readyItems);
     }
 
-    return collectedKeys;
+    return collected;
   },
 
   restoreRoutes: (routes) => set({ routes }),

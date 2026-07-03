@@ -56,9 +56,17 @@ function resolveOverlaps<T extends { svgX: number; svgY: number }>(nodes: T[]): 
     let moved = false;
     for (let i = 1; i < placed.length; i++) {
       for (let j = 0; j < i; j++) {
-        const dx = placed[i].svgX - placed[j].svgX;
-        const dy = placed[i].svgY - placed[j].svgY;
-        const dist = Math.hypot(dx, dy) || 0.01;
+        let dx = placed[i].svgX - placed[j].svgX;
+        let dy = placed[i].svgY - placed[j].svgY;
+        let dist = Math.hypot(dx, dy);
+        if (dist < 0.01) {
+          // Coincident nodes (e.g. colony + extractor in the same system) have a
+          // zero delta to push along — substitute a deterministic per-index direction
+          const angle = i * 2.3999632; // golden angle keeps repeated pushes spread out
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          dist = 1;
+        }
         if (dist < MIN_NODE_DIST) {
           const f = MIN_NODE_DIST / dist;
           placed[i] = { ...placed[i], svgX: placed[j].svgX + dx * f, svgY: placed[j].svgY + dy * f };

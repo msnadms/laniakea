@@ -116,6 +116,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [draftNodeKeys, setDraftNodeKeys] = useState<string[]>([]);
   const [tick, setTick] = useState(0);
@@ -161,6 +162,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   function startNew() {
     const defaultName = `Route ${String.fromCharCode(65 + routes.length)}`;
     setEditingId(null);
+    setIsEditing(true);
     setDraftName(defaultName);
     setDraftNodeKeys([]);
   }
@@ -169,6 +171,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const route = routes.find((r) => r.id === id);
     if (!route) return;
     setEditingId(id);
+    setIsEditing(true);
     setDraftName(route.name);
     setDraftNodeKeys([...route.nodeKeys]);
   }
@@ -189,6 +192,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       updateRoute(editingId, { name, nodeKeys: validKeys });
       if (user) saveLogisticsRoute(user.uid, { id: editingId, name, nodeKeys: validKeys });
     } else {
+      if (routes.length >= maxRoutes) return;
       const id = crypto.randomUUID();
       const route = { id, name, nodeKeys: validKeys };
       addRoute(route);
@@ -204,20 +208,15 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const { extractors: liveExtractors } = useExtractorStore.getState();
     const liveSettlements = useSettlementStore.getState().settlements;
 
-    const preAmounts: Record<string, number> = {};
-    for (const k of route.nodeKeys) {
-      const ext = liveExtractors[k];
-      if (ext) preAmounts[k] = peekAccumulated(ext);
-    }
     const cost = computeRouteCost(route.nodeKeys, liveExtractors, liveSettlements);
 
     const colonyKeys = route.nodeKeys.filter((k) => !!liveSettlements[k]);
-    const collectedKeys = dispatchRoute(routeId);
-    if (collectedKeys !== false) {
+    const collected = dispatchRoute(routeId);
+    if (collected !== false) {
       if (user) {
-        if (collectedKeys.length > 0) {
+        if (collected.length > 0) {
           const updatedExtractors = useExtractorStore.getState().extractors;
-          for (const key of collectedKeys) {
+          for (const { key } of collected) {
             const ts = updatedExtractors[key]?.lastCollectedAt;
             if (ts !== undefined) updateExtractorCollected(user.uid, key, ts);
           }
@@ -244,15 +243,13 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       }
 
       const nodeCollected = new Map<string, Map<string, number>>();
-      for (const k of collectedKeys) {
-        const ext = liveExtractors[k];
-        if (!ext) continue;
+      for (const { key, amount } of collected) {
+        const ext = liveExtractors[key];
+        if (!ext || amount <= 0) continue;
         const nid = getSystemKey(ext);
-        const amt = preAmounts[k] ?? 0;
-        if (amt <= 0) continue;
         if (!nodeCollected.has(nid)) nodeCollected.set(nid, new Map());
         const resMap = nodeCollected.get(nid)!;
-        resMap.set(ext.resourceType, (resMap.get(ext.resourceType) ?? 0) + amt);
+        resMap.set(ext.resourceType, (resMap.get(ext.resourceType) ?? 0) + amount);
       }
 
       const lines: AnimLine[] = [];
@@ -280,6 +277,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   function handleDelete(routeId: string) {
     if (editingId === routeId) {
       setEditingId(null);
+      setIsEditing(false);
       setDraftName('');
       setDraftNodeKeys([]);
     }
@@ -288,7 +286,6 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   }
 
   const draftCost = computeRouteCost(draftNodeKeys, extractors, settlements);
-  const isEditing = draftName !== '' || draftNodeKeys.length > 0;
 
   const draftOrderChain = useMemo(() => {
     const byNodeId = new Map<string, DraftNode>();
@@ -541,7 +538,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     </div>
                     <button
                       className="logistics-save-btn"
-                      disabled={draftNodeKeys.filter((k) => !!extractors[k] || !!settlements[k]).length < 2}
+                      disabled={
+                        draftNodeKeys.filter((k) => !!extractors[k] || !!settlements[k]).length < 2 ||
+                        (!editingId && !canAddRoute)
+                      }
                       onClick={handleSave}
                     >
                       Save Route
