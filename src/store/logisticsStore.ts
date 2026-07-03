@@ -81,8 +81,8 @@ export function computeRouteCost(
   }
   const { driveA, driveB } = useUIStore.getState();
   const [me, mh] = computeDriveMultiplier(driveA, driveB);
-  let totalExotic = Math.max(1, Math.round(100 * me));
-  let totalHelium = Math.max(1, Math.round(100 * mh));
+  let totalExotic = Math.max(1, Math.round(50 * me));
+  let totalHelium = Math.max(1, Math.round(25 * mh));
   for (let i = 0; i < hops.length - 1; i++) {
     const cost = hopCost(hops[i], hops[i + 1]);
     totalExotic += cost.exotic;

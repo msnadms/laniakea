@@ -13,6 +13,10 @@ npm run preview   # Serve the production build locally
 
 No test suite exists in this project.
 
+## Code style
+
+Do not write code comments. The code should speak for itself; only add a comment when something is genuinely impossible to express in the code (e.g. an external constraint or a deliberate RNG-ordering requirement), and keep it to one line.
+
 ## Architecture
 
 **Stack:** Vite + React 19 + TypeScript + PixiJS v8 (`@pixi/react`) + Zustand

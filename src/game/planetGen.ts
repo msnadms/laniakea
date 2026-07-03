@@ -193,7 +193,7 @@ function resourcesForZone(rng: () => number, zone: ZoneType, isBrownDwarf = fals
       if (rng() > 0.1) return null;
       return [{ type: 'helium-3', count: rcRoll(RC.gasHelium3, rng) }];
     case 'ice':
-      if (rng() > 0.1) return null;
+      if (rng() > (isBrownDwarf ? 0.4 : 0.1)) return null;
       return isBrownDwarf
         ? [{ type: 'exotic',    count: rcRoll(RC.bdExotic, rng) }]
         : [{ type: 'metallicHydrogen', count: rcRoll(RC.iceHydrogen, rng) }];

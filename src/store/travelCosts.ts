@@ -3,6 +3,7 @@ import { computeDriveMultiplier, useUIStore } from './uiStore';
 
 const GALAXY_MAX_EXOTIC = 30;
 const SC_MAX_EXOTIC = 100;
+const HELIUM_PER_JUMP = 25;
 // Controls steepness: higher = sharper initial spike, faster taper to max
 const LOG_BASE = 10;
 
@@ -20,7 +21,7 @@ export function galaxyTravelCost(dist: number) {
   const [me, mh] = mult();
   return {
     exotic: Math.max(1, Math.round(logCost(dist / GALAXY_RADIUS, GALAXY_MAX_EXOTIC) * me)),
-    helium: 100 * mh
+    helium: Math.max(1, Math.round(HELIUM_PER_JUMP * mh))
   };
 }
 
@@ -28,7 +29,7 @@ export function superclusterTravelCost(dist: number) {
   const [me, mh] = mult();
   return {
     exotic: Math.max(1, Math.round(logCost(dist / SC_WORLD_HALF, SC_MAX_EXOTIC) * me)),
-    helium: 100 * mh
+    helium: Math.max(1, Math.round(HELIUM_PER_JUMP * mh))
   };
 }
 
@@ -36,7 +37,7 @@ export function flatTravelCost(baseExotic: number) {
   const [me, mh] = mult();
   return {
     exotic: Math.max(1, Math.round(baseExotic * me)),
-    helium: 100 * mh
+    helium: Math.max(1, Math.round(HELIUM_PER_JUMP * mh))
   };
 }
 

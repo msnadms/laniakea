@@ -3,13 +3,13 @@
     {
       "id": "resonance_drill",
       "name": "Resonance Drill Head",
-      "cost": { "alloys": 1 },
+      "cost": { "alloys": 600 },
       "effect": { "upgType": "rate", "multiplier": 1.25 }
     },
     {
       "id": "thermal_coil",
       "name": "Thermal Extraction Coil",
-      "cost": { "alloys": 1 },
+      "cost": { "alloys": 1200, "helium": 500 },
       "effect": { "upgType": "rate", "multiplier": 1.5 }
     },
     {
