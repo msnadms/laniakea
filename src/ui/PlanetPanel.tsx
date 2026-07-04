@@ -126,6 +126,7 @@ export function PlanetPanel() {
   const collectable = Math.min(accumulated, cargoSpace);
 
   function handlePlace(resource: { type: Resource['type']; count: number }) {
+    if (useUIStore.getState().checkDetectionLethal()) return;
     if (!system || alloys < STATION_COST) return;
     spendAlloys(STATION_COST);
     const now = Date.now();
@@ -164,6 +165,7 @@ export function PlanetPanel() {
   }
 
   function handleDismantle() {
+    if (useUIStore.getState().checkDetectionLethal()) return;
     if (!selectedKey) return;
     removeExtractor(selectedKey);
     addCargo('alloys', STATION_REFUND);
@@ -171,6 +173,7 @@ export function PlanetPanel() {
   }
 
   function handleSettle() {
+    if (useUIStore.getState().checkDetectionLethal()) return;
     if (!system || !planet || planet.type !== 'habitable') return;
     if (!canAffordSettle) return;
     spendAlloys(SETTLE_COST.alloys);

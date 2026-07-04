@@ -4,6 +4,7 @@ import type { Settlement, ColonyState, ColonyProductionItem } from '../game/type
 import { COST_KEY_TO_RESOURCE, MAX_COLONY_SLOTS, makeEmptyColonySlot } from '../game/types';
 import { EXTRACTOR_UPGRADES } from '../data/upgrades';
 import { useQuestStore } from './questStore';
+import { useUIStore } from './uiStore';
 
 interface FeedResult {
   consumed: Partial<Record<string, number>>;
@@ -28,6 +29,7 @@ export const useSettlementStore = create<SettlementState>()(
     colonyStates: {},
 
     placeSettlement: (settlement) => {
+      if (useUIStore.getState().checkDetectionLethal()) return;
       set((s) => ({ settlements: { ...s.settlements, [settlement.key]: settlement } }));
       useQuestStore.getState().completeQuest('first_colony');
     },

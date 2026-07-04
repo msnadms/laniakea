@@ -7,6 +7,7 @@ interface QuestState {
   completed: CompletedQuests;
   completeQuest: (id: QuestId) => boolean;
   restoreQuests: (data: CompletedQuests) => void;
+  resetQuests: () => void;
 }
 
 export const useQuestStore = create<QuestState>((set, get) => ({
@@ -17,4 +18,5 @@ export const useQuestStore = create<QuestState>((set, get) => ({
     return true;
   },
   restoreQuests: (data) => set((s) => ({ completed: { ...s.completed, ...data } })),
+  resetQuests: () => set({ completed: {} }),
 }));

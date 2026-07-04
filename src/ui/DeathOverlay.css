@@ -1,0 +1,32 @@
+.death-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #030303;
+}
+
+.death-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.death-line {
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #8a1010;
+  text-shadow: 0 0 10px rgba(140, 20, 20, 0.55);
+  opacity: 0;
+  animation: death-line-in 0.5s ease forwards;
+}
+
+@keyframes death-line-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

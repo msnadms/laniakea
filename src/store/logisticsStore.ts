@@ -113,6 +113,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
   removeRoute: (id) => set((s) => ({ routes: s.routes.filter((r) => r.id !== id) })),
 
   dispatchRoute: (id) => {
+    if (useUIStore.getState().checkDetectionLethal()) return false;
     const route = get().routes.find((r) => r.id === id);
     if (!route || route.nodeKeys.length < 2) return false;
 
@@ -183,8 +184,6 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
 
     ui.consumeResources(cost.exotic, cost.helium);
 
-    if (willRaiseDetection(extractorKeys, extractors)) ui.raiseDetection(1);
-
     const uiState = useUIStore.getState();
     const storageCap = computeStorageCap(uiState.storageA);
     const cargoMap: Record<string, number> = {
@@ -232,6 +231,8 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     if (readyItems.length > 0) {
       useExtractorStore.getState().receiveColonyItems(readyItems);
     }
+
+    if (willRaiseDetection(extractorKeys, extractors)) ui.raiseDetection(1);
 
     return collected;
   },

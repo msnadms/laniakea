@@ -7,6 +7,9 @@ const HELIUM_PER_JUMP = 25;
 // Controls steepness: higher = sharper initial spike, faster taper to max
 const LOG_BASE = 10;
 
+const PURGE_BASE_EXOTIC = 300;
+const PURGE_BASE_HELIUM = 200;
+
 function mult() {
   const { driveA, driveB } = useUIStore.getState();
   return computeDriveMultiplier(driveA, driveB);
@@ -38,6 +41,14 @@ export function flatTravelCost(baseExotic: number) {
   return {
     exotic: Math.max(1, Math.round(baseExotic * me)),
     helium: Math.max(1, Math.round(HELIUM_PER_JUMP * mh))
+  };
+}
+
+export function purgeCost(): { exotic: number; helium: number } {
+  const [me, mh] = mult();
+  return {
+    exotic: Math.max(1, Math.round(PURGE_BASE_EXOTIC * me)),
+    helium: Math.max(1, Math.round(PURGE_BASE_HELIUM * mh)),
   };
 }
 

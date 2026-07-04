@@ -23,6 +23,15 @@ export async function deleteLogisticsRoute(uid: string, id: string): Promise<voi
   }
 }
 
+export async function deleteAllLogisticsRoutes(uid: string): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'logisticsRoutes'));
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.error('deleteAllLogisticsRoutes failed:', err);
+  }
+}
+
 export async function loadLogisticsRoutes(uid: string): Promise<LogisticsRoute[]> {
   const snap = await getDocs(collection(db, 'users', uid, 'logisticsRoutes'));
   return snap.docs.map((d) => {

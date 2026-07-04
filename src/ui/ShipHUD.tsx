@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useUIStore, computeStorageCap, computeWeaponCap } from '../store/uiStore';
+import { useUIStore, computeStorageCap, computeWeaponCap, PURGE_COOLDOWN_MS } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
-import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
+import { flatTravelCost, trySpendTravelCost, purgeCost } from '../store/travelCosts';
 import { LogisticsModal } from './LogisticsModal';
 import { MSG_DRIVE_REQUIRED_SUPERCLUSTER, SHIP_NAME, fmt } from './strings';
 import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
@@ -38,12 +38,44 @@ const StatBar = memo(function StatBar({ value, max }: { value: number; max: numb
 });
 
 const DetectionBars = memo(function DetectionBars({ value }: { value: number }) {
+  const critical = value >= 5;
   return (
-    <div className="detection-bars">
+    <div className={`detection-bars${critical ? ' detection-bars--critical' : ''}`}>
       {Array.from({ length: 5 }, (_, i) => (
         <div key={i} className={`detection-bar${i < value ? ' detection-bar-filled' : ''}`} />
       ))}
     </div>
+  );
+});
+
+const PurgeButton = memo(function PurgeButton() {
+  const lastPurgeAt = useUIStore((s) => s.lastPurgeAt);
+  const detectionRating = useUIStore((s) => s.detectionRating);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const cooldownRemaining = Math.max(0, PURGE_COOLDOWN_MS - (now - lastPurgeAt));
+  const onCooldown = cooldownRemaining > 0;
+  const disabled = onCooldown || detectionRating === 0;
+  const cost = purgeCost();
+
+  return (
+    <>
+      <button
+        className={`purge-btn${disabled ? ' purge-btn--disabled' : ''}`}
+        onClick={disabled ? undefined : () => useUIStore.getState().purgeDetection()}
+        style={{ pointerEvents: 'all' }}
+      >
+        PURGE
+      </button>
+      <span className="hud-value">
+        {onCooldown ? `${Math.ceil(cooldownRemaining / 60000)}m` : `${cost.exotic}/${cost.helium}`}
+      </span>
+    </>
   );
 });
 
@@ -107,6 +139,7 @@ const NavRegen = memo(function NavRegen() {
 
   function handleRegen() {
     const { driveA, triggerHudNotify } = useUIStore.getState();
+    if (useUIStore.getState().checkDetectionLethal()) return;
     if (driveA < 2) {
       triggerHudNotify(MSG_DRIVE_REQUIRED_SUPERCLUSTER);
       return;
@@ -196,6 +229,11 @@ export function ShipHUD() {
   const weaponCap = computeWeaponCap(weaponA, weaponB);
 
   useEffect(() => {
+    const id = setInterval(() => useUIStore.getState().tickDetectionDecay(), 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     if (hudFlash === 0) return;
     const el = hudRef.current;
     if (!el) return;
@@ -258,6 +296,11 @@ export function ShipHUD() {
             <span className="hud-label">DETECTION RATING</span>
             <DetectionBars value={detectionRating} />
             <span className="hud-value">{detectionRating} <span className="hud-value-dim">/ 5</span></span>
+          </div>
+
+          <div className="hud-row">
+            <span className="hud-label">SIGNAL PURGE</span>
+            <PurgeButton />
           </div>
         </div>
 

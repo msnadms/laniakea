@@ -1,9 +1,26 @@
 import { create } from 'zustand';
 import type { AddressComponent, AddressComponentType, Resource } from '../game/types';
+import type { UserSettings } from '../firebase/userDoc';
 import { useQuestStore } from './questStore';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
+import { purgeCost } from './travelCosts';
+import { beginDeathSequence } from './resetGame';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
+
+export const DETECTION_DECAY_INTERVAL_MS = 15 * 60 * 1000;
+export const PURGE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+function decayDetection(rating: number, lastChangeAt: number, now: number): { detectionRating: number; lastDetectionChangeAt: number } {
+  if (rating <= 0) return { detectionRating: rating, lastDetectionChangeAt: lastChangeAt };
+  if (lastChangeAt <= 0) return { detectionRating: rating, lastDetectionChangeAt: now };
+  const steps = Math.floor((now - lastChangeAt) / DETECTION_DECAY_INTERVAL_MS);
+  if (steps <= 0) return { detectionRating: rating, lastDetectionChangeAt: lastChangeAt };
+  return {
+    detectionRating: Math.max(0, rating - steps),
+    lastDetectionChangeAt: lastChangeAt + steps * DETECTION_DECAY_INTERVAL_MS,
+  };
+}
 
 // UPGRADE_POOL is the shared pool cap. Each path caps at UPGRADE_POOL-1. COSTS arrays need UPGRADE_POOL entries; stat/name arrays need UPGRADE_POOL.
 export const UPGRADE_POOL = 5;
@@ -63,6 +80,9 @@ interface UIState {
   toggleBootSequence: () => void;
   exoticMatter: number;
   detectionRating: number;
+  lastDetectionChangeAt: number;
+  lastPurgeAt: number;
+  destroyed: boolean;
   railgunAmmo: number;
   helium3Reserves: number;
   alloys: number;
@@ -70,10 +90,13 @@ interface UIState {
   metallicHydrogen: number;
   neutronStarMatter: number;
   raiseDetection: (chance: number) => void;
+  tickDetectionDecay: () => void;
+  checkDetectionLethal: () => boolean;
+  purgeDetection: () => boolean;
   addCargo: (type: Resource['type'], amount: number) => void;
   selectedPlanetKey: string | null;
   setSelectedPlanet: (key: string | null) => void;
-  setShipStats: (stats: { exoticMatter: number; detectionRating: number; railgunAmmo: number; helium3Reserves: number }) => void;
+  setShipStats: (stats: { exoticMatter: number; detectionRating: number; railgunAmmo: number; helium3Reserves: number; lastDetectionChangeAt?: number; lastPurgeAt?: number }) => void;
   consumeExoticMatter: (amount: number) => void;
   consumeHelium3: (amount: number) => void;
   spendAlloys: (amount: number) => void;
@@ -150,7 +173,47 @@ export const useUIStore = create<UIState>((set, get) => ({
   metallicHydrogen: 0,
   neutronStarMatter: 0,
   raiseDetection: (chance) => {
-    if (Math.random() < chance) set((s) => ({ detectionRating: Math.min(5, s.detectionRating + 1) }));
+    get().tickDetectionDecay();
+    if (Math.random() >= chance) return;
+    const wasBelowMax = get().detectionRating < 5;
+    set((s) => ({ detectionRating: Math.min(5, s.detectionRating + 1), lastDetectionChangeAt: Date.now() }));
+    if (wasBelowMax && get().detectionRating === 5) {
+      get().triggerHudNotify('SIGNAL LOCKED — ALCUBIERRE CANNON CHARGING');
+    }
+  },
+  tickDetectionDecay: () => {
+    const s = get();
+    const next = decayDetection(s.detectionRating, s.lastDetectionChangeAt, Date.now());
+    if (next.detectionRating !== s.detectionRating || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {
+      set(next);
+    }
+  },
+  checkDetectionLethal: () => {
+    if (get().destroyed) return true;
+    get().tickDetectionDecay();
+    if (get().detectionRating < 5) return false;
+    beginDeathSequence();
+    return true;
+  },
+  purgeDetection: () => {
+    if (get().destroyed) return false;
+    get().tickDetectionDecay();
+    const s = get();
+    const now = Date.now();
+    if (now - s.lastPurgeAt < PURGE_COOLDOWN_MS) return false;
+    const cost = purgeCost();
+    if (s.exoticMatter < cost.exotic || s.helium3Reserves < cost.helium) {
+      s.triggerHudFlash();
+      return false;
+    }
+    set({
+      exoticMatter: s.exoticMatter - cost.exotic,
+      helium3Reserves: s.helium3Reserves - cost.helium,
+      detectionRating: 0,
+      lastDetectionChangeAt: now,
+      lastPurgeAt: now,
+    });
+    return true;
   },
   addCargo: (type, amount) => {
     if (type === 'exotic') useQuestStore.getState().completeQuest('first_exotic');
@@ -169,6 +232,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   setSelectedPlanet: (key) => set({ selectedPlanetKey: key }),
   exoticMatter: 250,
   detectionRating: 0,
+  lastDetectionChangeAt: 0,
+  lastPurgeAt: 0,
+  destroyed: false,
   railgunAmmo: 20,
   helium3Reserves: 200,
   setShipStats: (stats) => set(stats),
@@ -215,6 +281,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
   resetUpgrades: () => set((s) => ({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
   upgradeStorageA: () => {
+    if (get().checkDetectionLethal()) return;
     const { storageA, storageB, alloys } = get();
     if (storageA >= UPGRADE_POOL - 1 || storageA + storageB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.storageA[storageA];
@@ -223,6 +290,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     useQuestStore.getState().completeQuest('upgrade_storage');
   },
   upgradeStorageB: () => {
+    if (get().checkDetectionLethal()) return;
     const { storageA, storageB, alloys } = get();
     if (storageB >= UPGRADE_POOL - 1 || storageA + storageB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.storageB[storageB];
@@ -231,6 +299,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     useQuestStore.getState().completeQuest('upgrade_storage');
   },
   upgradeDriveA: () => {
+    if (get().checkDetectionLethal()) return;
     const { driveA, driveB, exoticMatter } = get();
     if (driveA >= UPGRADE_POOL - 1 || driveA + driveB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.driveA[driveA];
@@ -241,6 +310,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeDriveB: () => {
+    if (get().checkDetectionLethal()) return;
     const { driveA, driveB, helium3Reserves } = get();
     if (driveB >= UPGRADE_POOL - 1 || driveA + driveB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.driveB[driveB];
@@ -251,6 +321,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeWeaponA: () => {
+    if (get().checkDetectionLethal()) return;
     const { weaponA, weaponB, alloys } = get();
     if (weaponA >= UPGRADE_POOL - 1 || weaponA + weaponB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.weaponA[weaponA];
@@ -258,6 +329,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     set((s) => ({ weaponA: s.weaponA + 1, alloys: s.alloys - cost }));
   },
   upgradeWeaponB: () => {
+    if (get().checkDetectionLethal()) return;
     const { weaponA, weaponB, alloys } = get();
     if (weaponB >= UPGRADE_POOL - 1 || weaponA + weaponB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.weaponB[weaponB];
@@ -265,6 +337,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     set((s) => ({ weaponB: s.weaponB + 1, alloys: s.alloys - cost }));
   },
   upgradeLogisticsA: () => {
+    if (get().checkDetectionLethal()) return;
     const { logisticsA, logisticsB, alloys } = get();
     if (logisticsA >= UPGRADE_POOL - 1 || logisticsA + logisticsB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.logisticsA[logisticsA];
@@ -274,6 +347,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeLogisticsB: () => {
+    if (get().checkDetectionLethal()) return;
     const { logisticsA, logisticsB, alloys } = get();
     if (logisticsB >= UPGRADE_POOL - 1 || logisticsA + logisticsB >= UPGRADE_POOL) return;
     const cost = UPGRADE_COSTS.logisticsB[logisticsB];
@@ -283,3 +357,35 @@ export const useUIStore = create<UIState>((set, get) => ({
     if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
 }));
+
+export function applyUserSettings(settings: UserSettings): void {
+  const cap = computeStorageCap(settings.storageA);
+  useUIStore.setState({
+    showOrbitRings: settings.showOrbitRings,
+    showAttractorLabels: settings.showAttractorLabels,
+    showHUD: settings.showHUD,
+    showBootSequence: settings.showBootSequence,
+    infiniteExplore: settings.infiniteExplore,
+    exoticMatter: Math.min(settings.exoticMatter, cap),
+    detectionRating: settings.detectionRating,
+    lastDetectionChangeAt: settings.lastDetectionChangeAt,
+    lastPurgeAt: settings.lastPurgeAt,
+    destroyed: false,
+    selectedPlanetKey: null,
+    showUpgradePanel: false,
+    railgunAmmo: settings.railgunAmmo,
+    helium3Reserves: Math.min(settings.helium3Reserves, cap),
+    alloys: Math.min(settings.alloys, cap),
+    nutrients: Math.min(settings.nutrients, cap),
+    metallicHydrogen: Math.min(settings.metallicHydrogen, cap),
+    neutronStarMatter: Math.min(settings.neutronMatter, cap),
+    storageA: settings.storageA,
+    storageB: settings.storageB,
+    driveA: settings.driveA,
+    driveB: settings.driveB,
+    weaponA: settings.weaponA,
+    weaponB: settings.weaponB,
+    logisticsA: settings.logisticsA,
+    logisticsB: settings.logisticsB,
+  });
+}

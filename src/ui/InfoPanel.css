@@ -159,7 +159,7 @@
 }
 
 .info-section-title {
-  font-size: 8px;
+  font-size: 18px;
   letter-spacing: 0.22em;
   color: rgba(0, 180, 220, 0.4);
   text-transform: uppercase;
@@ -170,7 +170,7 @@
 }
 
 .info-lore {
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.7;
   color: rgba(0, 180, 220, 0.5);
   font-family: monospace;

@@ -15,6 +15,7 @@ interface GameState {
   visitedGalaxyBySuperclusterSeed: Record<number, Set<number>>;
   regenerateGalaxy: (seed?: number) => void;
   regenerateSupercluster: (seed?: number) => void;
+  restoreSupercluster: (seed?: number) => void;
   setSystem: (system: StarSystem | null) => void;
   restoreGalaxyAndSystem: (galaxySeed: number, systemId: number | null) => void;
   markDotVisited: (seed: number) => void;
@@ -23,6 +24,7 @@ interface GameState {
     visitedSystems: Record<number, number[]>,
     visitedGalaxies: Record<number, number[]>,
   ) => void;
+  resetToInitial: () => void;
 }
 
 function makeGalaxy(seed?: number): Galaxy {
@@ -68,6 +70,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   visitedSystemsByGalaxySeed: { [MILKY_WAY_SEED]: new Set([0]) },
   visitedGalaxyBySuperclusterSeed: { [LANIAKEA_SEED]: new Set([MILKY_WAY_SEED]) },
   regenerateGalaxy: (seed) => {
+    if (useUIStore.getState().checkDetectionLethal()) return;
     useUIStore.getState().raiseDetection(0.25);
     set((state) => {
       const galaxy = makeGalaxy(seed);
@@ -78,23 +81,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   regenerateSupercluster: (seed) => {
+    if (useUIStore.getState().checkDetectionLethal()) return;
     const currentSeed = get().supercluster.seed;
     if (seed === undefined || seed !== currentSeed) {
       useQuestStore.getState().completeQuest('new_supercluster');
       useUIStore.getState().raiseDetection(1.0);
     }
-    set((state) => {
-      if (seed === state.supercluster.seed) {
-        return { supercluster: applyVisitedDots(state.supercluster, state.visitedGalaxyBySuperclusterSeed[state.supercluster.seed]) };
-      }
-      const sc = generateSupercluster(seed);
-      return {
-        supercluster: applyVisitedDots(sc, state.visitedGalaxyBySuperclusterSeed[sc.seed]),
-      };
-    });
+    get().restoreSupercluster(seed);
   },
+  restoreSupercluster: (seed) => set((state) => {
+    if (seed === state.supercluster.seed) {
+      return { supercluster: applyVisitedDots(state.supercluster, state.visitedGalaxyBySuperclusterSeed[state.supercluster.seed]) };
+    }
+    const sc = generateSupercluster(seed);
+    return {
+      supercluster: applyVisitedDots(sc, state.visitedGalaxyBySuperclusterSeed[sc.seed]),
+    };
+  }),
   setSystem: (system) => {
     if (system) {
+      if (useUIStore.getState().checkDetectionLethal()) return;
       const layout = generateSystemLayout(system.seed, system.starType);
       const planets = generatePlanets(layout);
       const q = useQuestStore.getState();
@@ -205,5 +211,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       galaxy: applyVisited(state.galaxy, systemSets[state.galaxy.seed]),
       supercluster: applyVisitedDots(state.supercluster, galaxySets[state.supercluster.seed]),
     };
+  }),
+  resetToInitial: () => set({
+    galaxy: _initialGalaxy,
+    supercluster: _initialSupercluster,
+    system: _initialSystem,
+    visitedSystemsByGalaxySeed: { [MILKY_WAY_SEED]: new Set([0]) },
+    visitedGalaxyBySuperclusterSeed: { [LANIAKEA_SEED]: new Set([MILKY_WAY_SEED]) },
   }),
 }));

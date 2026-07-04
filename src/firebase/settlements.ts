@@ -41,6 +41,15 @@ export async function deleteSettlement(uid: string, key: string): Promise<void> 
   }
 }
 
+export async function deleteAllSettlements(uid: string): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'settlements'));
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.error('deleteAllSettlements failed:', err);
+  }
+}
+
 export async function loadAllSettlements(uid: string): Promise<{
   settlements: Settlement[];
   colonyStates: Record<string, ColonyState>;

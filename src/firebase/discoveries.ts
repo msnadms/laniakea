@@ -133,6 +133,15 @@ export async function deleteSuperclusterDiscovery(
   await deleteDoc(doc(db, 'users', uid, 'discoveries', String(superclusterSeed)));
 }
 
+export async function deleteAllDiscoveries(uid: string): Promise<void> {
+  try {
+    const scSnap = await getDocs(collection(db, 'users', uid, 'discoveries'));
+    await Promise.all(scSnap.docs.map((scDoc) => deleteSuperclusterDiscovery(uid, Number(scDoc.id))));
+  } catch (err) {
+    console.error('deleteAllDiscoveries failed:', err);
+  }
+}
+
 export async function loadAllDiscoveries(uid: string): Promise<SuperclusterRecord[]> {
   const scSnap = await getDocs(collection(db, 'users', uid, 'discoveries'));
 

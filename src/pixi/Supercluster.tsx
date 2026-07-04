@@ -261,6 +261,7 @@ export function SuperclusterWorld() {
       }
       const maxDist = 15 / camera.current.scale;
       if (nearestDist > maxDist) return;
+      if (useUIStore.getState().checkDetectionLethal()) return;
       const currentGalaxySeed = useGameStore.getState().galaxy.seed;
       const isCurrent = nearest.seed === currentGalaxySeed;
       const currentDot = sc.dots.find(d => d.seed === currentGalaxySeed);

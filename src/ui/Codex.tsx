@@ -271,6 +271,7 @@ function canTravelToSystem(scSeed: number, galaxySeed: number, systemId: string)
 function travelToSupercluster(scSeed: number, scName: string) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
+  if (ui.checkDetectionLethal()) return;
   if (game.supercluster.seed !== scSeed) {
     if (ui.driveA < 2) {
       ui.triggerHudNotify(MSG_DRIVE_REQUIRED_SUPERCLUSTER);
@@ -289,6 +290,7 @@ function travelToSupercluster(scSeed: number, scName: string) {
 function travelToGalaxy(scSeed: number, scName: string, galaxySeed: number, galaxyName: string) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
+  if (ui.checkDetectionLethal()) return;
   const isCurrent = game.supercluster.seed === scSeed && game.galaxy.seed === galaxySeed;
   if (!isCurrent) {
     let cost: { exotic: number; helium: number };
@@ -330,6 +332,7 @@ function travelToSystem(
 ) {
   const game = useGameStore.getState();
   const ui = useUIStore.getState();
+  if (ui.checkDetectionLethal()) return;
   const isCurrent = game.supercluster.seed === scSeed && game.galaxy.seed === galaxySeed && String(game.system?.id) === systemId;
   if (!isCurrent) {
     let cost: { exotic: number; helium: number };

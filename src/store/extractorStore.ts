@@ -62,6 +62,7 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
   extractors: {},
 
   placeExtractor: (extractor) => {
+    if (useUIStore.getState().checkDetectionLethal()) return;
     const maxStations = computeLogisticsCap(useUIStore.getState().logisticsA);
     if (Object.keys(get().extractors).length >= maxStations) return;
     set((s) => ({ extractors: { ...s.extractors, [extractor.key]: extractor } }));
@@ -69,6 +70,7 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
   },
 
   collectExtractor: (key, maxAmount?) => {
+    if (useUIStore.getState().checkDetectionLethal()) return 0;
     const extractor = get().extractors[key];
     if (!extractor) return 0;
     const now = Date.now();
@@ -115,6 +117,7 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
   },
 
   claimPendingUpgrade: (id) => {
+    if (useUIStore.getState().checkDetectionLethal()) return false;
     const pending = get().pendingUpgrades.find((p) => p.id === id);
     if (!pending || pending.availableAt > Date.now()) return false;
     set((s) => ({
@@ -128,6 +131,7 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     set({ ownedUpgrades, nodeEquipped, pendingUpgrades }),
 
   purchaseUpgrade: (upgradeId) => {
+    if (useUIStore.getState().checkDetectionLethal()) return false;
     const def = EXTRACTOR_UPGRADES.find((u) => u.id === upgradeId);
     if (!def) return false;
     const ui = useUIStore.getState();

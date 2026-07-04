@@ -43,6 +43,15 @@ export async function deleteExtractor(uid: string, key: string): Promise<void> {
   }
 }
 
+export async function deleteAllExtractors(uid: string): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'extractors'));
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (err) {
+    console.error('deleteAllExtractors failed:', err);
+  }
+}
+
 export async function loadAllExtractors(uid: string): Promise<Extractor[]> {
   const snap = await getDocs(collection(db, 'users', uid, 'extractors'));
   return snap.docs.map((d) => {

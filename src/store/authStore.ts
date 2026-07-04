@@ -8,7 +8,8 @@ import { loadAllSettlements } from '../firebase/settlements';
 import { loadQuests } from '../firebase/quests';
 import { loadLogisticsRoutes } from '../firebase/logisticsRoutes';
 import { loadExtractorUpgrades } from '../firebase/extractorUpgrades';
-import { useUIStore, computeStorageCap } from './uiStore';
+import { applyUserSettings, useUIStore } from './uiStore';
+import { cancelDeathSequence } from './resetGame';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
@@ -64,30 +65,7 @@ export function initAuth(): () => void {
               address: localNav.address,
             }
           : baseSettings;
-        const cap = computeStorageCap(settings.storageA);
-        useUIStore.setState({
-          showOrbitRings: settings.showOrbitRings,
-          showAttractorLabels: settings.showAttractorLabels,
-          showHUD: settings.showHUD,
-          showBootSequence: settings.showBootSequence,
-          infiniteExplore: settings.infiniteExplore,
-          exoticMatter: Math.min(settings.exoticMatter, cap),
-          detectionRating: settings.detectionRating,
-          railgunAmmo: settings.railgunAmmo,
-          helium3Reserves: Math.min(settings.helium3Reserves, cap),
-          alloys: Math.min(settings.alloys, cap),
-          nutrients: Math.min(settings.nutrients, cap),
-          metallicHydrogen: Math.min(settings.metallicHydrogen, cap),
-          neutronStarMatter: Math.min(settings.neutronMatter, cap),
-          storageA: settings.storageA,
-          storageB: settings.storageB,
-          driveA: settings.driveA,
-          driveB: settings.driveB,
-          weaponA: settings.weaponA,
-          weaponB: settings.weaponB,
-          logisticsA: settings.logisticsA,
-          logisticsB: settings.logisticsB,
-        });
+        applyUserSettings(settings);
         useExtractorStore.getState().restoreExtractors(extractors);
         useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped, extractorUpgrades.pendingUpgrades ?? []);
         useSettlementStore.getState().restoreSettlements(settlements.settlements);
@@ -113,7 +91,7 @@ export function initAuth(): () => void {
         const lastGalaxySeed = settings.lastGalaxySeed;
         const lastSystemId = settings.lastSystemId;
 
-        useGameStore.getState().regenerateSupercluster(lastSuperclusterSeed);
+        useGameStore.getState().restoreSupercluster(lastSuperclusterSeed);
         useGameStore.setState((state) => ({
           supercluster: {
             ...state.supercluster,
@@ -137,6 +115,7 @@ export function initAuth(): () => void {
         useAuthStore.setState({ user, loading: false, settingsLoaded: false });
       }
     } else {
+      cancelDeathSequence();
       useAuthStore.setState({ user: null, loading: false, settingsLoaded: false });
     }
   });

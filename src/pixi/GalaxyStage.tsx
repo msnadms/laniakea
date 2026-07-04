@@ -80,6 +80,7 @@ export function GalaxyWorld() {
   const handleSelectSystem = useCallback((id: number | null) => {
     if (isAnimatingRef.current) return;
     if (id !== null) {
+      if (useUIStore.getState().checkDetectionLethal()) return;
       const gameState = useGameStore.getState();
       const sys = gameState.galaxy.systems[id];
       const activeSystem = gameState.system;

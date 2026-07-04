@@ -82,6 +82,37 @@
   box-shadow: 0 0 5px rgba(204, 17, 0, 0.8);
 }
 
+@keyframes detection-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 5px rgba(204, 17, 0, 0.8); }
+  50%      { opacity: 0.35; box-shadow: 0 0 16px rgba(255, 20, 20, 1); }
+}
+
+.detection-bars--critical .detection-bar-filled {
+  animation: detection-pulse 1.1s ease-in-out infinite;
+}
+
+.purge-btn {
+  flex: 1;
+  height: 16px;
+  background: rgba(204, 17, 0, 0.1);
+  border: 1px solid rgba(204, 17, 0, 0.45);
+  color: rgba(255, 90, 70, 0.9);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.purge-btn:hover:not(.purge-btn--disabled) {
+  background: rgba(204, 17, 0, 0.25);
+  color: #ffb0a0;
+}
+
+.purge-btn--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .hud-value {
   font-size: 13px;
   font-family: monospace;

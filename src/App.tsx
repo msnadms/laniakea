@@ -15,6 +15,7 @@ import { InfoPanel } from './ui/InfoPanel';
 import { BootSequence } from './ui/BootSequence';
 import { LoginScreen } from './ui/LoginScreen';
 import { TopNavBar } from './ui/TopNavBar';
+import { DeathOverlay } from './ui/DeathOverlay';
 
 const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
 
@@ -101,6 +102,7 @@ export default function App() {
       {showHUD && <AddressBar />}
       <ViewTitle />
       {view === 'system' && <PlanetPanel />}
+      <DeathOverlay />
     </div>
   );
 }

@@ -12,6 +12,8 @@ export interface UserSettings {
   infiniteExplore: boolean;
   exoticMatter: number;
   detectionRating: number;
+  lastDetectionChangeAt: number;
+  lastPurgeAt: number;
   railgunAmmo: number;
   helium3Reserves: number;
   alloys: number;
@@ -33,7 +35,7 @@ export interface UserSettings {
   address: AddressComponent[];
 }
 
-const defaultSettings: UserSettings = {
+export const defaultSettings: UserSettings = {
   showOrbitRings: false,
   showAttractorLabels: true,
   showHUD: true,
@@ -41,6 +43,8 @@ const defaultSettings: UserSettings = {
   infiniteExplore: false,
   exoticMatter: 75,
   detectionRating: 0,
+  lastDetectionChangeAt: 0,
+  lastPurgeAt: 0,
   railgunAmmo: 20,
   helium3Reserves: 220,
   alloys: 400,
