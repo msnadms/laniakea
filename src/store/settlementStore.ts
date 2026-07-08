@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Settlement, ColonyState, ColonyProductionItem } from '../game/types';
 import { COST_KEY_TO_RESOURCE, MAX_COLONY_SLOTS, makeEmptyColonySlot } from '../game/types';
-import { EXTRACTOR_UPGRADES } from '../data/upgrades';
+import { getCraftable } from '../data/upgrades';
 import { useQuestStore } from './questStore';
 import { useUIStore } from './uiStore';
 
@@ -86,7 +86,7 @@ export const useSettlementStore = create<SettlementState>()(
 
       const updatedSlots = cs.slots.map((slot) => {
         if (!slot.targetUpgradeId) return slot;
-        const recipe = EXTRACTOR_UPGRADES.find((u) => u.id === slot.targetUpgradeId);
+        const recipe = getCraftable(slot.targetUpgradeId);
         if (!recipe) return slot;
 
         let inProduction = slot.inProduction;
@@ -130,7 +130,7 @@ export const useSettlementStore = create<SettlementState>()(
               if (!resourceType) continue;
               pending[resourceType] = (pending[resourceType] ?? 0) - costAmt;
             }
-            inProduction = { upgradeId: slot.targetUpgradeId, availableAt: now + 24 * 60 * 60 * 1000 };
+            inProduction = { upgradeId: slot.targetUpgradeId, availableAt: now + 24 * 60 * 60 * 1000, category: recipe.category };
           }
         }
 

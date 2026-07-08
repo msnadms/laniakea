@@ -30,5 +30,43 @@
       "cost": { "alloys": 2000, "helium": 2000 },
       "effect": { "upgType": "rate", "multiplier": 2 }
     }
+  ],
+  "combatCores": [
+    {
+      "id": "antimatter_core",
+      "name": "Antimatter Containment Core",
+      "cost": { "alloys": 2000, "exotic": 2000 },
+      "category": "core"
+    },
+    {
+      "id": "stealth_core",
+      "name": "Phase-Cloak Core",
+      "cost": { "exotic": 2500, "helium": 1500 },
+      "category": "core"
+    },
+    {
+      "id": "autoloader_core",
+      "name": "Autoloader Core",
+      "cost": { "alloys": 1000, "helium": 500 },
+      "category": "core"
+    },
+    {
+      "id": "warp_barrel_core",
+      "name": "Warp Barrel Core",
+      "cost": { "alloys": 1200, "exotic": 600 },
+      "category": "core"
+    },
+    {
+      "id": "interferometer_core",
+      "name": "Interferometer Core",
+      "cost": { "exotic": 1200, "helium": 400 },
+      "category": "core"
+    },
+    {
+      "id": "emitter_core",
+      "name": "Deflector Emitter Core",
+      "cost": { "alloys": 900, "exotic": 800 },
+      "category": "core"
+    }
   ]
 }

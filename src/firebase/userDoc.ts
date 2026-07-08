@@ -15,6 +15,11 @@ export interface UserSettings {
   lastDetectionChangeAt: number;
   lastPurgeAt: number;
   railgunAmmo: number;
+  shieldCharge: number;
+  lastShieldRegenAt: number;
+  lastFireAt: number;
+  skillNodes: string[];
+  ownedCores: string[];
   helium3Reserves: number;
   alloys: number;
   nutrients: number;
@@ -46,6 +51,11 @@ export const defaultSettings: UserSettings = {
   lastDetectionChangeAt: 0,
   lastPurgeAt: 0,
   railgunAmmo: 20,
+  shieldCharge: 0,
+  lastShieldRegenAt: 0,
+  lastFireAt: 0,
+  skillNodes: [],
+  ownedCores: [],
   helium3Reserves: 220,
   alloys: 400,
   nutrients: 200,

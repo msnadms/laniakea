@@ -3,7 +3,7 @@ import {
   useUIStore,
   UPGRADE_COSTS, UPGRADE_POOL,
   EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE,
-  computeStorageCap, computeDriveMultiplier, computeWeaponCap, computeLogisticsCap,
+  computeStorageCap, computeDriveMultiplier, computeLogisticsCap,
 } from '../store/uiStore';
 import './ShipUpgradePanel.css';
 
@@ -65,36 +65,6 @@ const DRIVE_B_DESCS = [
   'Cools harvested helium to near-superfluid temperatures and exploits the mass difference between He-3 and He-4.',
   'Increases the energy extracted per fusion event through tighter magnetic confinement and higher plasma densities.',
   'Refines the fusion process toward He-3 + He-3 and He-3 + deuterium reactions, which release energy primarily as charged particles rather than free neutrons.',
-];
-
-// ── Weapons ───────────────────────────────────────────────────────────────────
-const WEAPON_A_NAMES = [
-  'Stock Magazine',
-  'Helium-3 Injectors',
-  'Antimatter Propelled Rounds',
-  'Dense-Pack Configuration',
-  'Maximum Load-Out',
-];
-const WEAPON_A_DESCS = [
-  'Standard kinetic slug magazines with chemical propellant. Factory-default capacity and ballistic performance.',
-  'Superheated helium-3 plasma replaces chemical propellant, increasing muzzle velocity and allowing lighter, denser round packing.',
-  'Each slug carries a micro-annihilation charge. The matter-antimatter event provides a secondary acceleration stage.',
-  'Precision-toleranced dense-pack loading configuration stacks rounds at maximum volumetric density within the magazine.',
-  'Full capacity load-out with all available bay volume allocated to ordnance, achieving maximum rounds-per-bay across the ship.',
-];
-const WEAPON_B_NAMES = [
-  'Standard Barrel',
-  'Gauss Coils',
-  'Miniature Alcubierre Cannon',
-  'Sustained-Fire Coil Bank',
-  'Warp-Penetrator Array',
-];
-const WEAPON_B_DESCS = [
-  'Conventional rifled barrel with no electromagnetic or exotic modifications.',
-  'Electromagnetic coil array accelerates ferromagnetic slugs without combustion. Eliminates barrel wear and enables tighter round tolerances.',
-  'Each projectile generates a miniaturized warp bubble at launch, slipping through local spacetime before countermeasures can respond.',
-  'A multi-stage coil bank sustains magnetic acceleration across an extended barrel length, increasing round storage density.',
-  'Full warp-penetrator array: continuous alcubierre bubble generation along the barrel allows rounds to bypass conventional armor.',
 ];
 
 // ── Logistics ─────────────────────────────────────────────────────────────────
@@ -246,8 +216,6 @@ function ShipUpgradePanelInner() {
   const storageB = useUIStore((s) => s.storageB);
   const driveA = useUIStore((s) => s.driveA);
   const driveB = useUIStore((s) => s.driveB);
-  const weaponA = useUIStore((s) => s.weaponA);
-  const weaponB = useUIStore((s) => s.weaponB);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
   const alloys = useUIStore((s) => s.alloys);
@@ -257,8 +225,6 @@ function ShipUpgradePanelInner() {
   const upgradeStorageB = useUIStore((s) => s.upgradeStorageB);
   const upgradeDriveA = useUIStore((s) => s.upgradeDriveA);
   const upgradeDriveB = useUIStore((s) => s.upgradeDriveB);
-  const upgradeWeaponA = useUIStore((s) => s.upgradeWeaponA);
-  const upgradeWeaponB = useUIStore((s) => s.upgradeWeaponB);
   const upgradeLogisticsA = useUIStore((s) => s.upgradeLogisticsA);
   const upgradeLogisticsB = useUIStore((s) => s.upgradeLogisticsB);
 
@@ -266,8 +232,6 @@ function ShipUpgradePanelInner() {
   const storageBCost = UPGRADE_COSTS.storageB[storageB] ?? Infinity;
   const driveACost = UPGRADE_COSTS.driveA[driveA] ?? Infinity;
   const driveBCost = UPGRADE_COSTS.driveB[driveB] ?? Infinity;
-  const weaponACost = UPGRADE_COSTS.weaponA[weaponA] ?? Infinity;
-  const weaponBCost = UPGRADE_COSTS.weaponB[weaponB] ?? Infinity;
   const logisticsACost = UPGRADE_COSTS.logisticsA[logisticsA] ?? Infinity;
   const logisticsBCost = UPGRADE_COSTS.logisticsB[logisticsB] ?? Infinity;
 
@@ -335,33 +299,6 @@ function ShipUpgradePanelInner() {
               currency: 'helium-3',
               canAfford: helium3Reserves >= driveBCost,
               onUpgrade: upgradeDriveB,
-            }}
-          />
-
-          <UpgradeSection
-            title="WEAPON SYSTEMS"
-            pool={weaponA + weaponB}
-            pathA={{
-              level: weaponA,
-              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - weaponB),
-              names: WEAPON_A_NAMES,
-              descs: WEAPON_A_DESCS,
-              stat: (lvl) => `${computeWeaponCap(lvl, weaponB)} rounds`,
-              costs: UPGRADE_COSTS.weaponA,
-              currency: 'alloys',
-              canAfford: alloys >= weaponACost,
-              onUpgrade: upgradeWeaponA,
-            }}
-            pathB={{
-              level: weaponB,
-              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - weaponA),
-              names: WEAPON_B_NAMES,
-              descs: WEAPON_B_DESCS,
-              stat: (lvl) => `${computeWeaponCap(weaponA, lvl)} rounds`,
-              costs: UPGRADE_COSTS.weaponB,
-              currency: 'alloys',
-              canAfford: alloys >= weaponBCost,
-              onUpgrade: upgradeWeaponB,
             }}
           />
 

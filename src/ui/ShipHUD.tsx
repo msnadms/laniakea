@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useUIStore, computeStorageCap, computeWeaponCap, PURGE_COOLDOWN_MS } from '../store/uiStore';
+import { useUIStore, computeStorageCap, computeCombatEffects } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
-import { flatTravelCost, trySpendTravelCost, purgeCost } from '../store/travelCosts';
+import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import { LogisticsModal } from './LogisticsModal';
 import { MSG_DRIVE_REQUIRED_SUPERCLUSTER, SHIP_NAME, fmt } from './strings';
 import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { ShipUpgradePanel } from './ShipUpgradePanel';
+import { CombatTree } from './CombatTree';
 import { AlloysIcon, NutrientsIcon, MetallicHydrogenIcon, NeutronStarMatterIcon } from './CargoIcons';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
@@ -45,37 +46,6 @@ const DetectionBars = memo(function DetectionBars({ value }: { value: number }) 
         <div key={i} className={`detection-bar${i < value ? ' detection-bar-filled' : ''}`} />
       ))}
     </div>
-  );
-});
-
-const PurgeButton = memo(function PurgeButton() {
-  const lastPurgeAt = useUIStore((s) => s.lastPurgeAt);
-  const detectionRating = useUIStore((s) => s.detectionRating);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const cooldownRemaining = Math.max(0, PURGE_COOLDOWN_MS - (now - lastPurgeAt));
-  const onCooldown = cooldownRemaining > 0;
-  const disabled = onCooldown || detectionRating === 0;
-  const cost = purgeCost();
-
-  return (
-    <>
-      <button
-        className={`purge-btn${disabled ? ' purge-btn--disabled' : ''}`}
-        onClick={disabled ? undefined : () => useUIStore.getState().purgeDetection()}
-        style={{ pointerEvents: 'all' }}
-      >
-        PURGE
-      </button>
-      <span className="hud-value">
-        {onCooldown ? `${Math.ceil(cooldownRemaining / 60000)}m` : `${cost.exotic}/${cost.helium}`}
-      </span>
-    </>
   );
 });
 
@@ -208,6 +178,27 @@ const UpgradesButton = memo(function UpgradesButton() {
   );
 });
 
+const CombatButton = memo(function CombatButton() {
+  const toggleCombatTree = useUIStore((s) => s.toggleCombatTree);
+
+  return (
+    <button className="side-btn combat-btn" onClick={toggleCombatTree} style={{ pointerEvents: 'all' }}>
+      <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon
+          vectorEffect="non-scaling-stroke"
+          points="0,0.1 0.61,0.1 0.95,1 0.35,1"
+          fill="transparent"
+          stroke="rgba(0, 190, 230, 0.55)"
+          strokeWidth="1"
+          pointerEvents="all"
+        />
+      </svg>
+      <span className="delivery-btn-icon">✦</span>
+      <span className="nav-back-btn-label">COMBAT</span>
+    </button>
+  );
+});
+
 export function ShipHUD() {
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const detectionRating = useUIStore((s) => s.detectionRating);
@@ -221,12 +212,13 @@ export function ShipHUD() {
   const hudNotify = useUIStore((s) => s.hudNotify);
   const hudNotifyMsg = useUIStore((s) => s.hudNotifyMsg);
   const storageA = useUIStore((s) => s.storageA);
-  const weaponA = useUIStore((s) => s.weaponA);
-  const weaponB = useUIStore((s) => s.weaponB);
+  const skillNodes = useUIStore((s) => s.skillNodes);
+  const shieldCharge = useUIStore((s) => s.shieldCharge);
   const hudRef = useRef<HTMLDivElement>(null);
 
   const storageCap = computeStorageCap(storageA);
-  const weaponCap = computeWeaponCap(weaponA, weaponB);
+  const fx = computeCombatEffects(skillNodes);
+  const weaponCap = fx.ammoCap;
 
   useEffect(() => {
     const id = setInterval(() => useUIStore.getState().tickDetectionDecay(), 10000);
@@ -249,8 +241,10 @@ export function ShipHUD() {
     <div ref={hudRef} className="ship-hud">
       <Codex />
       <ShipUpgradePanel />
+      <CombatTree />
       <LogisticsSystem />
       <UpgradesButton />
+      <CombatButton />
       <NavBack />
       <NavRegen />
       {/* trapezoid outline: wide at top, narrows at bottom, no top edge */}
@@ -290,18 +284,31 @@ export function ShipHUD() {
             <span className="hud-label">RAILGUN RESERVES</span>
             <StatBar value={railgunAmmo} max={weaponCap} />
             <span className="hud-value">{fmt(railgunAmmo)} <span className="hud-value-dim">/ {fmt(weaponCap)}</span></span>
+            {fx.hasFire && (
+              <button
+                className="hud-action-btn"
+                onClick={() => useUIStore.getState().reloadRailgun()}
+                disabled={railgunAmmo >= weaponCap}
+              >Reload</button>
+            )}
           </div>
 
           <div className="hud-row">
             <span className="hud-label">DETECTION RATING</span>
             <DetectionBars value={detectionRating} />
             <span className="hud-value">{detectionRating} <span className="hud-value-dim">/ 5</span></span>
+            {fx.shieldCapacity > 0 && (
+              <span className="hud-shield" data-tooltip="Deflector charge">⛨ {shieldCharge}/{fx.shieldCapacity}</span>
+            )}
+            {fx.hasFire && (
+              <button
+                className="hud-action-btn hud-action-btn--fire"
+                onClick={() => useUIStore.getState().fireRailgun()}
+                disabled={detectionRating <= 0 || railgunAmmo < fx.fireCost}
+              >Fire</button>
+            )}
           </div>
 
-          <div className="hud-row">
-            <span className="hud-label">SIGNAL PURGE</span>
-            <PurgeButton />
-          </div>
         </div>
 
         <div className="hud-cargo-section">

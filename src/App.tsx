@@ -16,6 +16,7 @@ import { BootSequence } from './ui/BootSequence';
 import { LoginScreen } from './ui/LoginScreen';
 import { TopNavBar } from './ui/TopNavBar';
 import { DeathOverlay } from './ui/DeathOverlay';
+import { consumeFirstVisit } from './lib/firstVisit';
 
 const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
 
@@ -68,11 +69,7 @@ export default function App() {
   const showScanlines = useUIStore((s) => s.showScanlines);
   const [infoOpen, setInfoOpen] = useState(false);
   const showBoot = useUIStore((s) => s.showBootSequence);
-  const [isFirstVisit] = useState(() => {
-    const firstTime = !localStorage.getItem('galaxy-game-booted');
-    if (firstTime) localStorage.setItem('galaxy-game-booted', '1');
-    return firstTime;
-  });
+  const [isFirstVisit] = useState(consumeFirstVisit);
   const [infoPanelOpenReq, setInfoPanelOpenReq] = useState(0);
 
   const handleBootComplete = useCallback(() => {

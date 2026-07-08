@@ -118,25 +118,24 @@ function OriginsView() {
         <div className="info-section-title">First Principles</div>
         <div className="info-lore">
           <p>
-            Warp drives were first theorized in 1994 CE by Miguel Alcubierre, and confirmed centuries later by the discovery of exotic matter coalescing in Neptune's upper
-            atmosphere. Collection began quietly, test drives followed in the outer system — each jump a small fire lit against the dark — and nobody thought to ask what might
-            already be out there, watching for exactly that kind of light.
+            Miguel Alcubierre published the geometry in 1994 CE. Three centuries later, survey probes found exotic matter condensing in Neptune's upper atmosphere, and the theory
+            became a drive. No one thought to ask whether a warp transit could be seen from far away, or what might be watching for exactly that.
           </p>
           <p>
-            The axioms, in retrospect, are inescapable. Every civilization requires resources, and resources are finite. Any civilization capable of crossing interstellar distances
-            is also capable of destroying what it finds when it arrives, and so the rational response to detecting another such civilization is not contact but preemptive
-            annihilation, before the other can do the same.
+            The axioms, in retrospect, are inescapable. Resources are finite, and every civilization needs them. Any species that can cross between stars can destroy whatever it
+            finds when it arrives. The rational response to detecting another civilization is therefore not contact but annihilation, before it reaches the same conclusion.
+            The galaxy is quiet the way a forest at night is quiet: not empty, but full of things that have learned to keep still.
           </p>
           <p>
-            The object that appeared near Venus, blinking in and out of a warp bubble over the course of several hours before vanishing entirely, was logged as an equipment
-            anomaly and filed away. Within minutes of its disappearance, Earth was gone. The weapon at the end of that probe's journey is what the few humans left would call an 
-            Alcubierre Cannon - exploiting the infinitely-blueshifted particle bow wave that accumulates on the leading edge of a warp bubble during transit - atomizing whatever is
-            at its destination.
+            An object appeared near Venus, flickered in and out of a warp bubble for several hours, and vanished; the observatories that saw it logged an equipment anomaly and
+            moved on. Earth outlived it by a few minutes. The survivors call the weapon an Alcubierre Cannon: a warp bubble that gathers particles against its leading edge and
+            blueshifts them into a wave that atomizes whatever waits at the destination.
           </p>
           <p>
-            You were in orbit when it happened, the captain of the UNSS Peregrine - a highly experimental warp-equipped cruiser - the apex of humanity's technological capabilities. 
-            The greatest minds humanity has are with you, serving as the crew of your ship. Altogether, there are 873 humans left in the universe. Not sure what to do, the only place 
-            you can go is into the dark, empty space around you. First, you have to survive - then you can seek justice.
+            The drive was a strategic asset before it was proven safe. The United Nations and the Pacific Compact, heirs to a rivalry centuries old, raced to militarize it, each
+            certain the other would not stop at survey ships. You were in orbit, in command of the UNSS Peregrine, an armed cruiser crewed by the minds that built her. Her
+            manifest holds 873 names, and as far as any instrument can determine, that manifest is now the complete census of the human race. There is nothing to return to and
+            no safe way to call out; there is only the dark, and the hope that whatever lives in it considers 873 people too small to be worth finishing.
           </p>
         </div>
       </div>

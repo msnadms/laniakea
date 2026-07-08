@@ -157,9 +157,12 @@ export function makeSettlementKey(galaxySeed: number, systemId: number, planetNa
   return `${galaxySeed}|${systemId}|${planetName}`;
 }
 
+export type CraftCategory = 'extractor' | 'core';
+
 export interface ColonyProductionItem {
   upgradeId: string;
   availableAt: number;
+  category?: CraftCategory;
 }
 
 export interface ColonyProductionSlot {
@@ -205,9 +208,44 @@ export interface UpgradeEffect {
   multiplier: number;
 }
 
+export type ResourceCost = { alloys?: number; exotic?: number; helium?: number };
+
 export interface ExtractorUpgrade {
   id: string;
   name: string;
-  cost: { alloys?: number; exotic?: number; helium?: number };
+  cost: ResourceCost;
   effect: UpgradeEffect;
+}
+
+export interface CombatCore {
+  id: string;
+  name: string;
+  cost: ResourceCost;
+  category: 'core';
+}
+
+export interface CombatEffect {
+  enablesFire?: boolean;
+  ammoCapBonus?: number;
+  fireCostDelta?: number;
+  cooldownMult?: number;
+  detentBonus?: number;
+  fullPurge?: boolean;
+  autoFire?: boolean;
+  riseChanceMult?: number;
+  decayBonus?: number;
+  shieldCapacity?: number;
+  aegis?: boolean;
+}
+
+export interface SkillNode {
+  id: string;
+  tree: 'weapon' | 'shield';
+  tier: number;
+  prereqs: string[];
+  cost: ResourceCost;
+  requiresCore: string | null;
+  effect: CombatEffect;
+  name: string;
+  desc: string;
 }

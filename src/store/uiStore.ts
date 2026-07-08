@@ -5,19 +5,20 @@ import { useQuestStore } from './questStore';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
 import { purgeCost } from './travelCosts';
 import { beginDeathSequence } from './resetGame';
+import { getSkillNode } from '../data/skillTree';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
 export const DETECTION_DECAY_INTERVAL_MS = 15 * 60 * 1000;
 export const PURGE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
-function decayDetection(rating: number, lastChangeAt: number, now: number): { detectionRating: number; lastDetectionChangeAt: number } {
+function decayDetection(rating: number, lastChangeAt: number, now: number, perStep = 1): { detectionRating: number; lastDetectionChangeAt: number } {
   if (rating <= 0) return { detectionRating: rating, lastDetectionChangeAt: lastChangeAt };
   if (lastChangeAt <= 0) return { detectionRating: rating, lastDetectionChangeAt: now };
   const steps = Math.floor((now - lastChangeAt) / DETECTION_DECAY_INTERVAL_MS);
   if (steps <= 0) return { detectionRating: rating, lastDetectionChangeAt: lastChangeAt };
   return {
-    detectionRating: Math.max(0, rating - steps),
+    detectionRating: Math.max(0, rating - steps * perStep),
     lastDetectionChangeAt: lastChangeAt + steps * DETECTION_DECAY_INTERVAL_MS,
   };
 }
@@ -44,6 +45,61 @@ export const WEAPON_A_BONUS = [0, 10, 20, 35, 60];
 export const WEAPON_B_BONUS = [0, 10, 20, 35, 60];
 export function computeWeaponCap(a: number, b: number): number {
   return WEAPON_BASE + WEAPON_A_BONUS[a] + WEAPON_B_BONUS[b];
+}
+
+export const COMBAT_POINT_BUDGET = 6;
+const AMMO_BASE = 20;
+const FIRE_COST_BASE = 5;
+const DETENT_BASE = 1;
+const COOLDOWN_BASE_MS = 30 * 1000;
+const RELOAD_HELIUM_PER_AMMO = 3;
+
+export interface CombatEffects {
+  hasFire: boolean;
+  ammoCap: number;
+  fireCost: number;
+  detentPerShot: number;
+  cooldownMs: number;
+  riseChanceMult: number;
+  decayBonus: number;
+  shieldCapacity: number;
+  hasAegis: boolean;
+  hasAutoFire: boolean;
+  hasFullPurge: boolean;
+}
+
+export function computeCombatEffects(skillNodes: string[]): CombatEffects {
+  const fx: CombatEffects = {
+    hasFire: false,
+    ammoCap: AMMO_BASE,
+    fireCost: FIRE_COST_BASE,
+    detentPerShot: DETENT_BASE,
+    cooldownMs: COOLDOWN_BASE_MS,
+    riseChanceMult: 1,
+    decayBonus: 0,
+    shieldCapacity: 0,
+    hasAegis: false,
+    hasAutoFire: false,
+    hasFullPurge: false,
+  };
+  for (const id of skillNodes) {
+    const node = getSkillNode(id);
+    if (!node) continue;
+    const e = node.effect;
+    if (e.enablesFire) fx.hasFire = true;
+    if (e.ammoCapBonus) fx.ammoCap += e.ammoCapBonus;
+    if (e.fireCostDelta) fx.fireCost += e.fireCostDelta;
+    if (e.detentBonus) fx.detentPerShot += e.detentBonus;
+    if (e.cooldownMult) fx.cooldownMs *= e.cooldownMult;
+    if (e.riseChanceMult) fx.riseChanceMult *= e.riseChanceMult;
+    if (e.decayBonus) fx.decayBonus += e.decayBonus;
+    if (e.shieldCapacity) fx.shieldCapacity += e.shieldCapacity;
+    if (e.aegis) fx.hasAegis = true;
+    if (e.autoFire) fx.hasAutoFire = true;
+    if (e.fullPurge) fx.hasFullPurge = true;
+  }
+  fx.fireCost = Math.max(1, fx.fireCost);
+  return fx;
 }
 
 const LOGISTICS_BASE = 5;
@@ -84,6 +140,9 @@ interface UIState {
   lastPurgeAt: number;
   destroyed: boolean;
   railgunAmmo: number;
+  shieldCharge: number;
+  lastShieldRegenAt: number;
+  lastFireAt: number;
   helium3Reserves: number;
   alloys: number;
   nutrients: number;
@@ -93,6 +152,8 @@ interface UIState {
   tickDetectionDecay: () => void;
   checkDetectionLethal: () => boolean;
   purgeDetection: () => boolean;
+  fireRailgun: () => void;
+  reloadRailgun: () => void;
   addCargo: (type: Resource['type'], amount: number) => void;
   selectedPlanetKey: string | null;
   setSelectedPlanet: (key: string | null) => void;
@@ -130,8 +191,14 @@ interface UIState {
   weaponB: number;
   logisticsA: number;
   logisticsB: number;
+  skillNodes: string[];
+  ownedCores: string[];
+  purchaseSkillNode: (id: string) => void;
+  addCore: (coreId: string) => void;
   showUpgradePanel: boolean;
   toggleUpgradePanel: () => void;
+  showCombatTree: boolean;
+  toggleCombatTree: () => void;
   resetUpgrades: () => void;
   upgradeStorageA: () => void;
   upgradeStorageB: () => void;
@@ -174,7 +241,12 @@ export const useUIStore = create<UIState>((set, get) => ({
   neutronStarMatter: 0,
   raiseDetection: (chance) => {
     get().tickDetectionDecay();
-    if (Math.random() >= chance) return;
+    const fx = computeCombatEffects(get().skillNodes);
+    if (Math.random() >= chance * fx.riseChanceMult) return;
+    if (get().shieldCharge >= 1) {
+      set((s) => ({ shieldCharge: s.shieldCharge - 1, lastShieldRegenAt: Date.now() }));
+      return;
+    }
     const wasBelowMax = get().detectionRating < 5;
     set((s) => ({ detectionRating: Math.min(5, s.detectionRating + 1), lastDetectionChangeAt: Date.now() }));
     if (wasBelowMax && get().detectionRating === 5) {
@@ -183,17 +255,65 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
   tickDetectionDecay: () => {
     const s = get();
-    const next = decayDetection(s.detectionRating, s.lastDetectionChangeAt, Date.now());
+    const now = Date.now();
+    const fx = computeCombatEffects(s.skillNodes);
+    const patch: Partial<UIState> = {};
+    const next = decayDetection(s.detectionRating, s.lastDetectionChangeAt, now, 1 + fx.decayBonus);
     if (next.detectionRating !== s.detectionRating || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {
-      set(next);
+      patch.detectionRating = next.detectionRating;
+      patch.lastDetectionChangeAt = next.lastDetectionChangeAt;
     }
+    if (fx.shieldCapacity > 0 && s.shieldCharge < fx.shieldCapacity) {
+      const base = s.lastShieldRegenAt || now;
+      const steps = Math.floor((now - base) / DETECTION_DECAY_INTERVAL_MS);
+      if (steps > 0) {
+        patch.shieldCharge = Math.min(fx.shieldCapacity, s.shieldCharge + steps);
+        patch.lastShieldRegenAt = base + steps * DETECTION_DECAY_INTERVAL_MS;
+      } else if (!s.lastShieldRegenAt) {
+        patch.lastShieldRegenAt = now;
+      }
+    }
+    if (Object.keys(patch).length > 0) set(patch);
   },
   checkDetectionLethal: () => {
     if (get().destroyed) return true;
     get().tickDetectionDecay();
     if (get().detectionRating < 5) return false;
+    const fx = computeCombatEffects(get().skillNodes);
+    if (fx.hasAegis && get().shieldCharge >= 1) {
+      set({ shieldCharge: 0, detectionRating: 2, lastDetectionChangeAt: Date.now(), lastShieldRegenAt: Date.now() });
+      get().triggerHudNotify('AEGIS DEFLECTOR — LOCK ABSORBED');
+      return false;
+    }
+    if (fx.hasAutoFire && get().railgunAmmo >= fx.fireCost) {
+      set((s) => ({ railgunAmmo: s.railgunAmmo - fx.fireCost, detectionRating: 2, lastDetectionChangeAt: Date.now() }));
+      get().triggerHudNotify('OVERCHARGE CANNON — PURSUIT SCATTERED');
+      return false;
+    }
     beginDeathSequence();
     return true;
+  },
+  fireRailgun: () => {
+    if (get().destroyed) return;
+    get().tickDetectionDecay();
+    const fx = computeCombatEffects(get().skillNodes);
+    if (!fx.hasFire) return;
+    const s = get();
+    const now = Date.now();
+    if (now - s.lastFireAt < fx.cooldownMs) return;
+    if (s.detectionRating <= 0) return;
+    if (s.railgunAmmo < fx.fireCost) { s.triggerHudFlash(); return; }
+    const newRating = fx.hasFullPurge ? 0 : Math.max(0, s.detectionRating - fx.detentPerShot);
+    set({ railgunAmmo: s.railgunAmmo - fx.fireCost, detectionRating: newRating, lastDetectionChangeAt: now, lastFireAt: now });
+  },
+  reloadRailgun: () => {
+    const fx = computeCombatEffects(get().skillNodes);
+    const s = get();
+    const missing = fx.ammoCap - s.railgunAmmo;
+    if (missing <= 0) return;
+    const affordable = Math.min(missing, Math.floor(s.helium3Reserves / RELOAD_HELIUM_PER_AMMO));
+    if (affordable <= 0) { s.triggerHudFlash(); return; }
+    set({ railgunAmmo: s.railgunAmmo + affordable, helium3Reserves: s.helium3Reserves - affordable * RELOAD_HELIUM_PER_AMMO });
   },
   purgeDetection: () => {
     if (get().destroyed) return false;
@@ -236,6 +356,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   lastPurgeAt: 0,
   destroyed: false,
   railgunAmmo: 20,
+  shieldCharge: 0,
+  lastShieldRegenAt: 0,
+  lastFireAt: 0,
   helium3Reserves: 200,
   setShipStats: (stats) => set(stats),
   consumeExoticMatter: (amount) => set((s) => ({ exoticMatter: Math.max(0, s.exoticMatter - amount) })),
@@ -277,9 +400,44 @@ export const useUIStore = create<UIState>((set, get) => ({
   weaponB: 0,
   logisticsA: 0,
   logisticsB: 0,
+  skillNodes: [],
+  ownedCores: [],
+  purchaseSkillNode: (id) => {
+    if (get().checkDetectionLethal()) return;
+    const node = getSkillNode(id);
+    if (!node) return;
+    const s = get();
+    if (s.skillNodes.includes(id)) return;
+    if (s.skillNodes.length >= COMBAT_POINT_BUDGET) { s.triggerHudFlash(); return; }
+    if (!node.prereqs.every((p) => s.skillNodes.includes(p))) return;
+    if (node.requiresCore && !s.ownedCores.includes(node.requiresCore)) { s.triggerHudFlash(); return; }
+    const c = node.cost;
+    if ((c.alloys ?? 0) > s.alloys || (c.exotic ?? 0) > s.exoticMatter || (c.helium ?? 0) > s.helium3Reserves) {
+      s.triggerHudFlash();
+      return;
+    }
+    if (c.alloys) s.spendAlloys(c.alloys);
+    if (c.exotic) s.consumeExoticMatter(c.exotic);
+    if (c.helium) s.consumeHelium3(c.helium);
+    const newNodes = [...s.skillNodes, id];
+    const fx = computeCombatEffects(newNodes);
+    const patch: Partial<UIState> = { skillNodes: newNodes, railgunAmmo: Math.min(s.railgunAmmo, fx.ammoCap) };
+    if (node.requiresCore) {
+      const idx = s.ownedCores.indexOf(node.requiresCore);
+      patch.ownedCores = [...s.ownedCores.slice(0, idx), ...s.ownedCores.slice(idx + 1)];
+    }
+    if (fx.shieldCapacity > 0) {
+      patch.shieldCharge = fx.shieldCapacity;
+      patch.lastShieldRegenAt = Date.now();
+    }
+    set(patch);
+  },
+  addCore: (coreId) => set((s) => ({ ownedCores: [...s.ownedCores, coreId] })),
   showUpgradePanel: false,
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
-  resetUpgrades: () => set((s) => ({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
+  showCombatTree: false,
+  toggleCombatTree: () => set((s) => ({ showCombatTree: !s.showCombatTree })),
+  resetUpgrades: () => set((s) => ({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, skillNodes: [], ownedCores: [], shieldCharge: 0, lastShieldRegenAt: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
   upgradeStorageA: () => {
     if (get().checkDetectionLethal()) return;
     const { storageA, storageB, alloys } = get();
@@ -373,7 +531,13 @@ export function applyUserSettings(settings: UserSettings): void {
     destroyed: false,
     selectedPlanetKey: null,
     showUpgradePanel: false,
+    showCombatTree: false,
     railgunAmmo: settings.railgunAmmo,
+    shieldCharge: settings.shieldCharge,
+    lastShieldRegenAt: settings.lastShieldRegenAt,
+    lastFireAt: settings.lastFireAt,
+    skillNodes: settings.skillNodes,
+    ownedCores: settings.ownedCores,
     helium3Reserves: Math.min(settings.helium3Reserves, cap),
     alloys: Math.min(settings.alloys, cap),
     nutrients: Math.min(settings.nutrients, cap),

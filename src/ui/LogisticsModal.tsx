@@ -1,14 +1,14 @@
 import { createPortal } from 'react-dom';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLogisticsStore, computeRouteCost, willRaiseDetection } from '../store/logisticsStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import { useSettlementStore } from '../store/settlementStore';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { RESOURCE_LABELS, COST_KEY_TO_RESOURCE } from '../game/types';
-import { EXTRACTOR_UPGRADES } from '../data/upgrades';
+import { EXTRACTOR_UPGRADES, COMBAT_CORES, getCraftable } from '../data/upgrades';
 import { UpgradeModuleIcon } from './CargoIcons';
-import type { Extractor, Settlement, ColonyState, ColonyProductionSlot } from '../game/types';
+import type { Extractor, Settlement, ColonyState, ColonyProductionSlot, ResourceCost } from '../game/types';
 import { MAX_COLONY_SLOTS, COLONY_SLOT_COSTS } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
 import { updateExtractorCollected } from '../firebase/extractors';
@@ -636,7 +636,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     </div>
                     <div className="lm-pending-list">
                       {pendingUpgrades.map((item) => {
-                        const upg = EXTRACTOR_UPGRADES.find((u) => u.id === item.upgradeId);
+                        const upg = getCraftable(item.upgradeId);
                         const msLeft = item.availableAt - Date.now();
                         const ready = msLeft <= 0;
                         const hoursLeft = ready ? 0 : Math.ceil(msLeft / (60 * 60 * 1000));
@@ -671,19 +671,101 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
 // ── Colony sidebar ────────────────────────────────────────────────────────────
 
+function costLabelFromResourceCost(cost: ResourceCost): string {
+  return Object.entries(cost)
+    .filter(([, amt]) => !!amt)
+    .map(([k, amt]) => `${fmt(amt as number)} ${RESOURCE_LABELS[COST_KEY_TO_RESOURCE[k]] ?? k}`)
+    .join(' + ') || '—';
+}
+
+type SlotMenuState = { colonyKey: string; slotIdx: number; rect: DOMRect };
+
+function SlotPickerMenu({
+  state,
+  onPick,
+  onClose,
+}: {
+  state: SlotMenuState;
+  onPick: (upgradeId: string | null) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const MENU_W = 240;
+  const MARGIN = 8;
+  const spaceBelow = window.innerHeight - state.rect.bottom;
+  const spaceAbove = state.rect.top;
+  const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+  const left = Math.min(Math.max(state.rect.left, MARGIN), window.innerWidth - MENU_W - MARGIN);
+  const style: React.CSSProperties = openUp
+    ? { left, bottom: window.innerHeight - state.rect.top + 6, maxHeight: spaceAbove - MARGIN * 2 }
+    : { left, top: state.rect.bottom + 6, maxHeight: spaceBelow - MARGIN * 2 };
+
+  function renderRow(id: string, name: string, cost: ResourceCost, desc?: string) {
+    return (
+      <button key={id} className="lm-slot-menu-row" onClick={() => onPick(id)}>
+        <UpgradeModuleIcon size={22} />
+        <div className="lm-slot-menu-row-info">
+          <span className="lm-slot-menu-row-name">{name}</span>
+          {desc && <span className="lm-slot-menu-row-desc">{desc}</span>}
+          <span className="lm-slot-menu-row-cost">{costLabelFromResourceCost(cost)}</span>
+        </div>
+      </button>
+    );
+  }
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="lm-slot-menu"
+      style={style}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button className="lm-slot-menu-row lm-slot-menu-row--none" onClick={() => onPick(null)}>
+        — None —
+      </button>
+      <div className="lm-slot-menu-section">Extractor Modules</div>
+      {EXTRACTOR_UPGRADES.map((u) =>
+        renderRow(u.id, u.name, u.cost, `${u.effect.multiplier}x to ${u.effect.upgType}`),
+      )}
+      <div className="lm-slot-menu-section">Combat Cores</div>
+      {COMBAT_CORES.map((c) => renderRow(c.id, c.name, c.cost))}
+    </div>,
+    document.body,
+  );
+}
+
 function SlotView({
   slot,
   slotIdx,
   colonyKey,
-  onSetTarget,
+  isMenuOpen,
+  onOpenMenu,
 }: {
   slot: ColonyProductionSlot;
   slotIdx: number;
   colonyKey: string;
-  onSetTarget: (key: string, idx: number, upgradeId: string | null) => void;
+  isMenuOpen: boolean;
+  onOpenMenu: (colonyKey: string, slotIdx: number, rect: DOMRect) => void;
 }) {
   const now = Date.now();
-  const recipe = slot.targetUpgradeId ? EXTRACTOR_UPGRADES.find((u) => u.id === slot.targetUpgradeId) : null;
+  const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : null;
   const ip = slot.inProduction;
   const msLeft = ip ? ip.availableAt - now : 0;
   const ready = ip && msLeft <= 0;
@@ -692,28 +774,20 @@ function SlotView({
   return (
     <div className="lm-colony-slot-block">
       <div className="lm-colony-slot-label">Slot {slotIdx + 1}</div>
-      <div className="lm-colony-target-row">
-        <select
-          className="lm-colony-target-select"
-          value={slot.targetUpgradeId ?? ''}
-          onChange={(e) => onSetTarget(colonyKey, slotIdx, e.target.value || null)}
-          disabled={!!slot.targetUpgradeId || !!ip}
-        >
-          <option value="">— None —</option>
-          {EXTRACTOR_UPGRADES.map((u) => (
-            <option key={u.id} value={u.id}>{u.name}</option>
-          ))}
-        </select>
-        {slot.targetUpgradeId && !ip && (
-          <button
-            className="lm-colony-clear-btn"
-            onClick={() => onSetTarget(colonyKey, slotIdx, null)}
-            title="Clear selection"
-          >
-            ✕
-          </button>
+      <button
+        className={`lm-colony-slot-btn${slot.targetUpgradeId ? ' lm-colony-slot-btn--filled' : ''}${isMenuOpen ? ' lm-colony-slot-btn--open' : ''}`}
+        disabled={!!ip}
+        onClick={(e) => onOpenMenu(colonyKey, slotIdx, e.currentTarget.getBoundingClientRect())}
+      >
+        {slot.targetUpgradeId ? (
+          <>
+            <UpgradeModuleIcon size={28} />
+            <span className="lm-colony-slot-btn-name">{recipe?.name ?? slot.targetUpgradeId}</span>
+          </>
+        ) : (
+          <span className="lm-colony-slot-btn-label">Choose target —</span>
         )}
-      </div>
+      </button>
       {recipe && !ip && (
         <div className="lm-colony-recipe">
           {Object.entries(recipe.cost).map(([costKey, costAmt]) => {
@@ -736,7 +810,7 @@ function SlotView({
       )}
       {ip && (
         <div className="lm-colony-queue-item">
-          <span className="lm-colony-queue-name">{EXTRACTOR_UPGRADES.find((u) => u.id === ip.upgradeId)?.name ?? ip.upgradeId}</span>
+          <span className="lm-colony-queue-name">{getCraftable(ip.upgradeId)?.name ?? ip.upgradeId}</span>
           <span className={`lm-colony-queue-time${ready ? ' lm-colony-queue-time--ready' : ''}`}>
             {ready ? 'Ready — dispatch to collect' : `${hoursLeft}h`}
           </span>
@@ -763,6 +837,8 @@ function ColonySidebar({
   onSetTarget: (key: string, slotIdx: number, upgradeId: string | null) => void;
   onUnlockSlot: (key: string) => void;
 }) {
+  const [openSlot, setOpenSlot] = useState<SlotMenuState | null>(null);
+
   return (
     <div className="lm-submodal lm-submodal--colony">
       <div className="lm-submodal-header">{node.name}</div>
@@ -786,7 +862,14 @@ function ColonySidebar({
               <div className="lm-colony-planet-name">{settlement.planetName}</div>
             )}
             {cs.slots.map((slot, i) => (
-              <SlotView key={i} slot={slot} slotIdx={i} colonyKey={k} onSetTarget={onSetTarget} />
+              <SlotView
+                key={i}
+                slot={slot}
+                slotIdx={i}
+                colonyKey={k}
+                isMenuOpen={openSlot?.colonyKey === k && openSlot.slotIdx === i}
+                onOpenMenu={(colonyKey, slotIdx, rect) => setOpenSlot({ colonyKey, slotIdx, rect })}
+              />
             ))}
             {canUnlock && (
               <button
@@ -801,6 +884,16 @@ function ColonySidebar({
           </div>
         );
       })}
+      {openSlot && (
+        <SlotPickerMenu
+          state={openSlot}
+          onPick={(id) => {
+            onSetTarget(openSlot.colonyKey, openSlot.slotIdx, id);
+            setOpenSlot(null);
+          }}
+          onClose={() => setOpenSlot(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Extractor, LogisticsRoute, ExtractorKey, Settlement, Resource, ColonyProductionItem } from '../game/types';
 import { COST_KEY_TO_RESOURCE } from '../game/types';
-import { EXTRACTOR_UPGRADES } from '../data/upgrades';
+import { getCraftable } from '../data/upgrades';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers } from './extractorStore';
 import { useSettlementStore } from './settlementStore';
 import { useUIStore, computeStorageCap, computeDriveMultiplier } from './uiStore';
@@ -130,7 +130,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       for (const slot of cs.slots) {
         if (!slot.targetUpgradeId) continue;
         if (slot.inProduction && slot.inProduction.availableAt > Date.now()) continue;
-        const recipe = EXTRACTOR_UPGRADES.find((u) => u.id === slot.targetUpgradeId);
+        const recipe = getCraftable(slot.targetUpgradeId);
         if (!recipe) continue;
         const isCompleted = !!slot.inProduction;
         for (const [costKey, costAmt] of Object.entries(recipe.cost)) {

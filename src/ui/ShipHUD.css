@@ -311,6 +311,54 @@
   cursor: pointer;
 }
 
+.combat-btn {
+  right: calc(100% + 101px);
+  cursor: pointer;
+}
+
+.combat-btn:hover {
+  color: rgba(0, 215, 255, 0.95);
+  filter: drop-shadow(0 0 6px rgba(0, 200, 232, 0.65));
+}
+
+.hud-action-btn {
+  font-family: monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #00c8e8;
+  background: rgba(0, 136, 187, 0.12);
+  border: 1px solid rgba(0, 190, 230, 0.45);
+  padding: 2px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.hud-action-btn:hover {
+  background: rgba(0, 190, 230, 0.22);
+}
+
+.hud-action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.hud-action-btn--fire {
+  color: #ffb060;
+  border-color: rgba(255, 150, 60, 0.5);
+}
+
+.hud-action-btn--fire:hover {
+  background: rgba(255, 150, 60, 0.18);
+}
+
+.hud-shield {
+  font-family: monospace;
+  font-size: 11px;
+  color: #7ddbf0;
+  white-space: nowrap;
+}
+
 .delivery-btn--active {
   color: rgba(0, 215, 255, 0.9);
   filter: drop-shadow(0 0 6px rgba(0, 200, 232, 0.55));

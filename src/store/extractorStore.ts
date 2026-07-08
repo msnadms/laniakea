@@ -40,6 +40,7 @@ export interface PendingUpgrade {
   id: string;
   upgradeId: string;
   availableAt: number;
+  category: 'extractor' | 'core';
 }
 
 interface ExtractorState {
@@ -112,6 +113,7 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
       id: crypto.randomUUID(),
       upgradeId: item.upgradeId,
       availableAt: item.availableAt,
+      category: item.category ?? 'extractor',
     }));
     set((s) => ({ pendingUpgrades: [...s.pendingUpgrades, ...newPending] }));
   },
@@ -120,6 +122,11 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     if (useUIStore.getState().checkDetectionLethal()) return false;
     const pending = get().pendingUpgrades.find((p) => p.id === id);
     if (!pending || pending.availableAt > Date.now()) return false;
+    if (pending.category === 'core') {
+      useUIStore.getState().addCore(pending.upgradeId);
+      set((s) => ({ pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id) }));
+      return true;
+    }
     set((s) => ({
       pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id),
       ownedUpgrades: [...s.ownedUpgrades, pending.upgradeId],

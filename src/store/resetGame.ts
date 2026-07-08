@@ -13,6 +13,7 @@ import { deleteAllLogisticsRoutes } from '../firebase/logisticsRoutes';
 import { deleteAllDiscoveries } from '../firebase/discoveries';
 import { deleteQuests } from '../firebase/quests';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
+import { clearFirstVisit } from '../lib/firstVisit';
 
 export const DEATH_SEQUENCE_MS = 2800;
 
@@ -38,6 +39,7 @@ export function cancelDeathSequence(): void {
 export async function resetGame(): Promise<void> {
   const { user } = useAuthStore.getState();
 
+  clearFirstVisit();
   applyUserSettings(defaultSettings);
   useUIStore.setState({ view: defaultSettings.lastView, address: defaultSettings.address });
   useGameStore.getState().resetToInitial();
