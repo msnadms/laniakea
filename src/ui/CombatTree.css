@@ -128,13 +128,18 @@
 /* ── Radial stage ───────────────────────────────────── */
 .ct-stage-scroll {
   flex: 1;
-  overflow: auto;
-  display: flex;
-}
-.ct-stage {
+  overflow: hidden;
   position: relative;
-  margin: auto;
+  cursor: grab;
+  touch-action: none;
+}
+.ct-stage-scroll--drag { cursor: grabbing; }
+.ct-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
   flex: none;
+  will-change: transform;
 }
 .ct-svg {
   position: absolute;

@@ -332,6 +332,7 @@
   cursor: pointer;
   white-space: nowrap;
   text-transform: uppercase;
+  pointer-events: all;
 }
 
 .hud-action-btn:hover {

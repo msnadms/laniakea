@@ -5,7 +5,7 @@ import { EXTRACTOR_UPGRADES } from '../data/upgrades';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap } from './uiStore';
 import { useQuestStore } from './questStore';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 1000) // 1 unit per hour
+export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
 
 export function getExtractorMultipliers(
   extractorKey: string,

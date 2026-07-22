@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUIStore, computeCombatEffects, COMBAT_POINT_BUDGET } from '../store/uiStore';
 import { SKILL_NODES } from '../data/skillTree';
@@ -213,12 +213,44 @@ function CombatTreeInner() {
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
   const [hovered, setHovered] = useState<string | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const fitted = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') toggle(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle]);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el || fitted.current) return;
+    fitted.current = true;
+    const rect = el.getBoundingClientRect();
+    setView({ x: (rect.width - STAGE_W) / 2, y: (rect.height - STAGE_H) / 2 });
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    drag.current = { px: e.clientX, py: e.clientY, ox: view.x, oy: view.y, moved: false };
+    setDragging(true);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.px;
+    const dy = e.clientY - d.py;
+    if (!d.moved && Math.hypot(dx, dy) < 4) return;
+    d.moved = true;
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.setPointerCapture(e.pointerId);
+    setView((v) => ({ ...v, x: d.ox + dx, y: d.oy + dy }));
+  };
+  const onPointerUp = () => {
+    drag.current = null;
+    setDragging(false);
+  };
 
   const statuses = new Map<string, NodeStatus>();
   for (const l of LAYOUT.nodes) statuses.set(l.node.id, statusOf(l.node, skillNodes, ownedCores, alloys, exoticMatter, helium3Reserves));
@@ -236,8 +268,22 @@ function CombatTreeInner() {
           <span className="ct-tree-label ct-tree-label--weapon">RAILGUNS · destroy sentinel probes</span>
           <span className="ct-tree-label ct-tree-label--shield">DEFLECTORS · evade sentinel probes altogether</span>
         </div>
-        <div className="ct-stage-scroll">
-          <div className="ct-stage" style={{ width: STAGE_W, height: STAGE_H }}>
+        <div
+          ref={viewportRef}
+          className={`ct-stage-scroll${dragging ? ' ct-stage-scroll--drag' : ''}`}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div
+            className="ct-stage"
+            style={{
+              width: STAGE_W,
+              height: STAGE_H,
+              transform: `translate(${view.x}px, ${view.y}px)`,
+            }}
+          >
             <svg className="ct-svg" viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} width={STAGE_W} height={STAGE_H}>
               {LAYOUT.spokes.map((s, i) => (
                 <path key={i} d={s.d} className={`ct-spoke ct-spoke--${s.tree}`} />
