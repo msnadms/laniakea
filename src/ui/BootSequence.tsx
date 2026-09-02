@@ -24,7 +24,9 @@ export function BootSequence({ onComplete, isFirstVisit }: { onComplete: () => v
   const [phase, setPhase] = useState<'init' | 'main'>(isFirstVisit ? 'init' : 'main');
   const [exiting, setExiting] = useState(false);
   const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     let lineIdx = 0;

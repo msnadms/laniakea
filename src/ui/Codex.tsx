@@ -524,7 +524,7 @@ function systemHasHabitable(seed: number, starType?: import('../game/types').Sta
   return generateSystemLayout(seed, starType).planets.some((p) => p.zone === 'habitable');
 }
 
-function SystemPlanets({ seed, starType, name, query, galaxySeed, systemId, allExtractorKeys, allSettlementKeys }: { seed: number; starType?: import('../game/types').StarType; name: string; query: string; galaxySeed: number; systemId: string; allExtractorKeys: string; allSettlementKeys: string }) {
+function SystemPlanets({ seed, starType, query, galaxySeed, systemId, allExtractorKeys, allSettlementKeys }: { seed: number; starType?: import('../game/types').StarType; query: string; galaxySeed: number; systemId: string; allExtractorKeys: string; allSettlementKeys: string }) {
   const planets = useMemo(
     () => generatePlanets(generateSystemLayout(seed, starType)),
     [seed, starType],
@@ -615,7 +615,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} name={system.name} query={query} galaxySeed={galaxySeed} systemId={system.id} allExtractorKeys={allExtractorKeys} allSettlementKeys={allSettlementKeys} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} query={query} galaxySeed={galaxySeed} systemId={system.id} allExtractorKeys={allExtractorKeys} allSettlementKeys={allSettlementKeys} />}
     </div>
   );
 }

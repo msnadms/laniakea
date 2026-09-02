@@ -264,7 +264,7 @@ export function createRockyPlanetTexture(baseColor: number, seed: number): Textu
 export function createHabitablePlanetTexture(baseColor: number, seed: number): Texture {
   const rng = createRng(seed);
   const SIZE = 256;
-  const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
+  const { canvas, ctx } = makeCircleCanvas(SIZE, baseColor);
 
   // Ocean patches — dark blue seas
   const OCEAN_PALETTES = [

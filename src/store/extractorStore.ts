@@ -26,13 +26,13 @@ export function getExtractorMultipliers(
   return { rateMultiplier, storageMultiplier, dampened };
 }
 
-export function peekAccumulated(extractor: Extractor): number {
+export function peekAccumulated(extractor: Extractor, now: number = Date.now()): number {
   const { storageB, logisticsB } = useUIStore.getState();
   const { nodeEquipped } = useExtractorStore.getState();
   const { rateMultiplier, storageMultiplier } = getExtractorMultipliers(extractor.key, nodeEquipped);
   return Math.min(
     Math.floor(EXTRACTOR_HOLD_CAPS[storageB] * storageMultiplier),
-    Math.floor((Date.now() - extractor.lastCollectedAt) * ACCUMULATION_RATE_PER_MS * extractor.rate * rateMultiplier * LOGISTICS_B_RATE[logisticsB]),
+    Math.floor((now - extractor.lastCollectedAt) * ACCUMULATION_RATE_PER_MS * extractor.rate * rateMultiplier * LOGISTICS_B_RATE[logisticsB]),
   );
 }
 
@@ -40,7 +40,7 @@ export interface PendingUpgrade {
   id: string;
   upgradeId: string;
   availableAt: number;
-  category: 'extractor' | 'core';
+  category: 'extractor';
 }
 
 interface ExtractorState {
@@ -122,11 +122,6 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     if (useUIStore.getState().checkDetectionLethal()) return false;
     const pending = get().pendingUpgrades.find((p) => p.id === id);
     if (!pending || pending.availableAt > Date.now()) return false;
-    if (pending.category === 'core') {
-      useUIStore.getState().addCore(pending.upgradeId);
-      set((s) => ({ pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id) }));
-      return true;
-    }
     set((s) => ({
       pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id),
       ownedUpgrades: [...s.ownedUpgrades, pending.upgradeId],

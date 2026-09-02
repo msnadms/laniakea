@@ -69,7 +69,9 @@ export function SuperclusterWorld() {
   const worldRef = useRef<Container>(null);
   const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE);
   const showAttractorLabelsRef = useRef(showAttractorLabels);
-  showAttractorLabelsRef.current = showAttractorLabels;
+  useEffect(() => {
+    showAttractorLabelsRef.current = showAttractorLabels;
+  }, [showAttractorLabels]);
 
   const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, {
     getCurrentPos: () => useGameStore.getState().supercluster.dots.find(d => d.current),
@@ -240,7 +242,7 @@ export function SuperclusterWorld() {
       titleGroup.destroy({ children: true });
       labelContainer.destroy({ children: true });
     };
-  }, [scSeed, scName, scAttractors, isInitialised]);
+  }, [scSeed, scName, scAttractors, isInitialised, camera]);
 
 
   useEffect(() => {
@@ -312,7 +314,7 @@ export function SuperclusterWorld() {
         useUIStore.getState().setViewTransitioning(false);
       }
     };
-  }, [app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType]);
+  }, [app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType, camera, cancelZoomRef, isAnimatingRef]);
 
   return (
     <>

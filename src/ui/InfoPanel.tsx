@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuestStore } from '../store/questStore';
 import { QUESTS } from '../game/quests';
 import './InfoPanel.css';
@@ -118,44 +118,24 @@ function OriginsView() {
         <div className="info-section-title">First Principles</div>
         <div className="info-lore">
           <p>
-            Miguel Alcubierre published the geometry in 1994 CE. Three centuries later, survey probes found exotic matter condensing in Neptune's upper atmosphere, and the theory
-            became a drive. No one thought to ask whether a warp transit could be seen from far away, or what might be watching for exactly that.
+            Miguel Alcubierre published the geometry in 1994 CE, and for three centuries it stayed on paper. Then survey probes found exotic matter condensing in Neptune's upper
+            atmosphere, and the theory became a drive. Nobody stopped to ask how far away a warp transit could be seen, or what might have been waiting to see one.
           </p>
           <p>
             The axioms, in retrospect, are inescapable. Resources are finite, and every civilization needs them. Any species that can cross between stars can destroy whatever it
             finds when it arrives. The rational response to detecting another civilization is therefore not contact but annihilation, before it reaches the same conclusion.
-            The galaxy is quiet the way a forest at night is quiet: not empty, but full of things that have learned to keep still.
           </p>
           <p>
-            An object appeared near Venus, flickered in and out of a warp bubble for several hours, and vanished; the observatories that saw it logged an equipment anomaly and
-            moved on. Earth outlived it by a few minutes. The survivors call the weapon an Alcubierre Cannon: a warp bubble that gathers particles against its leading edge and
-            blueshifts them into a wave that atomizes whatever waits at the destination.
+            An object appeared near Venus, flickered in and out of a warp bubble for a few hours, and left. The observatories that caught it logged an equipment fault and moved
+            on. Earth outlived the report by minutes. The survivors call the weapon an Alcubierre Cannon, a warp bubble that sweeps particles up against its leading edge and
+            blueshifts them into a wave that atomizes whatever is waiting at the far end.
           </p>
           <p>
-            The drive was a strategic asset before it was proven safe. The United Nations and the Pacific Compact, heirs to a rivalry centuries old, raced to militarize it, each
-            certain the other would not stop at survey ships. You were in orbit, in command of the UNSS Peregrine, an armed cruiser crewed by the minds that built her. Her
-            manifest holds 873 names, and as far as any instrument can determine, that manifest is now the complete census of the human race. There is nothing to return to and
-            no safe way to call out; there is only the dark, and the hope that whatever lives in it considers 873 people too small to be worth finishing.
+            The drive was a strategic asset long before anyone proved it was safe. The United Nations and the Pacific Compact, carrying a rivalry centuries old, each raced to
+            arm it, certain the other would not stop at survey ships. You were in orbit when it happened, in command of the UNSS Peregrine, an armed cruiser crewed by the people
+            who built her. Her manifest holds 873 names, and as far as any instrument can tell, that manifest is now the whole of the human race. There is nothing to go back to
+            and no safe way to call out. There is only the dark, and the hope that whatever lives in does not see you.
           </p>
-        </div>
-      </div>
-      <div className="info-section">
-        <div className="info-section-title">Threat Assessment</div>
-        <div className="info-stat-row">
-          <span className="info-stat-label">Universe Age</span>
-          <span className="info-stat-value">13.8 Gyr</span>
-        </div>
-        <div className="info-stat-row">
-          <span className="info-stat-label">Civilizations Confirmed</span>
-          <span className="info-stat-value">1 (destroyed)</span>
-        </div>
-        <div className="info-stat-row">
-          <span className="info-stat-label">Active Transmissions</span>
-          <span className="info-stat-value">0 — maintain</span>
-        </div>
-        <div className="info-stat-row">
-          <span className="info-stat-label">Known Hunters</span>
-          <span className="info-stat-value">unknown</span>
         </div>
       </div>
     </>
@@ -300,47 +280,36 @@ function SubviewContent({ subview }: { subview: SubviewKey }) {
   }
 }
 
-export function InfoPanel({ onOpenChange, openRequest }: { onOpenChange: (open: boolean) => void; openRequest?: number }) {
-  const [open, setOpen] = useState(false);
+function InfoPanelBody() {
   const [activeSubview, setActiveSubview] = useState<SubviewKey>('origins');
 
-  useEffect(() => {
-    if (openRequest) {
-      setOpen(true);
-      setActiveSubview('origins');
-      onOpenChange(true);
-    }
-  }, [openRequest, onOpenChange]);
+  return (
+    <div className="info-panel">
+      <div className="info-panel-header">Galactic Archive</div>
+      <div className="info-subview-btns">
+        {SUBVIEWS.map((sv) => (
+          <button
+            key={sv.key}
+            className={`info-subview-btn${activeSubview === sv.key ? ' info-subview-btn--active' : ''}`}
+            onClick={() => setActiveSubview(sv.key)}
+          >
+            <span className="info-subview-icon">{sv.icon}</span>
+            <span className="info-subview-label">{sv.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="info-panel-content">
+        <SubviewContent subview={activeSubview} />
+      </div>
+    </div>
+  );
+}
 
-  function toggle() {
-    const next = !open;
-    setOpen(next);
-    onOpenChange(next);
-  }
-
+export function InfoPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <div className="info-panel-wrap">
-      {open && (
-        <div className="info-panel">
-          <div className="info-panel-header">Galactic Archive</div>
-          <div className="info-subview-btns">
-            {SUBVIEWS.map((sv) => (
-              <button
-                key={sv.key}
-                className={`info-subview-btn${activeSubview === sv.key ? ' info-subview-btn--active' : ''}`}
-                onClick={() => setActiveSubview(sv.key)}
-              >
-                <span className="info-subview-icon">{sv.icon}</span>
-                <span className="info-subview-label">{sv.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="info-panel-content">
-            <SubviewContent subview={activeSubview} />
-          </div>
-        </div>
-      )}
-      <button className="info-tab" onClick={toggle} aria-label="Toggle archive panel">
+      {open && <InfoPanelBody />}
+      <button className="info-tab" onClick={() => onOpenChange(!open)} aria-label="Toggle archive panel">
         <svg className="info-tab-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
           <polygon
             vectorEffect="non-scaling-stroke"

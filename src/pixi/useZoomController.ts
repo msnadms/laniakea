@@ -16,9 +16,17 @@ export function useZoomController(
   options: ZoomControllerOptions = {},
 ) {
   const { onNavigateBack, getCurrentPos } = options;
+  const onNavigateBackRef = useRef(onNavigateBack);
+  const getCurrentPosRef = useRef(getCurrentPos);
   const isAnimatingRef = useRef(false);
   const cancelZoomRef = useRef<(() => void) | null>(null);
   const initialCameraRef = useRef<{ x: number; y: number; scale: number } | null>(null);
+  const hasNavigateBack = !!onNavigateBack;
+
+  useEffect(() => {
+    onNavigateBackRef.current = onNavigateBack;
+    getCurrentPosRef.current = getCurrentPos;
+  }, [onNavigateBack, getCurrentPos]);
 
   useEffect(() => () => { cancelZoomRef.current?.(); }, []);
 
@@ -30,19 +38,19 @@ export function useZoomController(
     camera.current.scale = init.scale;
     worldRef.current.scale.set(init.scale);
     worldRef.current.position.set(init.x, init.y);
-  }), []);
+  }), [camera, worldRef]);
 
   useEffect(() => {
-    if (!onNavigateBack) return;
+    if (!hasNavigateBack) return;
     return registerZoomOutBack(
       camera, worldRef, isAnimatingRef, cancelZoomRef,
-      onNavigateBack,
+      () => onNavigateBackRef.current?.(),
       () => {
         useUIStore.getState().setViewTransitioning(true);
         useUIStore.getState().setTransitionBack(true);
       }
     );
-  }, []);
+  }, [hasNavigateBack, camera, worldRef]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -55,8 +63,8 @@ export function useZoomController(
       const back = ui.transitionBack;
       ui.setTransitionBack(false);
       cancelZoomRef.current?.();
-      if (back && getCurrentPos) {
-        const pos = getCurrentPos();
+      if (back && getCurrentPosRef.current) {
+        const pos = getCurrentPosRef.current();
         cancelZoomRef.current = animateIntro(camera, worldRef.current, 700, 5, pos?.x, pos?.y);
       } else {
         cancelZoomRef.current = animateIntro(camera, worldRef.current, 700, 0.2);
@@ -71,7 +79,7 @@ export function useZoomController(
     return useUIStore.subscribe((state, prev) => {
       if (state.viewTransitioning && !prev.viewTransitioning && !isAnimatingRef.current) runIntro();
     });
-  }, [isReady]);
+  }, [isReady, camera, worldRef]);
 
   return { isAnimatingRef, cancelZoomRef };
 }

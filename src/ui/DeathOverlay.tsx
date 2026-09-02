@@ -13,18 +13,17 @@ const LINE_INTERVAL_MS = DEATH_SEQUENCE_MS / (LINES.length + 1);
 
 export function DeathOverlay() {
   const destroyed = useUIStore((s) => s.destroyed);
+  if (!destroyed) return null;
+  return <DeathSequence />;
+}
+
+function DeathSequence() {
   const [visibleLines, setVisibleLines] = useState(0);
 
   useEffect(() => {
-    if (!destroyed) {
-      setVisibleLines(0);
-      return;
-    }
     const timers = LINES.map((_, i) => setTimeout(() => setVisibleLines(i + 1), i * LINE_INTERVAL_MS));
     return () => timers.forEach((id) => clearTimeout(id));
-  }, [destroyed]);
-
-  if (!destroyed) return null;
+  }, []);
 
   return (
     <div className="death-overlay">

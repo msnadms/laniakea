@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useUIStore, computeStorageCap, computeCombatEffects } from '../store/uiStore';
+import { useUIStore, computeStorageCap, computeWeaponCap, FIRE_COST } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import { LogisticsModal } from './LogisticsModal';
@@ -7,7 +7,6 @@ import { MSG_DRIVE_REQUIRED_SUPERCLUSTER, SHIP_NAME, fmt } from './strings';
 import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { ShipUpgradePanel } from './ShipUpgradePanel';
-import { CombatTree } from './CombatTree';
 import { AlloysIcon, NutrientsIcon, MetallicHydrogenIcon, NeutronStarMatterIcon } from './CargoIcons';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
@@ -178,11 +177,9 @@ const UpgradesButton = memo(function UpgradesButton() {
   );
 });
 
-const CombatButton = memo(function CombatButton() {
-  const toggleCombatTree = useUIStore((s) => s.toggleCombatTree);
-
+const PlaceholderButton = memo(function PlaceholderButton() {
   return (
-    <button className="side-btn combat-btn" onClick={toggleCombatTree} style={{ pointerEvents: 'all' }}>
+    <button className="side-btn combat-btn" onClick={() => {}} style={{ pointerEvents: 'all' }}>
       <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
         <polygon
           vectorEffect="non-scaling-stroke"
@@ -194,7 +191,7 @@ const CombatButton = memo(function CombatButton() {
         />
       </svg>
       <span className="delivery-btn-icon">✦</span>
-      <span className="nav-back-btn-label">COMBAT</span>
+      <span className="nav-back-btn-label">SYS</span>
     </button>
   );
 });
@@ -212,13 +209,12 @@ export function ShipHUD() {
   const hudNotify = useUIStore((s) => s.hudNotify);
   const hudNotifyMsg = useUIStore((s) => s.hudNotifyMsg);
   const storageA = useUIStore((s) => s.storageA);
-  const skillNodes = useUIStore((s) => s.skillNodes);
-  const shieldCharge = useUIStore((s) => s.shieldCharge);
+  const weaponA = useUIStore((s) => s.weaponA);
+  const weaponB = useUIStore((s) => s.weaponB);
   const hudRef = useRef<HTMLDivElement>(null);
 
   const storageCap = computeStorageCap(storageA);
-  const fx = computeCombatEffects(skillNodes);
-  const weaponCap = fx.ammoCap;
+  const weaponCap = computeWeaponCap(weaponA, weaponB);
 
   useEffect(() => {
     const id = setInterval(() => useUIStore.getState().tickDetectionDecay(), 10000);
@@ -241,10 +237,9 @@ export function ShipHUD() {
     <div ref={hudRef} className="ship-hud">
       <Codex />
       <ShipUpgradePanel />
-      <CombatTree />
       <LogisticsSystem />
       <UpgradesButton />
-      <CombatButton />
+      <PlaceholderButton />
       <NavBack />
       <NavRegen />
       {/* trapezoid outline: wide at top, narrows at bottom, no top edge */}
@@ -284,29 +279,22 @@ export function ShipHUD() {
             <span className="hud-label">RAILGUN RESERVES</span>
             <StatBar value={railgunAmmo} max={weaponCap} />
             <span className="hud-value">{fmt(railgunAmmo)} <span className="hud-value-dim">/ {fmt(weaponCap)}</span></span>
-            {fx.hasFire && (
-              <button
-                className="hud-action-btn"
-                onClick={() => useUIStore.getState().reloadRailgun()}
-                disabled={railgunAmmo >= weaponCap}
-              >Reload</button>
-            )}
+            <button
+              className="hud-action-btn"
+              onClick={() => useUIStore.getState().reloadRailgun()}
+              disabled={railgunAmmo >= weaponCap}
+            >Reload</button>
           </div>
 
           <div className="hud-row">
             <span className="hud-label">DETECTION RATING</span>
             <DetectionBars value={detectionRating} />
             <span className="hud-value">{detectionRating} <span className="hud-value-dim">/ 5</span></span>
-            {fx.shieldCapacity > 0 && (
-              <span className="hud-shield" data-tooltip="Deflector charge">⛨ {shieldCharge}/{fx.shieldCapacity}</span>
-            )}
-            {fx.hasFire && (
-              <button
-                className="hud-action-btn hud-action-btn--fire"
-                onClick={() => useUIStore.getState().fireRailgun()}
-                disabled={detectionRating <= 0 || railgunAmmo < fx.fireCost}
-              >Fire</button>
-            )}
+            <button
+              className="hud-action-btn hud-action-btn--fire"
+              onClick={() => useUIStore.getState().fireRailgun()}
+              disabled={detectionRating <= 0 || railgunAmmo < FIRE_COST}
+            >Fire</button>
           </div>
 
         </div>

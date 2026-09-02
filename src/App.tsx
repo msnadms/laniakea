@@ -70,10 +70,9 @@ export default function App() {
   const [infoOpen, setInfoOpen] = useState(false);
   const showBoot = useUIStore((s) => s.showBootSequence);
   const [isFirstVisit] = useState(consumeFirstVisit);
-  const [infoPanelOpenReq, setInfoPanelOpenReq] = useState(0);
 
   const handleBootComplete = useCallback(() => {
-    if (isFirstVisit) setInfoPanelOpenReq(r => r + 1);
+    if (isFirstVisit) setInfoOpen(true);
   }, [isFirstVisit]);
 
   if (authLoading || !user) return <LoginScreen />;
@@ -84,7 +83,7 @@ export default function App() {
       {showScanlines && <div className="app-scanlines" />}
       {showBoot && <BootSequence onComplete={handleBootComplete} isFirstVisit={isFirstVisit} />}
       <TopNavBar />
-      <InfoPanel onOpenChange={setInfoOpen} openRequest={infoPanelOpenReq} />
+      <InfoPanel open={infoOpen} onOpenChange={setInfoOpen} />
       <div className="top-left">
         <ConfigPanel hidden={infoOpen} />
       </div>

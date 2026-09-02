@@ -128,7 +128,9 @@ export function SolarSystem() {
   const system = useGameStore((s) => s.system);
   const showOrbitRings = useUIStore((s) => s.showOrbitRings);
   const showOrbitRingsRef = useRef(showOrbitRings);
-  showOrbitRingsRef.current = showOrbitRings;
+  useEffect(() => {
+    showOrbitRingsRef.current = showOrbitRings;
+  }, [showOrbitRings]);
   const orbitGfxRef = useRef<Graphics[]>([]);
   const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
   useZoomController(camera, worldRef, isReady, {
@@ -149,6 +151,8 @@ export function SolarSystem() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current || !system) return;
     const world   = worldRef.current;
+    const extractorGfx = extractorGfxRef.current;
+    const settlementGfx = settlementGfxRef.current;
     const layout  = generateSystemLayout(system.seed, system.starType);
     const systemContainer = new Container();
     const systemGfx       = new Graphics();
@@ -240,14 +244,14 @@ export function SolarSystem() {
         if (useExtractorStore.getState().extractors[key]) {
           const stationGfx = createExtractorGfx(pr);
           planetContainer.addChild(stationGfx);
-          extractorGfxRef.current.set(key, stationGfx);
+          extractorGfx.set(key, stationGfx);
         }
 
         // render existing settlement if already placed (habitable only)
         if (pl.zone === 'habitable' && useSettlementStore.getState().settlements[key]) {
           const factoryGfx = createSettlementGfx(pr);
           planetContainer.addChild(factoryGfx);
-          settlementGfxRef.current.set(key, factoryGfx);
+          settlementGfx.set(key, factoryGfx);
         }
       }
 
@@ -264,15 +268,15 @@ export function SolarSystem() {
           const planetData = generatedPlanets[ring];
           const key = makeExtractorKey(galaxySeed, system.id, planetData.name);
           const hasExtractor = !!extractors[key];
-          const existing = extractorGfxRef.current.get(key);
+          const existing = extractorGfx.get(key);
           if (hasExtractor && !existing) {
             const pr = layout.planets[ring].radius;
             const stationGfx = createExtractorGfx(pr);
             planets[ring].container.addChild(stationGfx);
-            extractorGfxRef.current.set(key, stationGfx);
+            extractorGfx.set(key, stationGfx);
           } else if (!hasExtractor && existing) {
             existing.destroy();
-            extractorGfxRef.current.delete(key);
+            extractorGfx.delete(key);
           }
         }
       },
@@ -286,15 +290,15 @@ export function SolarSystem() {
           if (layout.planets[ring].zone !== 'habitable') continue;
           const key = makeSettlementKey(galaxySeed, system.id, generatedPlanets[ring].name);
           const hasSettlement = !!settlements[key];
-          const existing = settlementGfxRef.current.get(key);
+          const existing = settlementGfx.get(key);
           if (hasSettlement && !existing) {
             const pr = layout.planets[ring].radius;
             const factoryGfx = createSettlementGfx(pr);
             planets[ring].container.addChild(factoryGfx);
-            settlementGfxRef.current.set(key, factoryGfx);
+            settlementGfx.set(key, factoryGfx);
           } else if (!hasSettlement && existing) {
             existing.destroy();
-            settlementGfxRef.current.delete(key);
+            settlementGfx.delete(key);
           }
         }
       },
@@ -356,7 +360,7 @@ export function SolarSystem() {
           moon.gfx.y = Math.sin(moon.angle) * moon.dist;
         }
       }
-      for (const gfx of extractorGfxRef.current.values()) {
+      for (const gfx of extractorGfx.values()) {
         gfx.rotation += 0.004 * dt;
       }
     }
@@ -365,8 +369,8 @@ export function SolarSystem() {
     return () => {
       unsubExtractors();
       unsubSettlements();
-      extractorGfxRef.current.clear();
-      settlementGfxRef.current.clear();
+      extractorGfx.clear();
+      settlementGfx.clear();
       orbitGfxRef.current = [];
       Ticker.shared.remove(onTick);
       world.removeChild(systemContainer);

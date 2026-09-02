@@ -15,6 +15,10 @@ export function useCamera(
   minScale: number = CAMERA_MIN_SCALE,
 ) {
   const { app, isInitialised } = useApplication();
+  const appRef = useRef(app);
+  useEffect(() => {
+    appRef.current = app;
+  }, [app]);
   const camera = useRef({ x: 0, y: 0, scale: initialScale });
   const [isReady, setIsReady] = useState(false);
   const isDragging = useRef(false);
@@ -29,15 +33,16 @@ export function useCamera(
     worldRef.current.position.set(camera.current.x, camera.current.y);
     worldRef.current.scale.set(camera.current.scale);
     setIsReady(true);
-  }, [app, isInitialised]);
+  }, [app, isInitialised, worldRef]);
 
   useEffect(() => {
     if (!isInitialised) return;
-    const stage = app.stage;
-    const canvas = app.canvas;
+    const pixi = appRef.current;
+    const stage = pixi.stage;
+    const canvas = pixi.canvas;
 
     stage.eventMode = 'static';
-    stage.hitArea = app.screen;
+    stage.hitArea = pixi.screen;
 
     const onDown = (event: FederatedPointerEvent) => {
       isDragging.current = true;
@@ -92,7 +97,7 @@ export function useCamera(
       stage.off('pointerupoutside', onUpOutside);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [app, isInitialised, onStageTap]);
+  }, [app, isInitialised, onStageTap, minScale, worldRef]);
 
   return { camera, isReady };
 }

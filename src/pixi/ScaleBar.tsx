@@ -70,7 +70,7 @@ export function ScaleBar({ camera, unitsPerWorldPx, unit, niceValues }: Props) {
       stage.removeChild(scaleGroup);
       scaleGroup.destroy({ children: true });
     };
-  }, [isInitialised, app, unitsPerWorldPx, unit, niceValues]);
+  }, [isInitialised, app, unitsPerWorldPx, unit, niceValues, camera]);
 
   return null;
 }

@@ -1,7 +1,6 @@
 import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Settlement, ColonyState, ColonyProductionSlot } from '../game/types';
-import { makeEmptyColonySlot } from '../game/types';
 
 export async function saveSettlement(uid: string, settlement: Settlement): Promise<void> {
   const ref = doc(db, 'users', uid, 'settlements', settlement.key);

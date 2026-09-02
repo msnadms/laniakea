@@ -6,7 +6,7 @@ import { useSettlementStore } from '../store/settlementStore';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { RESOURCE_LABELS, COST_KEY_TO_RESOURCE } from '../game/types';
-import { EXTRACTOR_UPGRADES, COMBAT_CORES, getCraftable } from '../data/upgrades';
+import { EXTRACTOR_UPGRADES, getCraftable } from '../data/upgrades';
 import { UpgradeModuleIcon } from './CargoIcons';
 import type { Extractor, Settlement, ColonyState, ColonyProductionSlot, ResourceCost } from '../game/types';
 import { MAX_COLONY_SLOTS, COLONY_SLOT_COSTS } from '../game/types';
@@ -15,8 +15,10 @@ import { updateExtractorCollected } from '../firebase/extractors';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { saveColonyState } from '../firebase/settlements';
 import { fmt } from './strings';
-import { getSystemKey, getSystemName, projectNodes, StationMap } from './LogisticsMap';
-import type { ProjectedMapNode } from './LogisticsMap';
+import { StationMap } from './LogisticsMap';
+import { getSystemKey, getSystemName, projectNodes } from './logisticsProject';
+import type { ProjectedMapNode } from './logisticsProject';
+import { useNow } from './useNow';
 import './LogisticsModal.css';
 
 type AnimLine = { text: string; isCost: boolean; revealStep: number };
@@ -119,16 +121,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [draftNodeKeys, setDraftNodeKeys] = useState<string[]>([]);
-  const [tick, setTick] = useState(0);
   const [lastHoveredNodeId, setLastHoveredNodeId] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<'resources' | 'inventory'>('resources');
   const [pendingEquip, setPendingEquip] = useState<{ extractorKey: string; nodeName: string; resourceLabel: string; slot: 0 | 1 } | null>(null);
   const [dispatchAnim, setDispatchAnim] = useState<DispatchAnim | null>(null);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
 
   useEffect(() => {
     if (!dispatchAnim) return;
@@ -152,8 +149,8 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const allSettlements = useMemo(() => Object.values(settlements), [settlements]);
 
   const projected = useMemo(
-    () => projectNodes(allExtractors, allSettlements, nodeEquipped),
-    [allExtractors, allSettlements, nodeEquipped, tick],
+    () => projectNodes(allExtractors, allSettlements, nodeEquipped, now),
+    [allExtractors, allSettlements, nodeEquipped, now],
   );
   const lastHoveredNode = lastHoveredNodeId
     ? projected.find((p) => p.nodeId === lastHoveredNodeId) ?? null
@@ -323,10 +320,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     }
     return [...map.values()].sort(
       (a, b) =>
-        b.reduce((s, e) => s + peekAccumulated(e), 0) -
-        a.reduce((s, e) => s + peekAccumulated(e), 0),
+        b.reduce((s, e) => s + peekAccumulated(e, now), 0) -
+        a.reduce((s, e) => s + peekAccumulated(e, now), 0),
     );
-  }, [allExtractors, tick]);
+  }, [allExtractors, now]);
 
   return (
     <div className="logistics-overlay" onClick={onClose}>
@@ -637,7 +634,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     <div className="lm-pending-list">
                       {pendingUpgrades.map((item) => {
                         const upg = getCraftable(item.upgradeId);
-                        const msLeft = item.availableAt - Date.now();
+                        const msLeft = item.availableAt - now;
                         const ready = msLeft <= 0;
                         const hoursLeft = ready ? 0 : Math.ceil(msLeft / (60 * 60 * 1000));
                         return (
@@ -744,8 +741,6 @@ function SlotPickerMenu({
       {EXTRACTOR_UPGRADES.map((u) =>
         renderRow(u.id, u.name, u.cost, `${u.effect.multiplier}x to ${u.effect.upgType}`),
       )}
-      <div className="lm-slot-menu-section">Combat Cores</div>
-      {COMBAT_CORES.map((c) => renderRow(c.id, c.name, c.cost))}
     </div>,
     document.body,
   );
@@ -764,7 +759,7 @@ function SlotView({
   isMenuOpen: boolean;
   onOpenMenu: (colonyKey: string, slotIdx: number, rect: DOMRect) => void;
 }) {
-  const now = Date.now();
+  const now = useNow(60_000);
   const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : null;
   const ip = slot.inProduction;
   const msLeft = ip ? ip.availableAt - now : 0;

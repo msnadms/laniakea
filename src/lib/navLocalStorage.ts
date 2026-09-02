@@ -19,7 +19,9 @@ const navKey = (uid: string) => `galaxy-nav-${uid}`;
 export function saveNav(uid: string, nav: Omit<StoredNav, 'savedAt'>): void {
   try {
     localStorage.setItem(navKey(uid), JSON.stringify({ ...nav, savedAt: Date.now() }));
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 export function loadNav(uid: string): Omit<StoredNav, 'savedAt'> | null {

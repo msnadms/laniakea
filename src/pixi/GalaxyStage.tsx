@@ -50,7 +50,7 @@ extend({ Container, Graphics, Sprite });
 
 
 export function GalaxyWorld() {
-  const { app, isInitialised } = useApplication();
+  const { isInitialised } = useApplication();
 
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
   const galaxyConfig = useGameStore((s) => s.galaxy.config);
@@ -122,7 +122,7 @@ export function GalaxyWorld() {
       if (activeSystem !== null) popAddress();
       setSystem(null);
     }
-  }, [pushAddress, popAddress, setSystem, setView, camera]);
+  }, [pushAddress, popAddress, setSystem, setView, camera, cancelZoomRef, isAnimatingRef]);
 
   handleSelectSystemRef.current = handleSelectSystem;
 
@@ -233,7 +233,7 @@ export function GalaxyWorld() {
       coreBlur.destroy();
       disp.destroy();
     };
-  }, [galaxySeed, config, isInitialised]);
+  }, [galaxySeed, config, isInitialised, camera]);
 
   return (
     <>

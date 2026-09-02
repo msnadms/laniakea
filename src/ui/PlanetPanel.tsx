@@ -40,6 +40,28 @@ const ZONE_LABELS: Record<string, string> = {
   ice: 'Ice Planet',
 };
 
+function ResourcePickButton({ resource, affordable, locked, logisticsTier, onPlace }: {
+  resource: { type: Resource['type']; count: number };
+  affordable: boolean;
+  locked: boolean;
+  logisticsTier: number;
+  onPlace: (resource: { type: Resource['type']; count: number }) => void;
+}) {
+  return (
+    <button
+      className={`planet-panel-btn planet-panel-btn--pick${!affordable || locked ? ' planet-panel-btn--dim' : ''}`}
+      onClick={() => onPlace(resource)}
+      disabled={!affordable || locked}
+    >
+      <span className={`planet-panel-resource-dot res-${resource.type}`} />
+      {locked
+        ? `${RESOURCE_LABELS[resource.type]} (logistics ${logisticsTier}/${UPGRADE_POOL})`
+        : `${RESOURCE_LABELS[resource.type]} (${resource.count}/hour)`}
+      {!locked && <TierBadge type={resource.type} count={resource.count} />}
+    </button>
+  );
+}
+
 export function PlanetPanel() {
   const selectedKey = useUIStore((s) => s.selectedPlanetKey);
   const setSelectedPlanet = useUIStore((s) => s.setSelectedPlanet);
@@ -70,23 +92,15 @@ export function PlanetPanel() {
   const storageA = useUIStore((s) => s.storageA);
   const storageB = useUIStore((s) => s.storageB);
   const user = useAuthStore((s) => s.user);
-  const [accumulated, setAccumulated] = useState(0);
+  const [, setTick] = useState(0);
 
   const cap = computeStorageCap(storageA);
+  const accumulated = extractor ? peekAccumulated(extractor) : 0;
 
   useEffect(() => {
-    setAccumulated(extractor ? peekAccumulated(extractor) : 0);
-  }, [extractor, storageB, logisticsB]);
-
-  useEffect(() => {
-    if (!extractor) return;
-    const key = extractor.key;
-    const id = setInterval(() => {
-      const current = useExtractorStore.getState().extractors[key];
-      if (current) setAccumulated(peekAccumulated(current));
-    }, 5000);
+    const id = setInterval(() => setTick((t) => t + 1), 5000);
     return () => clearInterval(id);
-  }, [extractor?.key]);
+  }, []);
 
   const planetName = selectedKey ? selectedKey.split('|')[2] : null;
   const planet = system?.planets?.find((p) => p.name === planetName) ?? null;
@@ -312,23 +326,16 @@ export function PlanetPanel() {
                     MINE WHICH RESOURCE? · {STATION_COST} alloys
                   </div>
                   <div className="planet-panel-resource-picker">
-                    {allResources.map((r) => {
-                      const neutronLocked = r.type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL;
-                      return (
-                        <button
-                          key={r.type}
-                          className={`planet-panel-btn planet-panel-btn--pick${alloys < STATION_COST || neutronLocked ? ' planet-panel-btn--dim' : ''}`}
-                          onClick={() => handlePlace(r)}
-                          disabled={alloys < STATION_COST || neutronLocked}
-                        >
-                          <span className={`planet-panel-resource-dot res-${r.type}`} />
-                          {neutronLocked
-                            ? `${RESOURCE_LABELS[r.type]} (logistics ${logisticsA + logisticsB}/${UPGRADE_POOL})`
-                            : `${RESOURCE_LABELS[r.type]} (${r.count}/hour)`}
-                          {!neutronLocked && <TierBadge type={r.type} count={r.count} />}
-                        </button>
-                      );
-                    })}
+                    {allResources.map((r) => (
+                      <ResourcePickButton
+                        key={r.type}
+                        resource={r}
+                        affordable={alloys >= STATION_COST}
+                        locked={r.type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL}
+                        logisticsTier={logisticsA + logisticsB}
+                        onPlace={handlePlace}
+                      />
+                    ))}
                     {alloys < STATION_COST && (
                       <span className="planet-panel-extractor-rate">Need {STATION_COST} alloys to build</span>
                     )}
