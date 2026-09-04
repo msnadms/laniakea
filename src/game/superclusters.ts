@@ -1,7 +1,8 @@
 import { Delaunay } from 'd3-delaunay';
 import { createRng } from './galaxyGen';
 import { LANIAKEA_SEED, LANIAKEA_NAME, MILKY_WAY_SEED, MILKY_WAY_NAME, LANIAKEA_ATTRACTOR_NAMES, MW_DOT_OFFSET } from './hardcoded';
-import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, BackgroundStar, Rng, AddressComponent, AddressComponentType } from './types';
+import { pickType } from './galaxyConfig';
+import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, BackgroundStar, Rng, AddressComponent, AddressComponentType, GalaxyType } from './types';
 import { buildAddressComponent } from './types';
 import {
   BACKGROUND_STAR_COUNT, BACKGROUND_STAR_AREA_X, BACKGROUND_STAR_AREA_Y,
@@ -21,10 +22,24 @@ const CLUSTER_SUFFIXES = [
   ' Cluster', ' Wall', ' Void', ' Nexus', ' Complex', ' Cloud',
   ' Group', ' Chain', ' Reach', ' Expanse', ' Drift', ' Basin',
 ];
-const GALAXY_SUFFIXES = [
-  ' Galaxy', ' Spiral', ' System', ' Expanse', ' Domain',
-  ' Arm', ' Drift', ' Halo', ' Nebula', ' Veil',
-];
+const GALAXY_SUFFIXES: Record<GalaxyType, string[]> = {
+  spiral: [
+    ' Galaxy', ' Spiral', ' Whirl', ' Pinwheel', ' Vortex',
+    ' Arm', ' Cascade', ' Veil', ' Expanse', ' Domain',
+  ],
+  barred: [
+    ' Galaxy', ' Barred Spiral', ' Bar', ' Spindle', ' Axis',
+    ' Crossbar', ' Whirl', ' Beam', ' Expanse', ' Domain',
+  ],
+  elliptical: [
+    ' Galaxy', ' Ellipse', ' Ellipsoid', ' Sphere', ' Halo',
+    ' Ember', ' Mound', ' Bastion', ' Expanse', ' Domain',
+  ],
+  irregular: [
+    ' Galaxy', ' Cloud', ' Wisp', ' Fragment', ' Scatter',
+    ' Tangle', ' Remnant', ' Shard', ' Drift', ' Sprawl',
+  ],
+};
 
 const SC_NAME_ROOTS = [
   'Virgo', 'Coma', 'Perseus', 'Pisces', 'Hydra', 'Centaurus', 'Boötes',
@@ -89,12 +104,17 @@ export function getSuperclusterCoords(seed: number): [number, number, number] {
   ];
 }
 
+export function getGalaxyType(seed: number): GalaxyType {
+  return pickType(createRng(seed));
+}
+
 export function generateGalaxyName(seed: number): string {
   if (seed === MILKY_WAY_SEED) return MILKY_WAY_NAME;
-  const rng = createRng(seed);
+  const suffixes = GALAXY_SUFFIXES[getGalaxyType(seed)];
+  const rng = createRng((seed ^ 0x27d4eb2f) >>> 0);
   const root   = CLUSTER_ROOTS[Math.floor(rng() * CLUSTER_ROOTS.length)];
   const ending = CLUSTER_ENDINGS[Math.floor(rng() * CLUSTER_ENDINGS.length)];
-  const suffix = GALAXY_SUFFIXES[Math.floor(rng() * GALAXY_SUFFIXES.length)];
+  const suffix = suffixes[Math.floor(rng() * suffixes.length)];
   return `${root}${ending}${suffix}`;
 }
 

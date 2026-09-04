@@ -29,7 +29,7 @@ interface GameState {
 
 function makeGalaxy(seed?: number): Galaxy {
   const s = seed ?? Date.now();
-  return generateGalaxy(s, s === MILKY_WAY_SEED ? { numArms: MILKY_WAY_NUM_ARMS } : undefined);
+  return generateGalaxy(s, s === MILKY_WAY_SEED ? { numArms: MILKY_WAY_NUM_ARMS, type: 'barred' } : undefined);
 }
 
 function applyVisited(galaxy: Galaxy, visited: Set<number> | undefined): Galaxy {

@@ -1,26 +1,17 @@
-import type { Galaxy, StarSystem, StarType, BackgroundStar, Rng } from './types';
+import type { Galaxy, StarSystem, StarType, StarPopulation, BackgroundStar, Rng } from './types';
 import { MILKY_WAY_SEED, NEARBY_SYSTEMS_DATA, MILKY_WAY_NEBULA_COLOR_INDEX, MILKY_WAY_INNER_NEBULA_COLOR_INDEX } from './hardcoded';
 import {
-  GALAXY_RADIUS,
-  BULGE_FRACTION,
-  BULGE_RADIUS_FRACTION,
-  BULGE_ELLIPSE,
-  ARM_T_POWER,
-  ARM_INNER_FRACTION,
-  ARM_SPREAD,
-  ARM_SPREAD_BASE,
   BACKGROUND_STAR_COUNT,
   BACKGROUND_STAR_AREA_X,
   BACKGROUND_STAR_AREA_Y,
   STAR_SIZE_MULTIPLIER,
-  DISK_FRACTION,
   DISK_SIZE_SCALE,
-  DISK_GAP_SCATTER,
   NUM_BROWN_DWARFS,
   NEBULA_COLORS,
   INNER_NEBULA_COLORS,
 } from './constants';
-import { GalaxyConfig } from './galaxyConfig';
+import { GalaxyConfig, type GalaxyOverrides } from './galaxyConfig';
+import { sampleStar, edgeStar } from './galaxyShapes';
 
 // Fast seedable PRNG (mulberry32). Returns a function that produces [0, 1) floats.
 export function createRng(seed: number): Rng {
@@ -52,19 +43,26 @@ const STAR_SIZES: Record<StarType, [number, number]> = {
   N: [0.5, 0.9],
 };
 
-// Three populations: bulge (old, K/M heavy), disk (inter-arm, old/dim), arm (young, A/F heavy).
+// Bulge (old, K/M heavy), disk (inter-arm, old/dim), arm (young, A/F heavy), bar (older than the
+// arms it feeds), halo (elliptical galaxies: no ongoing star formation, the reddest population),
+// starburst (irregular clumps: violent star formation, the bluest).
 // Arm weights: inner end is dominated by hot blue-white stars, outer end shifts cooler but stays
 // mostly A/F throughout since arms are where active star formation happens.
-function pickStarType(rng: Rng, armFraction: number | null, isDisk: boolean): StarType {
+function pickStarType(rng: Rng, population: StarPopulation, armFraction: number | null): StarType {
   let weights: Record<StarType, number>;
-  if (isDisk) {
+  if (population === 'disk') {
     weights = { M: 0.48, K: 0.28, G: 0.18, F: 0.05, A: 0.01, L: 0, N: 0 };
-  } else if (armFraction === null) {
+  } else if (population === 'bulge') {
     weights = { M: 0.50, K: 0.35, G: 0.12, F: 0.03, A: 0.00, L: 0, N: 0 };
+  } else if (population === 'halo') {
+    weights = { M: 0.58, K: 0.32, G: 0.08, F: 0.02, A: 0.00, L: 0, N: 0 };
+  } else if (population === 'bar') {
+    weights = { M: 0.30, K: 0.34, G: 0.24, F: 0.10, A: 0.02, L: 0, N: 0 };
   } else {
-    const t = armFraction;
+    const t = armFraction ?? 0;
+    const hot = population === 'starburst' ? 0.6 : 0.45;
     weights = {
-      A: lerp(0.45, 0.20, t),
+      A: lerp(hot, 0.20, t),
       F: lerp(0.30, 0.25, t),
       G: lerp(0.12, 0.22, t),
       K: lerp(0.08, 0.20, t),
@@ -73,7 +71,7 @@ function pickStarType(rng: Rng, armFraction: number | null, isDisk: boolean): St
       N: 0,
     };
   }
-  const total = (Object.values(weights) as number[]).reduce((a, b) => a + b, 1);
+  const total = (Object.values(weights) as number[]).reduce((a, b) => a + b, 0);
   const roll = rng() * total;
   let cumulative = 0;
   for (const [type, weight] of Object.entries(weights) as [StarType, number][]) {
@@ -120,72 +118,32 @@ function lerp(start: number, end: number, t: number) {
 
 
 
-export function generateGalaxy(seed = Date.now(), overrides?: { numArms?: number }): Galaxy {
+export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): Galaxy {
   const rng = createRng(seed);
   const positions: [number, number][] = [];
   const armIndices: (number | null)[] = [];
   const armFractions: (number | null)[] = [];
-  const isDiskStar: boolean[] = [];
+  const populations: StarPopulation[] = [];
   const isBrownDwarf: boolean[] = [];
   const isNeutronStar: boolean[] = [];
   const config = new GalaxyConfig(rng, overrides);
 
   for (let i = 0; i < config.numStars; i++) {
-    let x: number, y: number;
-
-    if (rng() < BULGE_FRACTION) {
-      const radius = Math.pow(rng(), 0.5) * GALAXY_RADIUS * BULGE_RADIUS_FRACTION;
-      const angle = rng() * Math.PI * 2;
-      x = Math.cos(angle) * radius;
-      y = Math.sin(angle) * radius * BULGE_ELLIPSE;
-      armIndices.push(null);
-      armFractions.push(null);
-      isDiskStar.push(false);
-      isBrownDwarf.push(false);
-      isNeutronStar.push(false);
-    } else if (rng() < DISK_FRACTION) {
-      const t = Math.pow(rng(), ARM_T_POWER);
-      const radius = lerp(GALAXY_RADIUS * ARM_INNER_FRACTION, GALAXY_RADIUS, t);
-      const gap = Math.floor(rng() * config.numArms);
-      const gapCenterAngle = config.baseAngleOffset + ((gap + 0.5) / config.numArms) * Math.PI * 2 + t * Math.PI * config.spiralTwist;
-      const angularScatter = (DISK_GAP_SCATTER * Math.PI / config.numArms) * (rng() - 0.5) * 2;
-      const angle = gapCenterAngle + angularScatter;
-      x = Math.cos(angle) * radius;
-      y = Math.sin(angle) * radius * config.galaxyEllipse;
-      armIndices.push(null);
-      armFractions.push(null);
-      isDiskStar.push(true);
-      isBrownDwarf.push(false);
-      isNeutronStar.push(false);
-    } else {
-      const arm = Math.floor(rng() * config.numArms);
-      const armFraction = Math.pow(rng(), ARM_T_POWER);
-      const radius = lerp(GALAXY_RADIUS * ARM_INNER_FRACTION, GALAXY_RADIUS, armFraction);
-      const baseAngle = (arm / config.numArms) * Math.PI * 2 + config.baseAngleOffset;
-      const spiralAngle = baseAngle + armFraction * Math.PI * config.spiralTwist;
-      const spread = GALAXY_RADIUS * ARM_SPREAD * (ARM_SPREAD_BASE + armFraction);
-
-      x = Math.cos(spiralAngle) * radius + (rng() - 0.5) * 2 * spread;
-      y = Math.sin(spiralAngle) * radius * config.galaxyEllipse + (rng() - 0.5) * 2 * spread * config.galaxyEllipse;
-
-      armIndices.push(arm);
-      armFractions.push(armFraction);
-      isDiskStar.push(false);
-      isBrownDwarf.push(false);
-      isNeutronStar.push(false);
-    }
-
-    positions.push([x, y]);
+    const star = sampleStar(rng, config);
+    positions.push([star.x, star.y]);
+    armIndices.push(star.arm);
+    armFractions.push(star.armFraction);
+    populations.push(star.population);
+    isBrownDwarf.push(false);
+    isNeutronStar.push(false);
   }
 
   // Rare brown dwarfs scattered at the galactic edge (beyond 82% of GALAXY_RADIUS).
   for (let i = 0; i < NUM_BROWN_DWARFS; i++) {
-    const angle = rng() * Math.PI * 2;
-    const r = GALAXY_RADIUS * (0.82 + rng() * 0.26);
-    positions.push([Math.cos(angle) * r, Math.sin(angle) * r * config.galaxyEllipse]);
+    positions.push(edgeStar(rng, config));
     armIndices.push(null);
     armFractions.push(null);
-    isDiskStar.push(false);
+    populations.push('halo');
     isBrownDwarf.push(true);
     isNeutronStar.push(false);
   }
@@ -194,17 +152,16 @@ export function generateGalaxy(seed = Date.now(), overrides?: { numArms?: number
   // primary sequence (and all star positions) are completely unaffected.
   const nsRng = createRng((seed ^ 0x4e5a6b7c) >>> 0);
   for (let id = 0; id < positions.length; id++) {
-    if (!isDiskStar[id] && !isBrownDwarf[id] && nsRng() < 0.005) {
+    if (populations[id] !== 'disk' && !isBrownDwarf[id] && nsRng() < 0.005) {
       isNeutronStar[id] = true;
     }
   }
 
   const systems: StarSystem[] = positions.map(([x, y], id) => {
-    const disk = isDiskStar[id];
-    const rawType = isBrownDwarf[id] ? 'L' : pickStarType(rng, armFractions[id], disk);
+    const rawType = isBrownDwarf[id] ? 'L' : pickStarType(rng, populations[id], armFractions[id]);
     const starType = isNeutronStar[id] ? 'N' : rawType;
     const [minSize, maxSize] = STAR_SIZES[starType];
-    const sizeScale = disk ? DISK_SIZE_SCALE : 1;
+    const sizeScale = populations[id] === 'disk' ? DISK_SIZE_SCALE : 1;
     return {
       id,
       x,

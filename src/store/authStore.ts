@@ -4,17 +4,19 @@ import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
-import { loadAllSettlements } from '../firebase/settlements';
+import { loadAllFabricators } from '../firebase/fabricators';
 import { loadQuests } from '../firebase/quests';
 import { loadLogisticsRoutes } from '../firebase/logisticsRoutes';
 import { loadExtractorUpgrades } from '../firebase/extractorUpgrades';
+import { loadStockpile } from '../firebase/stockpile';
 import { applyUserSettings, useUIStore } from './uiStore';
 import { cancelDeathSequence } from './resetGame';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
-import { useSettlementStore } from './settlementStore';
+import { useFabricatorStore } from './fabricatorStore';
 import { useLogisticsStore } from './logisticsStore';
+import { useStockpileStore } from './stockpileStore';
 import { useQuestStore } from './questStore';
 import { loadNav } from '../lib/navLocalStorage';
 
@@ -43,14 +45,15 @@ export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const [baseSettings, discoveries, extractors, settlements, quests, logisticsRoutes, extractorUpgrades] = await Promise.all([
+        const [baseSettings, discoveries, extractors, fabricators, quests, logisticsRoutes, extractorUpgrades, stockpile] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
           loadAllExtractors(user.uid),
-          loadAllSettlements(user.uid),
+          loadAllFabricators(user.uid),
           loadQuests(user.uid),
           loadLogisticsRoutes(user.uid),
           loadExtractorUpgrades(user.uid),
+          loadStockpile(user.uid),
         ]);
         // localStorage nav is more recent than Firebase's debounced write — prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
@@ -68,9 +71,10 @@ export function initAuth(): () => void {
         applyUserSettings(settings);
         useExtractorStore.getState().restoreExtractors(extractors);
         useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped, extractorUpgrades.pendingUpgrades ?? []);
-        useSettlementStore.getState().restoreSettlements(settlements.settlements);
-        useSettlementStore.getState().restoreColonyStates(settlements.colonyStates);
+        useFabricatorStore.getState().restoreFabricators(fabricators.fabricators);
+        useFabricatorStore.getState().restoreFabricatorStates(fabricators.fabricatorStates);
         useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
+        useStockpileStore.getState().restoreStockpile(stockpile.materials, stockpile.rares);
         useCodexStore.getState().setAll(discoveries);
         useQuestStore.getState().restoreQuests(quests);
 

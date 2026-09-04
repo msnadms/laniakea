@@ -1,0 +1,112 @@
+{
+  "materials": [
+    {
+      "id": "graphene_lattice",
+      "name": "Graphene Lattice",
+      "tier": 1,
+      "craftHours": 4,
+      "desc": "Carbon reduced out of harvested biomass and rolled into single-atom sheeting.",
+      "cost": { "alloys": 400, "nutrients": 250 },
+      "materials": {}
+    },
+    {
+      "id": "boron_ceramic",
+      "name": "Boron Nitride Ceramic",
+      "tier": 1,
+      "craftHours": 4,
+      "desc": "Hexagonal boron nitride. It insulates against current and carries heat away from a drill face.",
+      "cost": { "alloys": 500, "helium": 150 },
+      "materials": {}
+    },
+    {
+      "id": "deuterium_slush",
+      "name": "Deuterium Slush",
+      "tier": 1,
+      "craftHours": 4,
+      "desc": "Heavy hydrogen distilled from the metallic phase and frozen to a slurry that still pumps.",
+      "cost": { "metallicHydrogen": 300, "helium": 200 },
+      "materials": {}
+    },
+    {
+      "id": "silica_aerogel",
+      "name": "Silica Aerogel",
+      "tier": 1,
+      "craftHours": 4,
+      "desc": "Almost entirely vacuum by volume, and still rigid enough to machine.",
+      "cost": { "alloys": 300, "nutrients": 150 },
+      "materials": {}
+    },
+    {
+      "id": "hea_billet",
+      "name": "High-Entropy Alloy Billet",
+      "tier": 2,
+      "craftHours": 8,
+      "desc": "Five principal elements in solid solution, with no host lattice left to fatigue.",
+      "cost": { "alloys": 900, "metallicHydrogen": 200 },
+      "materials": { "graphene_lattice": 1 }
+    },
+    {
+      "id": "ybco_tape",
+      "name": "YBCO Tape",
+      "tier": 2,
+      "craftHours": 8,
+      "desc": "Yttrium barium copper oxide, superconducting well above the boiling point of its own coolant.",
+      "cost": { "helium": 400 },
+      "materials": { "hea_billet": 1, "boron_ceramic": 1 }
+    },
+    {
+      "id": "metamaterial_film",
+      "name": "Metamaterial Film",
+      "tier": 2,
+      "craftHours": 8,
+      "desc": "A lattice finer than the light it bends, so light leaves it going the wrong way.",
+      "cost": { "exotic": 200 },
+      "materials": { "graphene_lattice": 2 }
+    },
+    {
+      "id": "bec_cell",
+      "name": "Bose-Einstein Condensate Cell",
+      "tier": 2,
+      "craftHours": 8,
+      "desc": "A few million atoms held microkelvins above absolute zero, sharing a single wavefunction.",
+      "cost": { "helium": 600 },
+      "materials": { "ybco_tape": 1, "silica_aerogel": 2 }
+    },
+    {
+      "id": "casimir_plate",
+      "name": "Casimir Plate Stack",
+      "tier": 3,
+      "craftHours": 12,
+      "desc": "Plates spaced nanometres apart. The vacuum between them presses them together.",
+      "cost": { "exotic": 400 },
+      "materials": { "metamaterial_film": 2 }
+    },
+    {
+      "id": "positron_trap",
+      "name": "Penning Positron Trap",
+      "tier": 3,
+      "craftHours": 12,
+      "desc": "Crossed magnetic and electrostatic fields hold antimatter away from the walls, and mostly succeed.",
+      "cost": { "exotic": 500 },
+      "materials": { "ybco_tape": 2, "metamaterial_film": 1 }
+    },
+    {
+      "id": "degenerate_core",
+      "name": "Degenerate Matter Core",
+      "tier": 3,
+      "craftHours": 12,
+      "desc": "A splinter of neutron star, held at pressure by nothing but the refusal of its own electrons.",
+      "cost": { "neutronStarMatter": 400 },
+      "materials": { "boron_ceramic": 3, "hea_billet": 1 }
+    },
+    {
+      "id": "muon_cell",
+      "name": "Muon-Catalysed Fusion Cell",
+      "tier": 3,
+      "craftHours": 12,
+      "desc": "Muons draw deuterium nuclei close enough to fuse at room temperature, and last two microseconds doing it.",
+      "cost": {},
+      "materials": { "deuterium_slush": 2, "positron_trap": 1 }
+    }
+  ]
+}

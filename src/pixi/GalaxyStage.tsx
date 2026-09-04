@@ -7,21 +7,16 @@ import { galaxyTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import {
   GALAXY_RADIUS,
   GALAXY_RADIUS_LY,
-  NEBULA_STEPS,
   NEBULA_SKIP_CHANCE,
-  NEBULA_PARTICLES_PER_STEP,
-  NEBULA_SPREAD,
-  CORE_PARTICLE_COUNT,
   CORE_ELLIPSE_X,
   CORE_ELLIPSE_Y,
   CAMERA_INITIAL_SCALE,
-  NEBULA_RADIUS_MULTIPLIER,
-  NEBULA_CLOUD_OFFSET,
   NEBULA_DISPLACEMENT_SCALE,
   CORE_COLORS,
 } from '../game/constants';
 import { createDisplacementSetup } from './textures';
 import { createRng } from '../game/galaxyGen';
+import { nebulaClouds, coreGlow, rotate } from '../game/galaxyShapes';
 import { StarNode } from './StarNode';
 import { useCamera } from './useCamera';
 import { animateZoomTo } from './zoomAnim';
@@ -142,48 +137,30 @@ export function GalaxyWorld() {
 
     const nebulaBatches = new Map<number, Particle[]>();
 
-    for (let arm = 0; arm < config.numArms; arm++) {
-      const baseAngle = (arm / config.numArms) * Math.PI * 2 + config.baseAngleOffset;
+    const layoutRng = createRng((galaxySeed ^ 0x51ed270b) >>> 0);
+    for (const cloud of nebulaClouds(layoutRng, config)) {
+      if (rng() < NEBULA_SKIP_CHANCE) continue;
 
-      for (let step = 0; step < NEBULA_STEPS; step++) {
-        if (rng() < NEBULA_SKIP_CHANCE) continue;
+      const stepFraction = cloud.t;
+      const taper = Math.pow(1 - Math.max(0, (stepFraction - 0.90) / 0.10), 1.5);
 
-        const stepFraction = (step + 1) / (NEBULA_STEPS + 1);
-        const radius = GALAXY_RADIUS * stepFraction;
-        const angle = baseAngle + stepFraction * Math.PI * config.spiralTwist;
-        const cloudX = Math.cos(angle) * radius;
-        const cloudY = Math.sin(angle) * radius * config.galaxyEllipse;
+      for (let p = 0; p < cloud.count; p++) {
+        const offsetX = ((rng() + rng()) / 2 - 0.5) * 2 * cloud.spread;
+        const offsetY = ((rng() + rng()) / 2 - 0.5) * 2 * cloud.spread * config.galaxyEllipse;
+        const particleRadius = cloud.spread * (0.15 + rng() * 0.45) * cloud.blobScale;
+        const useNebula = rng() < cloud.nebulaChance;
+        const colorList = useNebula
+          ? (rng() > Math.pow(stepFraction, 2) + 0.15 ? config.innerNebulaColors : config.nebulaColors)
+          : CORE_COLORS;
+        const nebulaColor = colorList[Math.floor(rng() * colorList.length)];
+        const alpha = (0.014 + rng() * 0.024) * Math.max(1 - stepFraction, 0.5) * taper;
 
-        const taperT = Math.max(0, (stepFraction - 0.90) / 0.10);
-        const taper = Math.pow(1 - taperT, 1.5);
-
-        let blobScale = NEBULA_RADIUS_MULTIPLIER;
-        let cloudsPerStep = Math.max(1, Math.round(NEBULA_PARTICLES_PER_STEP * taper));
-        if (Math.abs(cloudX) < NEBULA_CLOUD_OFFSET && Math.abs(cloudY) < NEBULA_CLOUD_OFFSET * config.galaxyEllipse) {
-          blobScale = 1.5;
-          cloudsPerStep = 20;
+        let batch = nebulaBatches.get(nebulaColor);
+        if (!batch) {
+          batch = [];
+          nebulaBatches.set(nebulaColor, batch);
         }
-
-        const spread = GALAXY_RADIUS * NEBULA_SPREAD * (0.35 + stepFraction) * (0.5 + 0.5 * taper);
-
-        for (let p = 0; p < cloudsPerStep; p++) {
-          const offsetX = ((rng() + rng()) / 2 - 0.5) * 2 * spread;
-          const offsetY = ((rng() + rng()) / 2 - 0.5) * 2 * spread * config.galaxyEllipse;
-          const particleRadius = spread * (0.15 + rng() * 0.45) * blobScale;
-          const useNebula = rng() < stepFraction + 0.4;
-          const colorList = useNebula
-            ? (rng() > Math.pow(stepFraction, 2) + 0.15 ? config.innerNebulaColors : config.nebulaColors)
-            : CORE_COLORS;
-          const nebulaColor = colorList[Math.floor(rng() * colorList.length)];
-          const alpha = (0.014 + rng() * 0.024) * Math.max(1 - stepFraction, 0.5) * taper;
-
-          let batch = nebulaBatches.get(nebulaColor);
-          if (!batch) { 
-            batch = []; 
-            nebulaBatches.set(nebulaColor, batch); 
-          }
-          batch.push({ x: cloudX + offsetX, y: cloudY + offsetY, r: particleRadius, a: alpha });
-        }
+        batch.push({ x: cloud.x + offsetX, y: cloud.y + offsetY, r: particleRadius, a: alpha });
       }
     }
 
@@ -191,12 +168,20 @@ export function GalaxyWorld() {
 
     const coreGfx = new Graphics();
     const coreBatches = new Map<number, Particle[]>();
-    for (let p = 0; p < CORE_PARTICLE_COUNT; p++) {
-      const offsetX = ((rng() + rng()) / 2 - 0.5) * 2 * CORE_ELLIPSE_X;
-      const offsetY = ((rng() + rng()) / 2 - 0.5) * 2 * CORE_ELLIPSE_Y;
+    const glow = coreGlow(config);
+    for (let p = 0; p < glow.count; p++) {
+      const unitX = ((rng() + rng()) / 2 - 0.5) * 2;
+      const unitY = ((rng() + rng()) / 2 - 0.5) * 2;
+      const [offsetX, offsetY] = rotate(
+        unitX * CORE_ELLIPSE_X * glow.scaleX,
+        unitY * CORE_ELLIPSE_Y * glow.scaleY,
+        config.orientation,
+      );
       const particleRadius = 20 + rng() * 60;
       const coreColor = CORE_COLORS[Math.floor(rng() * CORE_COLORS.length)];
-      const alpha = 0.012 + rng() * 0.018;
+      const reach = Math.hypot(unitX, unitY);
+      const fade = Math.pow(Math.min(1, Math.max(0, (1 - reach) / (1 - glow.plateau))), glow.falloff);
+      const alpha = (0.012 + rng() * 0.018) * fade * glow.alphaScale;
       let batch = coreBatches.get(coreColor);
       if (!batch) { batch = []; coreBatches.set(coreColor, batch); }
       batch.push({ x: offsetX, y: offsetY, r: particleRadius, a: alpha });

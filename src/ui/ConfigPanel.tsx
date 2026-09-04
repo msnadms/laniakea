@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
+import { useStockpileStore } from '../store/stockpileStore';
+import { saveStockpile } from '../firebase/stockpile';
+import { RARE_RESOURCES } from '../data/rareResources';
+import { CRAFT_MATERIALS } from '../data/materials';
 import './ConfigPanel.css';
 
 export function ConfigPanel({ hidden }: { hidden?: boolean }) {
@@ -20,8 +25,19 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const infiniteExplore = useUIStore((s) => s.infiniteExplore);
   const toggleInfiniteExplore = useUIStore((s) => s.toggleInfiniteExplore);
   const view = useUIStore((s) => s.view);
+  const user = useAuthStore((s) => s.user);
 
   if (hidden) return null;
+
+  function giveAdvancedResources() {
+    const { addRare, addMaterial } = useStockpileStore.getState();
+    for (const rare of RARE_RESOURCES) addRare(rare.id, 1);
+    for (const material of CRAFT_MATERIALS.filter((m) => m.tier === 2)) addMaterial(material.id, 1);
+    if (user) {
+      const { materials, rares } = useStockpileStore.getState();
+      saveStockpile(user.uid, materials, rares);
+    }
+  }
 
   return (
     <div className="config-panel">
@@ -127,6 +143,11 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           <div className="config-row config-row--seed">
             <span className="config-row-label">Reset Upgrades</span>
             <button className="config-refill-btn" onClick={resetUpgrades} title="Set all upgrade levels to 0">↺</button>
+          </div>
+
+          <div className="config-row config-row--seed">
+            <span className="config-row-label">Advanced Resources</span>
+            <button className="config-refill-btn" onClick={giveAdvancedResources} title="Add one of every engineered material and rare assembly to the stockpile">+</button>
           </div>
 
         </div>

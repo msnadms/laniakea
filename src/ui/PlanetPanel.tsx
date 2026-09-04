@@ -5,10 +5,14 @@ import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import { EXTRACTOR_HOLD_CAPS, computeStorageCap, computeLogisticsCap, UPGRADE_POOL } from '../store/uiStore';
-import { makeExtractorKey, makeSettlementKey, RESOURCE_LABELS } from '../game/types';
-import type { Extractor, Resource, Settlement } from '../game/types';
-import { useSettlementStore } from '../store/settlementStore';
-import { saveSettlement, deleteSettlement } from '../firebase/settlements';
+import { makeExtractorKey, makeFabricatorKey, RESOURCE_LABELS } from '../game/types';
+import { FABRICATOR_COST, FABRICATOR_UPGRADE_COST, FABRICATOR_UPGRADE_MATERIALS, FABRICATOR_TIER_LABELS } from '../game/types';
+import type { Extractor, Resource, Fabricator } from '../game/types';
+import { useFabricatorStore } from '../store/fabricatorStore';
+import { useStockpileStore } from '../store/stockpileStore';
+import { materialName } from '../data/materials';
+import { saveFabricator, deleteFabricator } from '../firebase/fabricators';
+import { saveStockpile } from '../firebase/stockpile';
 import { RESOURCE_MAX_RATE } from '../game/planetGen';
 import { saveExtractor, updateExtractorCollected, deleteExtractor } from '../firebase/extractors';
 import './PlanetPanel.css';
@@ -30,6 +34,17 @@ function getTier(type: Resource['type'], count: number): string {
 function TierBadge({ type, count }: { type: Resource['type']; count: number }) {
   const tier = getTier(type, count);
   return <span className={`tier-badge tier-${tier}`}>{tier}</span>;
+}
+
+const COST_UNITS: Record<string, string> = {
+  alloys: 'alloys',
+  helium3: 'He-3',
+  nutrients: 'nutrients',
+  metallicHydrogen: 'MH',
+};
+
+function costLabel(cost: Record<string, number>): string {
+  return Object.entries(cost).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`).join(' · ');
 }
 
 const ZONE_LABELS: Record<string, string> = {
@@ -79,7 +94,7 @@ export function PlanetPanel() {
   const galaxy = useGameStore((s) => s.galaxy);
   const supercluster = useGameStore((s) => s.supercluster);
   const extractor = useExtractorStore((s) => selectedKey ? s.extractors[selectedKey] : undefined);
-  const settlement = useSettlementStore((s) => selectedKey ? s.settlements[selectedKey] : undefined);
+  const fabricator = useFabricatorStore((s) => selectedKey ? s.fabricators[selectedKey] : undefined);
   const spendNutrients = useUIStore((s) => s.spendNutrients);
   const spendMetallicHydrogen = useUIStore((s) => s.spendMetallicHydrogen);
   const logisticsA = useUIStore((s) => s.logisticsA);
@@ -91,6 +106,7 @@ export function PlanetPanel() {
   const removeExtractor = useExtractorStore((s) => s.removeExtractor);
   const storageA = useUIStore((s) => s.storageA);
   const storageB = useUIStore((s) => s.storageB);
+  const stockpileMaterials = useStockpileStore((s) => s.materials);
   const user = useAuthStore((s) => s.user);
   const [, setTick] = useState(0);
 
@@ -123,10 +139,19 @@ export function PlanetPanel() {
 
   const STATION_COST = 200;
   const STATION_REFUND = 50;
-  const SETTLE_COST = { alloys: 2000, helium3: 500, nutrients: 2000, metallicHydrogen: 500 } as const;
-  const canAffordSettle = planet?.type === 'habitable' && !settlement
-    && alloys >= SETTLE_COST.alloys && helium3Reserves >= SETTLE_COST.helium3
-    && nutrients >= SETTLE_COST.nutrients && metallicHydrogen >= SETTLE_COST.metallicHydrogen;
+
+  function canAffordCost(cost: typeof FABRICATOR_COST | typeof FABRICATOR_UPGRADE_COST): boolean {
+    return alloys >= cost.alloys && helium3Reserves >= cost.helium3
+      && nutrients >= cost.nutrients && metallicHydrogen >= cost.metallicHydrogen;
+  }
+
+  function canAffordUpgrade(): boolean {
+    return canAffordCost(FABRICATOR_UPGRADE_COST) && Object.entries(FABRICATOR_UPGRADE_MATERIALS).every(
+      ([id, amt]) => (stockpileMaterials[id] ?? 0) >= amt,
+    );
+  }
+
+  const canBuildHere = planet?.type === 'habitable' && !fabricator;
 
   const currentCargo: Record<Resource['type'], number> = {
     exotic: exoticMatter,
@@ -189,34 +214,53 @@ export function PlanetPanel() {
   function handleSettle() {
     if (useUIStore.getState().checkDetectionLethal()) return;
     if (!system || !planet || planet.type !== 'habitable') return;
-    if (!canAffordSettle) return;
-    spendAlloys(SETTLE_COST.alloys);
-    consumeHelium3(SETTLE_COST.helium3);
-    spendNutrients(SETTLE_COST.nutrients);
-    spendMetallicHydrogen(SETTLE_COST.metallicHydrogen);
-    const key = makeSettlementKey(galaxySeed, system.id, planet.name);
+    if (fabricator || !canAffordCost(FABRICATOR_COST)) return;
+    const cost = FABRICATOR_COST;
+    spendAlloys(cost.alloys);
+    consumeHelium3(cost.helium3);
+    spendNutrients(cost.nutrients);
+    spendMetallicHydrogen(cost.metallicHydrogen);
+    const key = makeFabricatorKey(galaxySeed, system.id, planet.name);
     const galaxyDot = supercluster.dots.find((d) => d.seed === galaxy.seed);
-    const newSettlement: Settlement = {
+    const newFabricator: Fabricator = {
       key,
+      tier: 1,
       galaxySeed,
       systemId: system.id,
       systemName: system.name,
       planetName: planet.name,
-      settledAt: Date.now(),
+      builtAt: Date.now(),
       systemX: system.x,
       systemY: system.y,
       galaxyX: galaxyDot?.x ?? 0,
       galaxyY: galaxyDot?.y ?? 0,
       superclusSeed: supercluster.seed,
     };
-    useSettlementStore.getState().placeSettlement(newSettlement);
-    if (user) saveSettlement(user.uid, newSettlement);
+    useFabricatorStore.getState().placeFabricator(newFabricator);
+    if (user) saveFabricator(user.uid, newFabricator);
+  }
+
+  function handleUpgradeFabricator() {
+    if (useUIStore.getState().checkDetectionLethal()) return;
+    if (!selectedKey || !fabricator || (fabricator.tier ?? 1) >= 2 || !canAffordUpgrade()) return;
+    if (!useStockpileStore.getState().consumeMaterials(FABRICATOR_UPGRADE_MATERIALS)) return;
+    spendAlloys(FABRICATOR_UPGRADE_COST.alloys);
+    consumeHelium3(FABRICATOR_UPGRADE_COST.helium3);
+    spendNutrients(FABRICATOR_UPGRADE_COST.nutrients);
+    spendMetallicHydrogen(FABRICATOR_UPGRADE_COST.metallicHydrogen);
+    if (!useFabricatorStore.getState().upgradeFabricator(selectedKey)) return;
+    if (user) {
+      const upgraded = useFabricatorStore.getState().fabricators[selectedKey];
+      if (upgraded) saveFabricator(user.uid, upgraded);
+      const { materials, rares } = useStockpileStore.getState();
+      saveStockpile(user.uid, materials, rares);
+    }
   }
 
   function handleAbandon() {
     if (!selectedKey) return;
-    useSettlementStore.getState().removeSettlement(selectedKey);
-    if (user) deleteSettlement(user.uid, selectedKey);
+    useFabricatorStore.getState().removeFabricator(selectedKey);
+    if (user) deleteFabricator(user.uid, selectedKey);
   }
 
   return createPortal(
@@ -262,11 +306,13 @@ export function PlanetPanel() {
 
         <div className="planet-panel-divider" />
 
-        {settlement ? (
-          <div className="planet-panel-settlement">
-            <div className="planet-panel-settlement-label">COLONY ACTIVE</div>
-            <span className="planet-panel-settlement-since">
-              Established {new Date(settlement.settledAt).toLocaleDateString()}
+        {fabricator ? (
+          <div className="planet-panel-fabricator">
+            <div className="planet-panel-fabricator-label">
+              {FABRICATOR_TIER_LABELS[fabricator.tier ?? 1].toUpperCase()} ACTIVE
+            </div>
+            <span className="planet-panel-fabricator-since">
+              Established {new Date(fabricator.builtAt).toLocaleDateString()}
             </span>
             {extractor && (
               <div className="planet-panel-extractor">
@@ -294,8 +340,26 @@ export function PlanetPanel() {
                 </button>
               </div>
             )}
+            {(fabricator.tier ?? 1) < 2 && (
+              <div className="planet-panel-fabricator-option">
+                {canAffordUpgrade() ? (
+                  <button className="planet-panel-btn planet-panel-btn--settle" onClick={handleUpgradeFabricator}>
+                    Upgrade to {FABRICATOR_TIER_LABELS[2]} ({costLabel(FABRICATOR_UPGRADE_COST)})
+                  </button>
+                ) : (
+                  <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                    {FABRICATOR_TIER_LABELS[2]} requires: {costLabel(FABRICATOR_UPGRADE_COST)}
+                  </button>
+                )}
+                <span className="planet-panel-extractor-rate">
+                  Plus {Object.entries(FABRICATOR_UPGRADE_MATERIALS)
+                    .map(([id, amt]) => `${amt}x ${materialName(id)} (${stockpileMaterials[id] ?? 0} held)`)
+                    .join(' · ')} — assembles rare components for future bases
+                </span>
+              </div>
+            )}
             <button className="planet-panel-btn planet-panel-btn--abandon" onClick={handleAbandon}>
-              Abandon Colony
+              Abandon {FABRICATOR_TIER_LABELS[fabricator.tier ?? 1]}
             </button>
           </div>
         ) : (
@@ -368,18 +432,23 @@ export function PlanetPanel() {
                 </button>
               </div>
             )}
-            {planet.type === 'habitable' && (
+            {canBuildHere && (
               <div className="planet-panel-settle-section">
                 <div className="planet-panel-divider" />
-                {canAffordSettle ? (
-                  <button className="planet-panel-btn planet-panel-btn--settle" onClick={handleSettle}>
-                    Establish Colony (2000 alloys · 500 He-3 · 2000 nutrients · 500 MH)
-                  </button>
-                ) : (
-                  <button className="planet-panel-btn planet-panel-btn--dim" disabled>
-                    Colony requires: 2000 alloys · 500 He-3 · 2000 nutrients · 500 MH
-                  </button>
-                )}
+                <div className="planet-panel-fabricator-option">
+                  {canAffordCost(FABRICATOR_COST) ? (
+                    <button className="planet-panel-btn planet-panel-btn--settle" onClick={handleSettle}>
+                      Establish {FABRICATOR_TIER_LABELS[1]} ({costLabel(FABRICATOR_COST)})
+                    </button>
+                  ) : (
+                    <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                      {FABRICATOR_TIER_LABELS[1]} requires: {costLabel(FABRICATOR_COST)}
+                    </button>
+                  )}
+                  <span className="planet-panel-extractor-rate">
+                    Can be upgraded to an {FABRICATOR_TIER_LABELS[2]} once built
+                  </span>
+                </div>
               </div>
             )}
           </>

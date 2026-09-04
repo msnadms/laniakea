@@ -3,32 +3,58 @@
     {
       "id": "resonance_drill",
       "name": "Resonance Drill Head",
+      "craftHours": 24,
       "cost": { "alloys": 600 },
+      "materials": { "boron_ceramic": 1 },
       "effect": { "upgType": "rate", "multiplier": 1.25 }
     },
     {
       "id": "thermal_coil",
       "name": "Thermal Extraction Coil",
-      "cost": { "alloys": 1200, "helium": 500 },
+      "craftHours": 24,
+      "cost": { "alloys": 900, "helium": 400 },
+      "materials": { "silica_aerogel": 2, "boron_ceramic": 1 },
       "effect": { "upgType": "rate", "multiplier": 1.5 }
     },
     {
       "id": "compression_manifold",
       "name": "Compression Manifold",
-      "cost": { "alloys": 1500, "exotic": 1500 },
+      "craftHours": 24,
+      "cost": { "alloys": 1200 },
+      "materials": { "hea_billet": 1, "casimir_plate": 1 },
       "effect": { "upgType": "storage", "multiplier": 1.25 }
     },
     {
       "id": "signal_dampener",
       "name": "Signal Dampener",
-      "cost": { "exotic": 2500 },
+      "craftHours": 24,
+      "cost": { "exotic": 1500 },
+      "materials": { "metamaterial_film": 2, "bec_cell": 1 },
       "effect": { "upgType": "detection", "multiplier": 1 }
+    },
+    {
+      "id": "positron_lance",
+      "name": "Positron Ablation Lance",
+      "craftHours": 24,
+      "cost": { "exotic": 800 },
+      "materials": { "positron_trap": 1, "hea_billet": 2 },
+      "effect": { "upgType": "rate", "multiplier": 1.75 }
     },
     {
       "id": "overcharge_module",
       "name": "Overcharge Module",
-      "cost": { "alloys": 2000, "helium": 2000 },
+      "craftHours": 24,
+      "cost": { "alloys": 1500, "helium": 1000 },
+      "materials": { "muon_cell": 1, "ybco_tape": 2 },
       "effect": { "upgType": "rate", "multiplier": 2 }
+    },
+    {
+      "id": "degenerate_ballast",
+      "name": "Degenerate Ballast Cell",
+      "craftHours": 24,
+      "cost": { "neutronStarMatter": 200 },
+      "materials": { "degenerate_core": 1, "casimir_plate": 1 },
+      "effect": { "upgType": "storage", "multiplier": 1.6 }
     }
   ]
 }

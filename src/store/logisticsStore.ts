@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import type { Extractor, LogisticsRoute, ExtractorKey, Settlement, Resource, ColonyProductionItem } from '../game/types';
+import type { Extractor, LogisticsRoute, ExtractorKey, Fabricator, Resource, FabricatorProductionItem, FabricatorState } from '../game/types';
 import { COST_KEY_TO_RESOURCE } from '../game/types';
 import { getCraftable } from '../data/upgrades';
+import type { FabricatorDelivery } from './extractorStore';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers } from './extractorStore';
-import { useSettlementStore } from './settlementStore';
+import { useFabricatorStore } from './fabricatorStore';
+import { useStockpileStore } from './stockpileStore';
 import { useUIStore, computeStorageCap, computeDriveMultiplier } from './uiStore';
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 
@@ -20,9 +22,9 @@ interface NodePos {
 function resolveNodePos(
   key: string,
   extractors: Record<string, Extractor>,
-  settlements: Record<string, Settlement>,
+  fabricators: Record<string, Fabricator>,
 ): NodePos | null {
-  return extractors[key] ?? settlements[key] ?? null;
+  return extractors[key] ?? fabricators[key] ?? null;
 }
 
 function hopCost(a: NodePos, b: NodePos): { exotic: number; helium: number } {
@@ -65,13 +67,30 @@ export function willRaiseDetection(
   );
 }
 
+export function canFeedFabricatorMaterials(
+  fabricatorKeys: string[],
+  fabricatorStates: Record<string, FabricatorState>,
+  held: Record<string, number>,
+): boolean {
+  return fabricatorKeys.some((k) =>
+    (fabricatorStates[k]?.slots ?? []).some((slot) => {
+      if (!slot.targetUpgradeId || slot.inProduction) return false;
+      const recipe = getCraftable(slot.targetUpgradeId);
+      if (!recipe) return false;
+      return Object.entries(recipe.materials).some(
+        ([matId, amt]) => (slot.pendingMaterials?.[matId] ?? 0) < amt && (held[matId] ?? 0) > 0,
+      );
+    }),
+  );
+}
+
 export function computeRouteCost(
   nodeKeys: string[],
   extractors: Record<string, Extractor>,
-  settlements: Record<string, Settlement> = {},
+  fabricators: Record<string, Fabricator> = {},
 ): { exotic: number; helium: number } {
   const nodes = nodeKeys
-    .map((k) => resolveNodePos(k, extractors, settlements))
+    .map((k) => resolveNodePos(k, extractors, fabricators))
     .filter(Boolean) as NodePos[];
   if (nodes.length === 0) return { exotic: 0, helium: 0 };
   const hops: NodePos[] = [];
@@ -91,12 +110,17 @@ export function computeRouteCost(
   return { exotic: totalExotic, helium: totalHelium };
 }
 
+export interface DispatchResult {
+  collected: { key: ExtractorKey; amount: number }[];
+  deliveries: FabricatorDelivery[];
+}
+
 interface LogisticsState {
   routes: LogisticsRoute[];
   addRoute: (route: LogisticsRoute) => void;
   updateRoute: (id: string, patch: Partial<Pick<LogisticsRoute, 'name' | 'nodeKeys'>>) => void;
   removeRoute: (id: string) => void;
-  dispatchRoute: (id: string) => { key: ExtractorKey; amount: number }[] | false;
+  dispatchRoute: (id: string) => DispatchResult | false;
   restoreRoutes: (routes: LogisticsRoute[]) => void;
 }
 
@@ -118,14 +142,14 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     if (!route || route.nodeKeys.length < 2) return false;
 
     const extractors = useExtractorStore.getState().extractors;
-    const { settlements, colonyStates } = useSettlementStore.getState();
+    const { fabricators, fabricatorStates } = useFabricatorStore.getState();
     const extractorKeys = route.nodeKeys.filter((k) => !!extractors[k]);
-    const colonyKeys = route.nodeKeys.filter((k) => !!settlements[k]);
+    const fabricatorKeys = route.nodeKeys.filter((k) => !!fabricators[k]);
     const stations = extractorKeys.map((k) => extractors[k]) as Extractor[];
 
-    const colonyCapacity: Partial<Record<Resource['type'], number>> = {};
-    for (const colonyKey of colonyKeys) {
-      const cs = colonyStates[colonyKey];
+    const fabricatorCapacity: Partial<Record<Resource['type'], number>> = {};
+    for (const fabricatorKey of fabricatorKeys) {
+      const cs = fabricatorStates[fabricatorKey];
       if (!cs) continue;
       for (const slot of cs.slots) {
         if (!slot.targetUpgradeId) continue;
@@ -139,20 +163,26 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
           if (!resourceType) continue;
           const have = isCompleted ? 0 : (slot.pendingResources[resourceType] ?? 0);
           const need = Math.max(0, costAmt - have);
-          colonyCapacity[resourceType] = (colonyCapacity[resourceType] ?? 0) + need;
+          fabricatorCapacity[resourceType] = (fabricatorCapacity[resourceType] ?? 0) + need;
         }
       }
     }
 
-    const hasReadyColonyItems = colonyKeys.some((k) =>
-      (colonyStates[k]?.slots ?? []).some(
+    const hasReadyFabricatorItems = fabricatorKeys.some((k) =>
+      (fabricatorStates[k]?.slots ?? []).some(
         (slot) => slot.inProduction && slot.inProduction.availableAt <= Date.now(),
       ),
     );
 
-    if (stations.length < 1 && !hasReadyColonyItems) return false;
+    const canFeedMaterials = canFeedFabricatorMaterials(
+      fabricatorKeys,
+      fabricatorStates,
+      useStockpileStore.getState().materials,
+    );
 
-    const cost = computeRouteCost(route.nodeKeys, extractors, settlements);
+    if (stations.length < 1 && !hasReadyFabricatorItems && !canFeedMaterials) return false;
+
+    const cost = computeRouteCost(route.nodeKeys, extractors, fabricators);
     const ui = useUIStore.getState();
 
     if (ui.exoticMatter < cost.exotic || ui.helium3Reserves < cost.helium) {
@@ -173,11 +203,11 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     const stationsCanDeliver = stations.some((s) => {
       if (peekAccumulated(s) === 0) return false;
       const cargoSpace = preStorageCap - (preCargoMap[s.resourceType] ?? 0);
-      const colonySpace = colonyCapacity[s.resourceType] ?? 0;
-      return cargoSpace + colonySpace > 0;
+      const fabricatorSpace = fabricatorCapacity[s.resourceType] ?? 0;
+      return cargoSpace + fabricatorSpace > 0;
     });
 
-    if (!hasReadyColonyItems && !stationsCanDeliver) {
+    if (!hasReadyFabricatorItems && !canFeedMaterials && !stationsCanDeliver) {
       ui.triggerHudFlash();
       return false;
     }
@@ -201,22 +231,22 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     for (const station of stations) {
       const type = station.resourceType;
       const cargoSpace = Math.max(0, storageCap - (cargoMap[type] ?? 0));
-      const colonySpace = colonyCapacity[type] ?? 0;
-      const maxCollect = cargoSpace + colonySpace;
+      const fabricatorSpace = fabricatorCapacity[type] ?? 0;
+      const maxCollect = cargoSpace + fabricatorSpace;
       if (maxCollect <= 0) continue;
       const amount = useExtractorStore.getState().collectExtractor(station.key, maxCollect);
       if (amount > 0) {
         pool[type] = (pool[type] ?? 0) + amount;
         collected.push({ key: station.key, amount });
-        const toColony = Math.min(amount, colonySpace);
-        colonyCapacity[type] = colonySpace - toColony;
-        cargoMap[type] = (cargoMap[type] ?? 0) + (amount - toColony);
+        const toFabricator = Math.min(amount, fabricatorSpace);
+        fabricatorCapacity[type] = fabricatorSpace - toFabricator;
+        cargoMap[type] = (cargoMap[type] ?? 0) + (amount - toFabricator);
       }
     }
 
-    const readyItems: ColonyProductionItem[] = [];
-    for (const colonyKey of colonyKeys) {
-      const result = useSettlementStore.getState().feedColony(colonyKey, pool);
+    const readyItems: FabricatorProductionItem[] = [];
+    for (const fabricatorKey of fabricatorKeys) {
+      const result = useFabricatorStore.getState().feedFabricator(fabricatorKey, pool);
       for (const [type, amt] of Object.entries(result.consumed)) {
         pool[type as Resource['type']] = Math.max(0, (pool[type as Resource['type']] ?? 0) - (amt as number));
       }
@@ -228,13 +258,12 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       useUIStore.getState().addCargo(type as Resource['type'], amount);
     }
 
-    if (readyItems.length > 0) {
-      useExtractorStore.getState().receiveColonyItems(readyItems);
-    }
+    const deliveries =
+      readyItems.length > 0 ? useExtractorStore.getState().receiveFabricatorItems(readyItems) : [];
 
     if (willRaiseDetection(extractorKeys, extractors)) ui.raiseDetection(1);
 
-    return collected;
+    return { collected, deliveries };
   },
 
   restoreRoutes: (routes) => set({ routes }),

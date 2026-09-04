@@ -36,9 +36,9 @@ export async function loadLogisticsRoutes(uid: string): Promise<LogisticsRoute[]
   const snap = await getDocs(collection(db, 'users', uid, 'logisticsRoutes'));
   return snap.docs.map((d) => {
     const data = d.data();
-    // Migrate old format: stationKeys + colonyKeys → nodeKeys
+    // Migrate old format: stationKeys + fabricatorKeys → nodeKeys
     const nodeKeys: string[] = (data.nodeKeys as string[] | undefined)
-      ?? [...((data.stationKeys as string[]) ?? []), ...((data.colonyKeys as string[]) ?? [])];
+      ?? [...((data.stationKeys as string[]) ?? []), ...((data.fabricatorKeys as string[]) ?? [])];
     return { id: d.id, name: (data.name as string) ?? 'Route', nodeKeys };
   });
 }

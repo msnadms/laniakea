@@ -1,5 +1,16 @@
 import type { GalaxyConfig } from "./galaxyConfig";
 
+export type GalaxyType = 'spiral' | 'barred' | 'elliptical' | 'irregular';
+
+export const GALAXY_TYPE_LABELS: Record<GalaxyType, string> = {
+  spiral: 'Spiral',
+  barred: 'Barred Spiral',
+  elliptical: 'Elliptical',
+  irregular: 'Irregular',
+};
+
+export type StarPopulation = 'bulge' | 'disk' | 'arm' | 'bar' | 'halo' | 'starburst';
+
 export type StarType = 'G' | 'K' | 'M' | 'F' | 'A' | 'L' | 'N';
 
 export const STAR_TYPE_LABELS: Record<StarType, string> = {
@@ -137,15 +148,18 @@ export function makeExtractorKey(galaxySeed: number, systemId: number, planetNam
   return `${galaxySeed}|${systemId}|${planetName}`;
 }
 
-export type SettlementKey = string;
+export type FabricatorKey = string;
 
-export interface Settlement {
-  key: SettlementKey;
+export type FabricatorTier = 1 | 2;
+
+export interface Fabricator {
+  key: FabricatorKey;
+  tier: FabricatorTier;
   galaxySeed: number;
   systemId: number;
   systemName: string;
   planetName: string;
-  settledAt: number;
+  builtAt: number;
   systemX: number;
   systemY: number;
   galaxyX: number;
@@ -153,43 +167,55 @@ export interface Settlement {
   superclusSeed: number;
 }
 
-export function makeSettlementKey(galaxySeed: number, systemId: number, planetName: string): SettlementKey {
+export function makeFabricatorKey(galaxySeed: number, systemId: number, planetName: string): FabricatorKey {
   return `${galaxySeed}|${systemId}|${planetName}`;
 }
 
-export type CraftCategory = 'extractor';
+export const FABRICATOR_TIER_LABELS: Record<FabricatorTier, string> = {
+  1: 'Fabricator',
+  2: 'Advanced Fabricator',
+};
 
-export interface ColonyProductionItem {
+export type CraftCategory = 'material' | 'extractor' | 'rare';
+
+export interface FabricatorProductionItem {
   upgradeId: string;
   availableAt: number;
   category?: CraftCategory;
 }
 
-export interface ColonyProductionSlot {
+export interface FabricatorProductionSlot {
   targetUpgradeId: string | null;
   pendingResources: Partial<Record<Resource['type'], number>>;
-  inProduction: ColonyProductionItem | null;
+  pendingMaterials: Record<string, number>;
+  inProduction: FabricatorProductionItem | null;
 }
 
-export interface ColonyState {
-  slots: ColonyProductionSlot[];
+export interface FabricatorState {
+  slots: FabricatorProductionSlot[];
 }
 
-export function makeEmptyColonySlot(): ColonyProductionSlot {
-  return { targetUpgradeId: null, pendingResources: {}, inProduction: null };
+export function makeEmptyFabricatorSlot(): FabricatorProductionSlot {
+  return { targetUpgradeId: null, pendingResources: {}, pendingMaterials: {}, inProduction: null };
 }
 
-export const MAX_COLONY_SLOTS = 3;
-export const COLONY_SLOT_COSTS: Array<{ alloys?: number; exotic?: number }> = [
+export const MAX_FABRICATOR_SLOTS = 3;
+export const FABRICATOR_COST = { alloys: 2000, helium3: 500, nutrients: 2000, metallicHydrogen: 500 } as const;
+export const FABRICATOR_UPGRADE_COST = { alloys: 1500, helium3: 1000, nutrients: 1500, metallicHydrogen: 1200 } as const;
+export const FABRICATOR_UPGRADE_MATERIALS: MaterialCost = { hea_billet: 2, ybco_tape: 1, metamaterial_film: 1 };
+export const FABRICATOR_SLOT_COSTS: Array<{ alloys?: number; exotic?: number }> = [
   { alloys: 2000 },
   { alloys: 3000, exotic: 1500 },
 ];
 
-// Maps EXTRACTOR_UPGRADES cost keys to Resource['type'] values
+// Maps recipe cost keys to Resource['type'] values
 export const COST_KEY_TO_RESOURCE: Record<string, Resource['type']> = {
   alloys: 'alloys',
   exotic: 'exotic',
   helium: 'helium-3',
+  nutrients: 'nutrients',
+  metallicHydrogen: 'metallicHydrogen',
+  neutronStarMatter: 'neutronStarMatter',
 };
 
 export const RESOURCE_LABELS: Record<Resource['type'], string> = {
@@ -208,12 +234,58 @@ export interface UpgradeEffect {
   multiplier: number;
 }
 
-export type ResourceCost = { alloys?: number; exotic?: number; helium?: number };
+export type ResourceCostKey =
+  | 'alloys'
+  | 'exotic'
+  | 'helium'
+  | 'nutrients'
+  | 'metallicHydrogen'
+  | 'neutronStarMatter';
+
+export type ResourceCost = Partial<Record<ResourceCostKey, number>>;
+
+export type MaterialCost = Record<string, number>;
 
 export interface ExtractorUpgrade {
   id: string;
   name: string;
+  craftHours: number;
   cost: ResourceCost;
+  materials: MaterialCost;
   effect: UpgradeEffect;
 }
+
+export interface CraftMaterial {
+  id: string;
+  name: string;
+  tier: number;
+  craftHours: number;
+  desc: string;
+  cost: ResourceCost;
+  materials: MaterialCost;
+}
+
+export interface RareResource {
+  id: string;
+  name: string;
+  role: string;
+  craftHours: number;
+  desc: string;
+  cost: ResourceCost;
+  materials: MaterialCost;
+}
+
+export const RARE_ROLE_LABELS: Record<string, string> = {
+  structure: 'Structural',
+  power: 'Power',
+  fuel: 'Fuel',
+  field: 'Field Systems',
+  life: 'Life Support',
+};
+
+export const MATERIAL_TIER_LABELS: Record<number, string> = {
+  1: 'Refined',
+  2: 'Engineered',
+  3: 'Exotic',
+};
 

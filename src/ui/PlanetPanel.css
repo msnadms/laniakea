@@ -255,21 +255,21 @@
 .tier-badge.tier-D { background: rgba(80, 110, 140, 0.10);  color: #668899; border: 1px solid rgba(80, 110, 140, 0.4); }
 .tier-badge.tier-F { background: rgba(40,  60,  80, 0.10);  color: #446677; border: 1px solid rgba(40, 60, 80, 0.35); }
 
-/* Settlement styles */
-.planet-panel-settlement {
+/* Fabricator styles */
+.planet-panel-fabricator {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.planet-panel-settlement-label {
+.planet-panel-fabricator-label {
   font-size: 9px;
   letter-spacing: 0.2em;
   color: #44aa66;
   text-transform: uppercase;
 }
 
-.planet-panel-settlement-since {
+.planet-panel-fabricator-since {
   font-size: 9px;
   color: #2a6a4a;
   letter-spacing: 0.06em;
@@ -299,4 +299,10 @@
 .planet-panel-btn--abandon:hover:not(:disabled) {
   background: rgba(180, 40, 40, 0.2);
   box-shadow: 0 0 10px rgba(200, 60, 60, 0.25);
+}
+
+.planet-panel-fabricator-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

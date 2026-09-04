@@ -1,104 +1,129 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Settlement, ColonyState, ColonyProductionItem } from '../game/types';
-import { COST_KEY_TO_RESOURCE, MAX_COLONY_SLOTS, makeEmptyColonySlot } from '../game/types';
+import type { Fabricator, FabricatorState, FabricatorProductionItem, MaterialCost, FabricatorTier, CraftCategory } from '../game/types';
+import { COST_KEY_TO_RESOURCE, MAX_FABRICATOR_SLOTS, makeEmptyFabricatorSlot } from '../game/types';
 import { getCraftable } from '../data/upgrades';
 import { useQuestStore } from './questStore';
+import { useStockpileStore } from './stockpileStore';
 import { useUIStore } from './uiStore';
+
+export function fabricatorCanCraft(tier: FabricatorTier | undefined, category: CraftCategory): boolean {
+  return category !== 'rare' || (tier ?? 1) >= 2;
+}
 
 interface FeedResult {
   consumed: Partial<Record<string, number>>;
-  readyItems: ColonyProductionItem[];
+  consumedMaterials: MaterialCost;
+  readyItems: FabricatorProductionItem[];
 }
 
-interface SettlementState {
-  settlements: Record<string, Settlement>;
-  colonyStates: Record<string, ColonyState>;
-  placeSettlement: (settlement: Settlement) => void;
-  removeSettlement: (key: string) => void;
-  restoreSettlements: (list: Settlement[]) => void;
+interface FabricatorStoreState {
+  fabricators: Record<string, Fabricator>;
+  fabricatorStates: Record<string, FabricatorState>;
+  placeFabricator: (fabricator: Fabricator) => void;
+  removeFabricator: (key: string) => void;
+  upgradeFabricator: (key: string) => boolean;
+  restoreFabricators: (list: Fabricator[]) => void;
   setSlotTarget: (key: string, slotIdx: number, upgradeId: string | null) => void;
-  unlockColonySlot: (key: string) => boolean;
-  feedColony: (key: string, pool: Partial<Record<string, number>>) => FeedResult;
-  restoreColonyStates: (states: Record<string, ColonyState>) => void;
+  unlockFabricatorSlot: (key: string) => boolean;
+  feedFabricator: (key: string, pool: Partial<Record<string, number>>) => FeedResult;
+  restoreFabricatorStates: (states: Record<string, FabricatorState>) => void;
 }
 
-export const useSettlementStore = create<SettlementState>()(
+export const useFabricatorStore = create<FabricatorStoreState>()(
   subscribeWithSelector((set, get) => ({
-    settlements: {},
-    colonyStates: {},
+    fabricators: {},
+    fabricatorStates: {},
 
-    placeSettlement: (settlement) => {
+    placeFabricator: (fabricator) => {
       if (useUIStore.getState().checkDetectionLethal()) return;
-      set((s) => ({ settlements: { ...s.settlements, [settlement.key]: settlement } }));
-      useQuestStore.getState().completeQuest('first_colony');
+      set((s) => ({ fabricators: { ...s.fabricators, [fabricator.key]: fabricator } }));
+      useQuestStore.getState().completeQuest('first_fabricator');
     },
 
-    removeSettlement: (key) =>
+    upgradeFabricator: (key) => {
+      const fabricator = get().fabricators[key];
+      if (!fabricator || (fabricator.tier ?? 1) >= 2) return false;
+      set((s) => ({ fabricators: { ...s.fabricators, [key]: { ...fabricator, tier: 2 } } }));
+      return true;
+    },
+
+    removeFabricator: (key) =>
       set((s) => {
-        const { [key]: _s, ...restS } = s.settlements;
-        const { [key]: _cs, ...restCs } = s.colonyStates;
-        return { settlements: restS, colonyStates: restCs };
+        const { [key]: _s, ...restS } = s.fabricators;
+        const { [key]: _cs, ...restCs } = s.fabricatorStates;
+        return { fabricators: restS, fabricatorStates: restCs };
       }),
 
-    restoreSettlements: (list) => {
-      const map: Record<string, Settlement> = {};
+    restoreFabricators: (list) => {
+      const map: Record<string, Fabricator> = {};
       for (const s of list) map[s.key] = s;
-      set({ settlements: map });
+      set({ fabricators: map });
     },
 
     setSlotTarget: (key, slotIdx, upgradeId) => {
+      const recipe = upgradeId ? getCraftable(upgradeId) : null;
+      if (recipe && !fabricatorCanCraft(get().fabricators[key]?.tier, recipe.category)) return;
+      const existing = get().fabricatorStates[key]?.slots[slotIdx];
+      if (existing && !existing.inProduction) {
+        const stockpile = useStockpileStore.getState();
+        for (const [id, amt] of Object.entries(existing.pendingMaterials ?? {})) {
+          if (amt > 0) stockpile.addMaterial(id, amt);
+        }
+      }
       set((s) => {
-        const cs = s.colonyStates[key] ?? { slots: [makeEmptyColonySlot()] };
+        const cs = s.fabricatorStates[key] ?? { slots: [makeEmptyFabricatorSlot()] };
         const slots = cs.slots.map((slot, i) =>
           i === slotIdx
-            ? { ...makeEmptyColonySlot(), targetUpgradeId: upgradeId }
+            ? { ...makeEmptyFabricatorSlot(), targetUpgradeId: upgradeId }
             : slot,
         );
-        return { colonyStates: { ...s.colonyStates, [key]: { ...cs, slots } } };
+        return { fabricatorStates: { ...s.fabricatorStates, [key]: { ...cs, slots } } };
       });
     },
 
-    unlockColonySlot: (key) => {
+    unlockFabricatorSlot: (key) => {
       let unlocked = false;
       set((s) => {
-        const cs = s.colonyStates[key] ?? { slots: [makeEmptyColonySlot()] };
-        if (cs.slots.length >= MAX_COLONY_SLOTS) return s;
+        const cs = s.fabricatorStates[key] ?? { slots: [makeEmptyFabricatorSlot()] };
+        if (cs.slots.length >= MAX_FABRICATOR_SLOTS) return s;
         unlocked = true;
         return {
-          colonyStates: {
-            ...s.colonyStates,
-            [key]: { ...cs, slots: [...cs.slots, makeEmptyColonySlot()] },
+          fabricatorStates: {
+            ...s.fabricatorStates,
+            [key]: { ...cs, slots: [...cs.slots, makeEmptyFabricatorSlot()] },
           },
         };
       });
       return unlocked;
     },
 
-    feedColony: (key, pool) => {
-      const cs = get().colonyStates[key] ?? { slots: [makeEmptyColonySlot()] };
+    feedFabricator: (key, pool) => {
+      const cs = get().fabricatorStates[key] ?? { slots: [makeEmptyFabricatorSlot()] };
       const consumed: Partial<Record<string, number>> = {};
-      const readyItems: ColonyProductionItem[] = [];
+      const consumedMaterials: MaterialCost = {};
+      const readyItems: FabricatorProductionItem[] = [];
       const now = Date.now();
 
-      // Track remaining pool across slots so two slots don't claim the same resources
       const remaining: Partial<Record<string, number>> = { ...pool };
+      const remainingMaterials: Record<string, number> = { ...useStockpileStore.getState().materials };
+
+      const tier = get().fabricators[key]?.tier;
 
       const updatedSlots = cs.slots.map((slot) => {
         if (!slot.targetUpgradeId) return slot;
         const recipe = getCraftable(slot.targetUpgradeId);
-        if (!recipe) return slot;
+        if (!recipe || !fabricatorCanCraft(tier, recipe.category)) return slot;
 
         let inProduction = slot.inProduction;
         const pending = { ...slot.pendingResources };
+        const pendingMats = { ...slot.pendingMaterials };
 
-        // Deliver completed item
         if (inProduction && inProduction.availableAt <= now) {
           readyItems.push(inProduction);
           inProduction = null;
         }
 
-        // Only absorb resources and start new production when the slot is free
         if (!inProduction) {
           for (const [costKey, costAmt] of Object.entries(recipe.cost)) {
             if (!costAmt) continue;
@@ -116,37 +141,65 @@ export const useSettlementStore = create<SettlementState>()(
             }
           }
 
-          const canProduce = Object.entries(recipe.cost).every(([costKey, costAmt]) => {
+          for (const [matId, costAmt] of Object.entries(recipe.materials)) {
+            if (!costAmt) continue;
+            const have = pendingMats[matId] ?? 0;
+            const need = costAmt - have;
+            if (need <= 0) continue;
+            const take = Math.min(remainingMaterials[matId] ?? 0, need);
+            if (take > 0) {
+              pendingMats[matId] = have + take;
+              consumedMaterials[matId] = (consumedMaterials[matId] ?? 0) + take;
+              remainingMaterials[matId] = (remainingMaterials[matId] ?? 0) - take;
+            }
+          }
+
+          const resourcesMet = Object.entries(recipe.cost).every(([costKey, costAmt]) => {
             if (!costAmt) return true;
             const resourceType = COST_KEY_TO_RESOURCE[costKey];
             if (!resourceType) return true;
             return (pending[resourceType] ?? 0) >= costAmt;
           });
+          const materialsMet = Object.entries(recipe.materials).every(
+            ([matId, costAmt]) => !costAmt || (pendingMats[matId] ?? 0) >= costAmt,
+          );
 
-          if (canProduce) {
+          if (resourcesMet && materialsMet) {
             for (const [costKey, costAmt] of Object.entries(recipe.cost)) {
               if (!costAmt) continue;
               const resourceType = COST_KEY_TO_RESOURCE[costKey];
               if (!resourceType) continue;
               pending[resourceType] = (pending[resourceType] ?? 0) - costAmt;
             }
-            inProduction = { upgradeId: slot.targetUpgradeId, availableAt: now + 24 * 60 * 60 * 1000, category: recipe.category };
+            for (const [matId, costAmt] of Object.entries(recipe.materials)) {
+              if (!costAmt) continue;
+              pendingMats[matId] = (pendingMats[matId] ?? 0) - costAmt;
+            }
+            inProduction = {
+              upgradeId: slot.targetUpgradeId,
+              availableAt: now + recipe.craftHours * 60 * 60 * 1000,
+              category: recipe.category,
+            };
           }
         }
 
-        return { ...slot, pendingResources: pending, inProduction };
+        return { ...slot, pendingResources: pending, pendingMaterials: pendingMats, inProduction };
       });
 
+      if (Object.keys(consumedMaterials).length > 0) {
+        useStockpileStore.getState().consumeMaterials(consumedMaterials);
+      }
+
       set((s) => ({
-        colonyStates: {
-          ...s.colonyStates,
+        fabricatorStates: {
+          ...s.fabricatorStates,
           [key]: { ...cs, slots: updatedSlots },
         },
       }));
 
-      return { consumed, readyItems };
+      return { consumed, consumedMaterials, readyItems };
     },
 
-    restoreColonyStates: (states) => set({ colonyStates: states }),
+    restoreFabricatorStates: (states) => set({ fabricatorStates: states }),
   })),
 );

@@ -2,17 +2,19 @@ import { useAuthStore } from './authStore';
 import { useUIStore, applyUserSettings } from './uiStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
-import { useSettlementStore } from './settlementStore';
+import { useFabricatorStore } from './fabricatorStore';
 import { useLogisticsStore } from './logisticsStore';
+import { useStockpileStore } from './stockpileStore';
 import { useCodexStore } from './codexStore';
 import { useQuestStore } from './questStore';
 import { defaultSettings, saveUserSettings } from '../firebase/userDoc';
 import { deleteAllExtractors } from '../firebase/extractors';
-import { deleteAllSettlements } from '../firebase/settlements';
+import { deleteAllFabricators } from '../firebase/fabricators';
 import { deleteAllLogisticsRoutes } from '../firebase/logisticsRoutes';
 import { deleteAllDiscoveries } from '../firebase/discoveries';
 import { deleteQuests } from '../firebase/quests';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
+import { saveStockpile } from '../firebase/stockpile';
 import { clearFirstVisit } from '../lib/firstVisit';
 
 export const DEATH_SEQUENCE_MS = 2800;
@@ -44,8 +46,9 @@ export async function resetGame(): Promise<void> {
   useUIStore.setState({ view: defaultSettings.lastView, address: defaultSettings.address });
   useGameStore.getState().resetToInitial();
   useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {}, pendingUpgrades: [] });
-  useSettlementStore.setState({ settlements: {}, colonyStates: {} });
+  useFabricatorStore.setState({ fabricators: {}, fabricatorStates: {} });
   useLogisticsStore.setState({ routes: [] });
+  useStockpileStore.setState({ materials: {}, rares: {} });
   useCodexStore.getState().setAll([]);
   useQuestStore.getState().resetQuests();
 
@@ -54,10 +57,11 @@ export async function resetGame(): Promise<void> {
   await Promise.all([
     saveUserSettings(user.uid, defaultSettings),
     deleteAllExtractors(user.uid),
-    deleteAllSettlements(user.uid),
+    deleteAllFabricators(user.uid),
     deleteAllLogisticsRoutes(user.uid),
     deleteAllDiscoveries(user.uid),
     deleteQuests(user.uid),
     saveExtractorUpgrades(user.uid, { ownedUpgrades: [], nodeEquipped: {}, pendingUpgrades: [] }),
+    saveStockpile(user.uid, {}, {}),
   ]);
 }

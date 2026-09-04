@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Extractor, ColonyProductionItem } from '../game/types';
-import { EXTRACTOR_UPGRADES } from '../data/upgrades';
+import type { CraftCategory, Extractor, FabricatorProductionItem } from '../game/types';
+import { EXTRACTOR_UPGRADES, getCraftable } from '../data/upgrades';
+import { useStockpileStore } from './stockpileStore';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap } from './uiStore';
 import { useQuestStore } from './questStore';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
+export const ACCUMULATION_RATE_PER_MS = 1 / (1000) // 1 unit per hour
 
 export function getExtractorMultipliers(
   extractorKey: string,
@@ -40,7 +41,14 @@ export interface PendingUpgrade {
   id: string;
   upgradeId: string;
   availableAt: number;
-  category: 'extractor';
+  category: CraftCategory;
+}
+
+export interface FabricatorDelivery {
+  upgradeId: string;
+  name: string;
+  category: CraftCategory;
+  count: number;
 }
 
 interface ExtractorState {
@@ -54,7 +62,7 @@ interface ExtractorState {
   pendingUpgrades: PendingUpgrade[];
   purchaseUpgrade: (upgradeId: string) => boolean;
   equipUpgrade: (extractorKey: string, slot: 0 | 1, upgradeId: string | null) => void;
-  receiveColonyItems: (items: ColonyProductionItem[]) => void;
+  receiveFabricatorItems: (items: FabricatorProductionItem[]) => FabricatorDelivery[];
   claimPendingUpgrade: (id: string) => boolean;
   restoreUpgrades: (ownedUpgrades: string[], nodeEquipped: Record<string, [string | null, string | null]>, pendingUpgrades?: PendingUpgrade[]) => void;
 }
@@ -108,23 +116,37 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
   nodeEquipped: {},
   pendingUpgrades: [],
 
-  receiveColonyItems: (items) => {
-    const newPending: PendingUpgrade[] = items.map((item) => ({
-      id: crypto.randomUUID(),
-      upgradeId: item.upgradeId,
-      availableAt: item.availableAt,
-      category: item.category ?? 'extractor',
-    }));
-    set((s) => ({ pendingUpgrades: [...s.pendingUpgrades, ...newPending] }));
+  receiveFabricatorItems: (items) => {
+    const deliveries = new Map<string, FabricatorDelivery>();
+    const modules: string[] = [];
+    for (const item of items) {
+      const recipe = getCraftable(item.upgradeId);
+      const category = item.category ?? recipe?.category ?? 'extractor';
+      if (category === 'material') useStockpileStore.getState().addMaterial(item.upgradeId, 1);
+      else if (category === 'rare') useStockpileStore.getState().addRare(item.upgradeId, 1);
+      else modules.push(item.upgradeId);
+      const existing = deliveries.get(item.upgradeId);
+      if (existing) existing.count++;
+      else deliveries.set(item.upgradeId, {
+        upgradeId: item.upgradeId,
+        name: recipe?.name ?? item.upgradeId,
+        category,
+        count: 1,
+      });
+    }
+    if (modules.length > 0) set((s) => ({ ownedUpgrades: [...s.ownedUpgrades, ...modules] }));
+    return [...deliveries.values()];
   },
 
   claimPendingUpgrade: (id) => {
     if (useUIStore.getState().checkDetectionLethal()) return false;
     const pending = get().pendingUpgrades.find((p) => p.id === id);
     if (!pending || pending.availableAt > Date.now()) return false;
+    const category = pending.category ?? getCraftable(pending.upgradeId)?.category ?? 'extractor';
+    if (category === 'material') useStockpileStore.getState().addMaterial(pending.upgradeId, 1);
     set((s) => ({
       pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id),
-      ownedUpgrades: [...s.ownedUpgrades, pending.upgradeId],
+      ownedUpgrades: category === 'material' ? s.ownedUpgrades : [...s.ownedUpgrades, pending.upgradeId],
     }));
     return true;
   },
@@ -140,9 +162,11 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     if ((def.cost.alloys ?? 0) > ui.alloys) return false;
     if ((def.cost.exotic ?? 0) > ui.exoticMatter) return false;
     if ((def.cost.helium ?? 0) > ui.helium3Reserves) return false;
+    if (!useStockpileStore.getState().hasMaterials(def.materials)) return false;
     if (def.cost.alloys) ui.spendAlloys(def.cost.alloys);
     if (def.cost.exotic) ui.consumeExoticMatter(def.cost.exotic);
     if (def.cost.helium) ui.consumeHelium3(def.cost.helium);
+    useStockpileStore.getState().consumeMaterials(def.materials);
     set((s) => ({ ownedUpgrades: [...s.ownedUpgrades, upgradeId] }));
     return true;
   },

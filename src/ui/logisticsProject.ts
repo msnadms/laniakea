@@ -1,6 +1,6 @@
 import { peekAccumulated, getExtractorMultipliers } from '../store/extractorStore';
 import { RESOURCE_LABELS } from '../game/types';
-import type { Extractor, Settlement } from '../game/types';
+import type { Extractor, Fabricator } from '../game/types';
 import { GALAXY_RADIUS, SC_WORLD_HALF } from '../game/constants';
 
 export function getSystemKey(ext: Extractor): string {
@@ -19,7 +19,7 @@ const VISUAL_R = MAP_CENTER - NODE_R - 18;
 // Ratio for mixing galaxy-space and system-space offsets in multi-galaxy projection
 const SYS_TO_SC = GALAXY_RADIUS / SC_WORLD_HALF;
 
-export type NodeType = 'extractor' | 'colony';
+export type NodeType = 'extractor' | 'fabricator';
 
 export interface RawMapNode {
   nodeId: string;
@@ -34,6 +34,7 @@ export interface RawMapNode {
   galY: number;
   resources?: Array<{ label: string; type: string; accumulated: number; rate: number }>;
   totalAccumulated?: number;
+  advanced?: boolean;
 }
 
 export interface ProjectedMapNode extends RawMapNode {
@@ -58,7 +59,7 @@ function resolveOverlaps<T extends { svgX: number; svgY: number }>(nodes: T[]): 
         let dy = placed[i].svgY - placed[j].svgY;
         let dist = Math.hypot(dx, dy);
         if (dist < 0.01) {
-          // Coincident nodes (e.g. colony + extractor in the same system) have a
+          // Coincident nodes (e.g. fabricator + extractor in the same system) have a
           // zero delta to push along — substitute a deterministic per-index direction
           const angle = i * 2.3999632; // golden angle keeps repeated pushes spread out
           dx = Math.cos(angle);
@@ -79,7 +80,7 @@ function resolveOverlaps<T extends { svgX: number; svgY: number }>(nodes: T[]): 
 
 function buildRawNodes(
   extractors: Extractor[],
-  settlements: Settlement[],
+  fabricators: Fabricator[],
   nodeEquipped: Record<string, [string | null, string | null]>,
   now: number,
 ): RawMapNode[] {
@@ -118,9 +119,9 @@ function buildRawNodes(
     });
   }
 
-  const colMap = new Map<string, Settlement[]>();
-  for (const s of settlements) {
-    const sk = `colony:${s.galaxySeed}|${s.systemId}`;
+  const colMap = new Map<string, Fabricator[]>();
+  for (const s of fabricators) {
+    const sk = `fabricator:${s.galaxySeed}|${s.systemId}`;
     if (!colMap.has(sk)) colMap.set(sk, []);
     colMap.get(sk)!.push(s);
   }
@@ -128,7 +129,7 @@ function buildRawNodes(
     const rep = cols[0];
     nodes.push({
       nodeId: sk,
-      nodeType: 'colony',
+      nodeType: 'fabricator',
       name: rep.systemName || rep.planetName,
       keys: cols.map((c) => c.key),
       galaxySeed: rep.galaxySeed,
@@ -137,6 +138,7 @@ function buildRawNodes(
       sysY: rep.systemY,
       galX: rep.galaxyX,
       galY: rep.galaxyY,
+      advanced: cols.some((c) => (c.tier ?? 1) >= 2),
     });
   }
 
@@ -145,11 +147,11 @@ function buildRawNodes(
 
 export function projectNodes(
   extractors: Extractor[],
-  settlements: Settlement[],
+  fabricators: Fabricator[],
   nodeEquipped: Record<string, [string | null, string | null]>,
   now: number = Date.now(),
 ): ProjectedMapNode[] {
-  const rawNodes = buildRawNodes(extractors, settlements, nodeEquipped, now);
+  const rawNodes = buildRawNodes(extractors, fabricators, nodeEquipped, now);
   if (rawNodes.length === 0) return [];
   if (rawNodes.length === 1) {
     return [{ ...rawNodes[0], svgX: MAP_CENTER, svgY: MAP_CENTER }];

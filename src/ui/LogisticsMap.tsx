@@ -24,12 +24,14 @@ export function StationMap({
   draftNodeKeys,
   onToggle,
   onNodeHover,
+  onBackgroundClick,
   animActiveNodeId,
 }: {
   projected: ProjectedMapNode[];
   draftNodeKeys: string[];
   onToggle: (keys: string[]) => void;
   onNodeHover: (nodeId: string) => void;
+  onBackgroundClick?: () => void;
   animActiveNodeId?: string | null;
 }) {
   const byNodeId = useMemo(
@@ -45,7 +47,7 @@ export function StationMap({
 
   if (projected.length === 0) {
     return (
-      <div className="station-map-empty">No extraction stations or colonies placed</div>
+      <div className="station-map-empty">No extraction stations or fabricators placed</div>
     );
   }
 
@@ -80,6 +82,7 @@ export function StationMap({
       viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`}
       className="station-map-svg"
       xmlns="http://www.w3.org/2000/svg"
+      onClick={onBackgroundClick}
     >
       <defs>
         <marker id="lm-arrow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
@@ -92,15 +95,15 @@ export function StationMap({
 
       {edges.map((e) => {
         const toNode = byNodeId[routeNodeIds[e.i + 1]];
-        const toColony = toNode?.nodeType === 'colony';
+        const toFabricator = toNode?.nodeType === 'fabricator';
         return (
           <line
             key={e.i}
             x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-            stroke={toColony ? 'rgba(60,200,100,0.45)' : 'rgba(0,180,220,0.45)'}
+            stroke={toFabricator ? 'rgba(60,200,100,0.45)' : 'rgba(0,180,220,0.45)'}
             strokeWidth="1.2"
             strokeDasharray="5 3"
-            markerEnd={toColony ? 'url(#lm-arrow-col)' : 'url(#lm-arrow)'}
+            markerEnd={toFabricator ? 'url(#lm-arrow-col)' : 'url(#lm-arrow)'}
           />
         );
       })}
@@ -108,28 +111,37 @@ export function StationMap({
       {projected.map((p) => {
         const inRoute = p.keys.some((k) => draftNodeKeys.includes(k));
         const shortName = p.name.length > 9 ? p.name.slice(0, 8) + '…' : p.name;
-        const isColony = p.nodeType === 'colony';
+        const isFabricator = p.nodeType === 'fabricator';
+        const isAdvanced = isFabricator && !!p.advanced;
 
-        const strokeActive = isColony ? 'rgba(60,220,100,0.9)' : 'rgba(0,215,255,0.85)';
-        const strokeIdle = isColony ? 'rgba(30,140,60,0.5)' : 'rgba(0,130,180,0.45)';
-        const fillActive = isColony ? 'rgba(20,100,40,0.4)' : 'rgba(0,140,190,0.35)';
-        const fillIdle = isColony ? 'rgba(0,30,10,0.5)' : 'rgba(0,50,80,0.5)';
-        const glowActive = isColony ? 'rgba(60,200,80,0.2)' : 'rgba(0,210,240,0.2)';
-        const labelActive = isColony ? 'rgba(60,220,100,0.8)' : 'rgba(0,200,232,0.75)';
-        const labelIdle = isColony ? 'rgba(30,140,60,0.55)' : 'rgba(0,130,170,0.5)';
+        const fabStrokeActive = isAdvanced ? 'rgba(255,190,80,0.9)' : 'rgba(60,220,100,0.9)';
+        const fabStrokeIdle = isAdvanced ? 'rgba(150,105,30,0.5)' : 'rgba(30,140,60,0.5)';
+        const fabFillActive = isAdvanced ? 'rgba(110,70,10,0.4)' : 'rgba(20,100,40,0.4)';
+        const fabFillIdle = isAdvanced ? 'rgba(30,20,0,0.5)' : 'rgba(0,30,10,0.5)';
+        const fabGlow = isAdvanced ? 'rgba(220,170,60,0.2)' : 'rgba(60,200,80,0.2)';
+        const fabLabelActive = isAdvanced ? 'rgba(255,200,90,0.8)' : 'rgba(60,220,100,0.8)';
+        const fabLabelIdle = isAdvanced ? 'rgba(150,110,35,0.55)' : 'rgba(30,140,60,0.55)';
+
+        const strokeActive = isFabricator ? fabStrokeActive : 'rgba(0,215,255,0.85)';
+        const strokeIdle = isFabricator ? fabStrokeIdle : 'rgba(0,130,180,0.45)';
+        const fillActive = isFabricator ? fabFillActive : 'rgba(0,140,190,0.35)';
+        const fillIdle = isFabricator ? fabFillIdle : 'rgba(0,50,80,0.5)';
+        const glowActive = isFabricator ? fabGlow : 'rgba(0,210,240,0.2)';
+        const labelActive = isFabricator ? fabLabelActive : 'rgba(0,200,232,0.75)';
+        const labelIdle = isFabricator ? fabLabelIdle : 'rgba(0,130,170,0.5)';
 
         const primaryRes = p.resources?.reduce(
           (a, b) => (a.accumulated >= b.accumulated ? a : b),
           p.resources[0],
         );
         const iconColor = inRoute
-          ? (isColony ? 'rgba(80,230,120,0.9)' : 'rgba(0,230,255,0.9)')
-          : (isColony ? 'rgba(30,140,60,0.55)' : 'rgba(0,150,190,0.55)');
+          ? (isFabricator ? (isAdvanced ? 'rgba(255,205,100,0.9)' : 'rgba(80,230,120,0.9)') : 'rgba(0,230,255,0.9)')
+          : (isFabricator ? (isAdvanced ? 'rgba(150,110,35,0.55)' : 'rgba(30,140,60,0.55)') : 'rgba(0,150,190,0.55)');
 
         return (
           <g
             key={p.nodeId}
-            onClick={() => onToggle(p.keys)}
+            onClick={(e) => { e.stopPropagation(); onToggle(p.keys); }}
             onMouseEnter={() => onNodeHover(p.nodeId)}
             style={{ cursor: 'pointer' }}
           >
@@ -157,12 +169,23 @@ export function StationMap({
               stroke={inRoute ? strokeActive : strokeIdle}
               strokeWidth="1.5"
             />
-            {isColony ? (
-              <polygon
-                points={`${p.svgX},${p.svgY - ICON_HALF * 0.85} ${p.svgX + ICON_HALF * 0.65},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 0.85} ${p.svgX - ICON_HALF * 0.65},${p.svgY}`}
-                fill={iconColor}
-                style={{ pointerEvents: 'none' }}
-              />
+            {isFabricator ? (
+              <>
+                <polygon
+                  points={`${p.svgX},${p.svgY - ICON_HALF * 0.85} ${p.svgX + ICON_HALF * 0.65},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 0.85} ${p.svgX - ICON_HALF * 0.65},${p.svgY}`}
+                  fill={iconColor}
+                  style={{ pointerEvents: 'none' }}
+                />
+                {isAdvanced && (
+                  <polygon
+                    points={`${p.svgX},${p.svgY - ICON_HALF * 1.45} ${p.svgX + ICON_HALF * 1.1},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 1.45} ${p.svgX - ICON_HALF * 1.1},${p.svgY}`}
+                    fill="none"
+                    stroke={iconColor}
+                    strokeWidth="0.9"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+              </>
             ) : p.resources && p.resources.length > 1 ? (
               <NodeIcon cx={p.svgX} cy={p.svgY} resourceType="multiSystem" color={iconColor} />
             ) : primaryRes ? (
