@@ -171,7 +171,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 9px;
+  margin-bottom: 2px;
 }
 
 .lroute-name {
@@ -232,6 +232,30 @@
   gap: 10px;
   padding: 8px 0 2px;
   border-top: 1px solid rgba(0, 120, 170, 0.18);
+}
+
+.lroute-detail-pop {
+  position: fixed;
+  z-index: 400;
+  width: 262px;
+  padding: 4px 12px 12px;
+  border: 1px solid rgba(0, 170, 215, 0.45);
+  border-left: 3px solid rgba(0, 215, 255, 0.75);
+  background: rgba(4, 14, 28, 0.97);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  font-family: monospace;
+  color: #c0dde8;
+  pointer-events: none;
+  animation: logistics-detail-fade 0.1s ease both;
+}
+
+.lroute-detail-pop .lroute-stats {
+  border-top: 0;
+}
+
+@keyframes logistics-detail-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .lroute-stat {
@@ -389,9 +413,10 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 14px 18px 14px;
   gap: 10px;
+  min-height: 0;
 }
 
 .logistics-editor-empty {
@@ -468,11 +493,11 @@
 /* ── Station map ──────────────────────────────────────────────── */
 
 .logistics-map-section {
-  flex: 0 0 320px;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 0;
+  min-height: 160px;
 }
 
 .logistics-col-label {
@@ -496,6 +521,37 @@
   width: 100%;
   height: 100%;
   display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+.station-map-svg--panning {
+  cursor: grabbing;
+}
+
+.station-map-controls {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  gap: 4px;
+  z-index: 3;
+}
+
+.station-map-controls button {
+  width: 20px;
+  height: 20px;
+  background: rgba(0, 35, 55, 0.85);
+  border: 1px solid rgba(0, 150, 190, 0.35);
+  color: rgba(150, 220, 238, 0.8);
+  font: 11px monospace;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.station-map-controls button:hover {
+  border-color: rgba(0, 195, 230, 0.7);
+  color: #d9f8ff;
 }
 
 .station-map-empty {
@@ -810,24 +866,30 @@
   text-shadow: none;
 }
 
-/* scrollbar */
-.logistics-routes-list::-webkit-scrollbar,
-.logistics-route-order::-webkit-scrollbar,
-.logistics-resources-list::-webkit-scrollbar,
-.lm-inventory-list::-webkit-scrollbar {
+/* Keep every scroll surface in the logistics UI visually lightweight. */
+.logistics-panel,
+.logistics-panel *,
+.lm-slot-menu {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 150, 200, 0.25) transparent;
+}
+.logistics-panel::-webkit-scrollbar,
+.logistics-panel *::-webkit-scrollbar,
+.lm-slot-menu::-webkit-scrollbar {
   width: 3px;
   height: 3px;
 }
-.logistics-routes-list::-webkit-scrollbar-track,
-.logistics-route-order::-webkit-scrollbar-track,
-.logistics-resources-list::-webkit-scrollbar-track,
-.lm-inventory-list::-webkit-scrollbar-track {
+.logistics-panel::-webkit-scrollbar-track,
+.logistics-panel *::-webkit-scrollbar-track,
+.logistics-panel::-webkit-scrollbar-corner,
+.logistics-panel *::-webkit-scrollbar-corner,
+.lm-slot-menu::-webkit-scrollbar-track,
+.lm-slot-menu::-webkit-scrollbar-corner {
   background: transparent;
 }
-.logistics-routes-list::-webkit-scrollbar-thumb,
-.logistics-route-order::-webkit-scrollbar-thumb,
-.logistics-resources-list::-webkit-scrollbar-thumb,
-.lm-inventory-list::-webkit-scrollbar-thumb {
+.logistics-panel::-webkit-scrollbar-thumb,
+.logistics-panel *::-webkit-scrollbar-thumb,
+.lm-slot-menu::-webkit-scrollbar-thumb {
   background: rgba(0, 150, 200, 0.25);
 }
 

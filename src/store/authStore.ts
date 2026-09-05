@@ -6,7 +6,7 @@ import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
 import { loadAllFabricators, saveFabricatorState } from '../firebase/fabricators';
 import { loadQuests } from '../firebase/quests';
-import { loadLogisticsRoutes } from '../firebase/logisticsRoutes';
+import { loadLogisticsRoutes, saveLogisticsRoute } from '../firebase/logisticsRoutes';
 import { loadExtractorUpgrades, saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { loadStockpile, saveStockpile } from '../firebase/stockpile';
 import { applyUserSettings, useUIStore } from './uiStore';
@@ -75,8 +75,13 @@ export function initAuth(): () => void {
         useFabricatorStore.getState().restoreFabricatorStates(fabricators.fabricatorStates);
         useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
         useStockpileStore.getState().restoreStockpile(stockpile.materials, stockpile.rares);
-        if (fabricators.legacyProductionItems.length > 0) {
-          useExtractorStore.getState().receiveFabricatorItems(fabricators.legacyProductionItems);
+        const legacyProductionItems = [
+          ...fabricators.legacyProductionItems,
+          ...(extractorUpgrades.legacyProductionItems ?? []),
+        ];
+        const migratedRoutes = logisticsRoutes.some((route) => route.legacyNodeKeys !== undefined);
+        if (legacyProductionItems.length > 0 || migratedRoutes) {
+          useExtractorStore.getState().receiveFabricatorItems(legacyProductionItems);
           const normalizedStates = useFabricatorStore.getState().fabricatorStates;
           const migratedStockpile = useStockpileStore.getState();
           const migratedUpgrades = useExtractorStore.getState();
@@ -87,6 +92,7 @@ export function initAuth(): () => void {
               ownedUpgrades: migratedUpgrades.ownedUpgrades,
               nodeEquipped: migratedUpgrades.nodeEquipped,
             }),
+            ...useLogisticsStore.getState().routes.map((route) => saveLogisticsRoute(user.uid, route)),
           ]);
         }
         useCodexStore.getState().setAll(discoveries);

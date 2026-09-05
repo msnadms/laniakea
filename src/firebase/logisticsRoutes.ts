@@ -40,12 +40,15 @@ export async function loadLogisticsRoutes(uid: string): Promise<LogisticsRoute[]
   const routes: LogisticsRoute[] = [];
   for (const d of snap.docs) {
     const data = d.data();
-    // Routes saved before the DAG model have no edges and cannot be interpreted
-    if (!Array.isArray(data.edges)) continue;
+    const legacyNodeKeys = !Array.isArray(data.edges)
+      ? ((data.nodeKeys as string[] | undefined)
+        ?? [...((data.stationKeys as string[]) ?? []), ...((data.fabricatorKeys as string[]) ?? [])])
+      : undefined;
     routes.push({
       id: d.id,
-      name: data.name as string,
-      edges: data.edges as RouteEdge[],
+      name: (data.name as string) ?? 'Route',
+      edges: Array.isArray(data.edges) ? data.edges as RouteEdge[] : [],
+      legacyNodeKeys,
       active: data.active === true,
       automation: data.automation ?? undefined,
       heldCargo: data.heldCargo ?? {},

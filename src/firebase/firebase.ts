@@ -24,4 +24,7 @@ initializeAppCheck(app, {
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-export const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+export const db = initializeFirestore(app, {
+  localCache: memoryLocalCache(),
+  ignoreUndefinedProperties: true,
+});

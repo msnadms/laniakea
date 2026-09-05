@@ -93,6 +93,19 @@ export function normalizeFabricatorState(
   return { slots: kept };
 }
 
+function sameAmounts(a: Record<string, number | undefined>, b: Record<string, number | undefined>): boolean {
+  const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...ids].every((id) => (a[id] ?? 0) === (b[id] ?? 0));
+}
+
+function sameSlotBuffers(a: FabricatorProductionSlot | undefined, b: FabricatorProductionSlot): boolean {
+  return !!a
+    && a.targetUpgradeId === b.targetUpgradeId
+    && sameAmounts(a.pendingResources, b.pendingResources)
+    && sameAmounts(a.pendingMaterials, b.pendingMaterials)
+    && sameAmounts(a.byproducts, b.byproducts);
+}
+
 function recipeReady(slot: FabricatorProductionSlot, recipe: Craftable): boolean {
   return resourceEntries(recipe).every(([type, amount]) => (slot.pendingResources[type] ?? 0) >= amount)
     && materialEntries(recipe).every(([id, amount]) => (slot.pendingMaterials[id] ?? 0) >= amount);
@@ -149,10 +162,14 @@ export function processFabricator(
     missingMaterials: {},
   }));
 
-  for (const slot of slots) {
-    for (const [id, amount] of Object.entries(slot.byproducts)) addAmount(byproductPool, id, amount);
+  const byproductOrigin = new Map<string, number>();
+  slots.forEach((slot, index) => {
+    for (const [id, amount] of Object.entries(slot.byproducts)) {
+      if (amount > 0 && !byproductOrigin.has(id)) byproductOrigin.set(id, index);
+      addAmount(byproductPool, id, amount);
+    }
     slot.byproducts = {};
-  }
+  });
 
   const byproductCapacity: MaterialCost = {};
   for (const slot of slots) {
@@ -160,6 +177,11 @@ export function processFabricator(
     if (!recipe || !fabricatorCanCraft(tier, recipe.category)) continue;
     for (const [id, amount] of Object.entries(recipe.byproducts)) addAmount(byproductCapacity, id, amount * depth);
   }
+  const byproductHasExit = new Map<string, boolean>();
+  const byproductCanLeave = (id: string) => {
+    if (!byproductHasExit.has(id)) byproductHasExit.set(id, canRouteByproduct(id));
+    return byproductHasExit.get(id)!;
+  };
 
   const ordered = slots.map((slot, index) => ({ slot, index }))
     .sort((a, b) => a.slot.priority - b.slot.priority || a.index - b.index);
@@ -209,7 +231,8 @@ export function processFabricator(
 
       while (recipeReady(slot, recipe)) {
         const blocked = Object.entries(recipe.byproducts).some(
-          ([id, amount]) => amount > 0 && (byproductPool[id] ?? 0) + amount > (byproductCapacity[id] ?? 0),
+          ([id, amount]) => amount > 0 && !byproductCanLeave(id)
+            && (byproductPool[id] ?? 0) + amount > (byproductCapacity[id] ?? 0),
         );
         if (blocked) break;
         for (const [type, amount] of resourceEntries(recipe)) {
@@ -239,7 +262,7 @@ export function processFabricator(
 
   for (const [id, total] of Object.entries(byproductPool)) {
     let left = total;
-    if (left > 0 && canRouteByproduct(id)) {
+    if (left > 0 && byproductCanLeave(id)) {
       readyItems.push({ upgradeId: id, category: 'material', count: left });
       const producer = slotResults.find((result) => (result.byproductsCreated[id] ?? 0) > 0);
       if (producer) addAmount(producer.byproductsRouted, id, left);
@@ -251,11 +274,17 @@ export function processFabricator(
       const perBatch = recipe?.byproducts[id] ?? 0;
       if (perBatch <= 0) continue;
       const keep = Math.min(left, perBatch * depth);
-      if (keep > 0) slot.byproducts[id] = keep;
+      if (keep > 0) slot.byproducts[id] = (slot.byproducts[id] ?? 0) + keep;
       left -= keep;
       if (keep >= perBatch * depth) slotResults[index].status = 'jammed';
       if (left <= 0) break;
     }
+    if (left <= 0) continue;
+    // A byproduct no current recipe emits still has to live somewhere rather than vanish.
+    const fallback = byproductOrigin.get(id) ?? ordered[0]?.index;
+    if (fallback === undefined) continue;
+    slots[fallback].byproducts[id] = (slots[fallback].byproducts[id] ?? 0) + left;
+    slotResults[fallback].status = 'jammed';
   }
 
   for (const { slot, index } of ordered) {
@@ -282,7 +311,7 @@ export function processFabricator(
     || Object.values(consumedCarried).some((amount) => amount > 0)
     || Object.values(consumedStockpile).some((amount) => amount > 0)
     || readyItems.some((item) => item.count > 0)
-    || JSON.stringify(sourceSlots) !== JSON.stringify(slots);
+    || slots.some((slot, index) => !sameSlotBuffers(sourceSlots[index], slot));
 
   return {
     consumed, consumedCarried, consumedStockpile, readyItems,
@@ -302,26 +331,6 @@ export function slotStatus(
   );
   if (jammed) return 'jammed';
   return recipeReady(slot, recipe) ? 'ready' : 'starved';
-}
-
-export function hasDispatchableFabricatorCargo(
-  fabricatorKeys: string[],
-  fabricatorStates: Record<string, FabricatorState>,
-  _fabricators: Record<string, Fabricator>,
-): boolean {
-  return fabricatorKeys.some((key) => (fabricatorStates[key]?.slots ?? []).some(
-    (slot) => Object.values(slot.byproducts ?? {}).some((amount) => amount > 0),
-  ));
-}
-
-export function hasProcessableFabricator(
-  fabricatorKeys: string[],
-  fabricatorStates: Record<string, FabricatorState>,
-): boolean {
-  return fabricatorKeys.some((key) => (fabricatorStates[key]?.slots ?? []).some((slot) => {
-    const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
-    return !!recipe && recipeReady(slot, recipe);
-  }));
 }
 
 export function slotResourceDemand(
@@ -416,16 +425,20 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
       if (recipe && !fabricatorCanCraft(fabricator?.tier, recipe.category)) return;
       const state = normalizeFabricatorState(get().fabricatorStates[key], fabricator?.tier);
       const current = state.slots[slotIdx];
-      if (!current) return;
+      if (!current || current.targetUpgradeId === (upgradeId ?? null)) return;
       const stockpile = useStockpileStore.getState();
+      const unrefunded: Partial<Record<Resource['type'], number>> = {};
       for (const [type, amount] of Object.entries(current.pendingResources)) {
-        if ((amount ?? 0) > 0) useUIStore.getState().addCargo(type as Resource['type'], amount ?? 0);
+        if ((amount ?? 0) <= 0) continue;
+        const accepted = useUIStore.getState().depositCargo(type as Resource['type'], amount ?? 0);
+        const left = (amount ?? 0) - accepted;
+        if (left > 0) unrefunded[type as Resource['type']] = left;
       }
       for (const source of [current.pendingMaterials, current.byproducts]) {
         for (const [id, amount] of Object.entries(source)) if (amount > 0) stockpile.addMaterial(id, amount);
       }
       const slots = state.slots.map((slot, index) => index === slotIdx
-        ? { ...makeEmptyFabricatorSlot(), targetUpgradeId: upgradeId, priority: slot.priority }
+        ? { ...makeEmptyFabricatorSlot(), targetUpgradeId: upgradeId, priority: slot.priority, pendingResources: unrefunded }
         : slot);
       set((store) => ({ fabricatorStates: { ...store.fabricatorStates, [key]: { slots } } }));
     },
@@ -461,7 +474,7 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
       const fabricator = get().fabricators[key];
       const state = normalizeFabricatorState(get().fabricatorStates[key], fabricator?.tier);
       const result = processFabricator(state.slots, fabricator?.tier, pool, carried, {
-        stockpile: stockpileSource ?? useStockpileStore.getState().materials,
+        stockpile: stockpileSource ?? {},
         stockpileBudget: budget,
         canRouteByproduct,
       });

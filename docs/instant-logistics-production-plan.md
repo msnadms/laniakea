@@ -418,7 +418,7 @@ Prefer keeping last-run diagnostics ephemeral unless persistence materially impr
 
 ## Verification strategy
 
-The project currently has no automated test suite. Add focused tests around pure production and logistics logic before enabling automatic routes.
+The project now has focused Vitest coverage around pure production and logistics logic. Continue expanding it alongside automatic-route behavior and save migrations.
 
 Minimum test matrix:
 

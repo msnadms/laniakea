@@ -3,9 +3,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   useLogisticsStore,
   computeRouteCost,
-  canFeedFabricatorMaterials,
   resolveNodeGroups,
-  routeExtractorKeys,
   routeFabricatorKeys,
   routeIsValid,
   routeIslandNodes,
@@ -20,7 +18,6 @@ import {
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import {
   useFabricatorStore,
-  hasDispatchableFabricatorCargo,
   slotStatus,
 } from '../store/fabricatorStore';
 import type { SlotRunResult } from '../store/fabricatorStore';
@@ -69,6 +66,7 @@ const ROUTABLE_RAW: Resource['type'][] = [
 ];
 
 const ROUTABLE_MATERIALS = [...new Set(STOCKED_MATERIALS.map((material) => material.id))];
+const DETAIL_POP_HEIGHT = 210;
 
 function costParts(exotic: number, helium: number): Array<[string, number]> {
   const parts: Array<[string, number]> = [];
@@ -182,6 +180,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const [rightPanel, setRightPanel] = useState<'resources' | 'materials' | 'modules'>('resources');
   const [pendingEquip, setPendingEquip] = useState<{ extractorKey: string; nodeName: string; resourceLabel: string; slot: 0 | 1 } | null>(null);
   const [dispatchAnim, setDispatchAnim] = useState<DispatchAnim | null>(null);
+  const [hoveredCard, setHoveredCard] = useState<{ id: string; top: number; left: number } | null>(null);
   const now = useNow();
 
   useEffect(() => {
@@ -255,7 +254,12 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   }
 
   function updateDraftEdge(index: number, patch: Partial<RouteEdge>) {
-    setDraftEdges((edges) => edges.map((edge, edgeIndex) => edgeIndex === index ? { ...edge, ...patch } : edge));
+    setDraftEdges((edges) => edges.map((edge, edgeIndex) => {
+      if (edgeIndex !== index) return edge;
+      const next = { ...edge, ...patch } as Record<string, unknown>;
+      for (const key of Object.keys(patch)) if (next[key] === undefined) delete next[key];
+      return next as unknown as RouteEdge;
+    }));
   }
 
   const draftNodes = useMemo(() => routeNodes(draftEdges), [draftEdges]);
@@ -265,13 +269,29 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     if (!draftValid) return;
     const name = draftName.trim() || 'Route';
     if (editingId) {
+      const previousHeld = routes.find((candidate) => candidate.id === editingId)?.heldCargo ?? {};
+      const heldCargo = Object.fromEntries(Object.entries(previousHeld)
+        .filter(([nodeId]) => draftNodes.includes(nodeId))
+        .map(([nodeId, cargo]) => [nodeId, {
+          raw: { ...(cargo.raw ?? {}) }, materials: { ...(cargo.materials ?? {}) },
+        }]));
+      const fallbackNode = draftNodes[0];
+      for (const [nodeId, cargo] of Object.entries(previousHeld)) {
+        if (draftNodes.includes(nodeId)) continue;
+        const target = heldCargo[fallbackNode] ?? { raw: {}, materials: {} };
+        for (const [type, amount] of Object.entries(cargo.raw ?? {})) {
+          target.raw[type as Resource['type']] = (target.raw[type as Resource['type']] ?? 0) + (amount ?? 0);
+        }
+        for (const [id, amount] of Object.entries(cargo.materials ?? {})) {
+          target.materials[id] = (target.materials[id] ?? 0) + amount;
+        }
+        heldCargo[fallbackNode] = target;
+      }
       const route = {
         id: editingId, name, edges: draftEdges, active: draftActive, automation: draftAutomation,
-        heldCargo: Object.fromEntries(Object.entries(
-          routes.find((candidate) => candidate.id === editingId)?.heldCargo ?? {},
-        ).filter(([nodeId]) => draftNodes.includes(nodeId))),
+        heldCargo,
       };
-      updateRoute(editingId, { name, edges: draftEdges, active: draftActive, automation: draftAutomation });
+      updateRoute(editingId, { name, edges: draftEdges, active: draftActive, automation: draftAutomation, heldCargo });
       if (user) saveLogisticsRoute(user.uid, route);
     } else {
       if (routes.length >= maxRoutes) return;
@@ -468,22 +488,16 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     const preview = previewRoute(route.id);
                     const cost = computeRouteCost(route.edges, extractors, fabricators);
                     const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
-                    const extractorKeys = routeExtractorKeys(groups);
                     const fabKeys = routeFabricatorKeys(groups);
-                    const stations = extractorKeys.map((k) => extractors[k]);
                     const fabricatorCount = fabKeys.length;
                     const nodeCount = groups.size;
                     const valid = routeIsValid(route.edges);
-                    const anyAccum = stations.some((s) => peekAccumulated(s) > 0);
-                    const hasFabricatorOutput = hasDispatchableFabricatorCargo(
-                      fabKeys,
-                      fabricatorStates,
-                      fabricators,
-                    );
                     const canAfford = exoticMatter >= cost.exotic && helium3 >= cost.helium;
-                    const canFeedMaterials = canFeedFabricatorMaterials(fabKeys, fabricatorStates, fabricators, stockpileMaterials);
-                    const canDispatch =
-                      valid && (anyAccum || hasFabricatorOutput || canFeedMaterials) && canAfford;
+                    const canDispatch = preview?.canRun === true || (
+                      (preview?.reason === 'Detection ceiling would be exceeded'
+                        || preview?.reason === 'Insufficient route fuel')
+                      && valid && canAfford
+                    );
                     const raisesDetection = (preview?.detectionRisk ?? 0) >= 5;
                     const stalledStatus = fabricatorNodeStatus(fabKeys, fabricatorStates, fabricators);
                     const stalled = stalledStatus === 'jammed' || stalledStatus === 'starved';
@@ -496,20 +510,8 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           ? { key: 'blocked', label: 'Low Fuel' }
                           : { key: 'idle', label: 'No Cargo' };
 
-                    return (
-                      <div
-                        key={route.id}
-                        className={`lroute-card${editingId === route.id ? ' lroute-card--active' : ''}${fabricatorCount > 0 ? ' lroute-card--fabricator' : ''}`}
-                        onClick={() => startEdit(route.id)}
-                      >
-                        <div className="lroute-head">
-                          <span className="lroute-name">{route.name}</span>
-                          <span className={`lroute-status lroute-status--${status.key}`}>
-                            <span className="lroute-status-dot" />
-                            {status.label}
-                          </span>
-                        </div>
-
+                    const detail = (
+                      <>
                         <div className="lroute-stats">
                           <div className="lroute-stat">
                             <span className="lroute-stat-val">{nodeCount}</span>
@@ -555,6 +557,38 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                             {preview.shortages.length} shortage{preview.shortages.length === 1 ? '' : 's'} · {preview.detectionRisk} risk
                             {preview.expectedRecipes.length > 0 && <span title={preview.expectedRecipes.join(', ')}> · recipes: {preview.expectedRecipes.slice(0, 2).join(', ')}{preview.expectedRecipes.length > 2 ? '…' : ''}</span>}
                           </div>
+                        )}
+                      </>
+                    );
+
+                    return (
+                      <div
+                        key={route.id}
+                        className={`lroute-card${editingId === route.id ? ' lroute-card--active' : ''}${fabricatorCount > 0 ? ' lroute-card--fabricator' : ''}`}
+                        onClick={() => startEdit(route.id)}
+                        onPointerEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setHoveredCard({
+                            id: route.id,
+                            top: Math.max(8, Math.min(rect.top, window.innerHeight - DETAIL_POP_HEIGHT)),
+                            left: rect.right + 8,
+                          });
+                        }}
+                        onPointerLeave={() => setHoveredCard((h) => (h?.id === route.id ? null : h))}
+                      >
+                        <div className="lroute-head">
+                          <span className="lroute-name">{route.name}</span>
+                          <span className={`lroute-status lroute-status--${status.key}`}>
+                            <span className="lroute-status-dot" />
+                            {status.label}
+                          </span>
+                        </div>
+
+                        {hoveredCard?.id === route.id && createPortal(
+                          <div className="lroute-detail-pop" style={{ top: hoveredCard.top, left: hoveredCard.left }}>
+                            {detail}
+                          </div>,
+                          document.body,
                         )}
 
                         <div className="lroute-actions" onClick={(e) => e.stopPropagation()}>
@@ -672,67 +706,56 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     />
                   )}
 
-                  <div className="logistics-automation-panel">
-                    <label className="logistics-policy-field logistics-policy-check">
-                      <input type="checkbox" checked={draftActive} onChange={(event) => setDraftActive(event.target.checked)} />
-                      Activate after save
-                    </label>
-                    <label className="logistics-policy-field">
-                      Source fill %
-                      <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
-                    </label>
-                    <label className="logistics-policy-field">
-                      Detection ceiling
-                      <input type="number" min="0" max="5" value={draftAutomation.detectionCeiling}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(5, Number(event.target.value))) }))} />
-                    </label>
-                    <label className="logistics-policy-field">
-                      Keep exotic
-                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.exotic}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, minimumShipReserve: {
-                          ...policy.minimumShipReserve, exotic: Math.max(0, Number(event.target.value)),
-                        } }))} />
-                    </label>
-                    <label className="logistics-policy-field">
-                      Keep helium-3
-                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.helium3}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, minimumShipReserve: {
-                          ...policy.minimumShipReserve, helium3: Math.max(0, Number(event.target.value)),
-                        } }))} />
-                    </label>
-                    <label className="logistics-policy-field logistics-policy-check">
-                      <input type="checkbox" checked={draftAutomation.requireRecipeReady}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, requireRecipeReady: event.target.checked }))} />
-                      Require ready recipe
-                    </label>
-                    <label className="logistics-policy-field logistics-policy-check">
-                      <input type="checkbox" checked={draftAutomation.pauseOnJam}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, pauseOnJam: event.target.checked }))} />
-                      Pause on jam
-                    </label>
-                    <label className="logistics-policy-field logistics-policy-check">
-                      <input type="checkbox" checked={draftAutomation.quiet}
-                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, quiet: event.target.checked }))} />
-                      Quiet route
-                    </label>
-                    <label className="logistics-policy-field">
-                      Keep exotic reserve
-                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.exotic}
-                        onChange={(event) => setDraftAutomation((policy) => ({
-                          ...policy,
-                          minimumShipReserve: { ...policy.minimumShipReserve, exotic: Math.max(0, Number(event.target.value)) },
-                        }))} />
-                    </label>
-                    <label className="logistics-policy-field">
-                      Keep He-3 reserve
-                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.helium3}
-                        onChange={(event) => setDraftAutomation((policy) => ({
-                          ...policy,
-                          minimumShipReserve: { ...policy.minimumShipReserve, helium3: Math.max(0, Number(event.target.value)) },
-                        }))} />
-                    </label>
-                  </div>
+                  <details className="logistics-policy-panel">
+                    <summary className="logistics-policy-summary">Route policies</summary>
+                    <div className="logistics-automation-panel">
+                      <label className="logistics-policy-field logistics-policy-check">
+                        <input type="checkbox" checked={draftActive} onChange={(event) => setDraftActive(event.target.checked)} />
+                        Activate after save
+                      </label>
+                      <label className="logistics-policy-field">
+                        Source fill %
+                        <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
+                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                      </label>
+                      <label className="logistics-policy-field">
+                        Detection ceiling
+                        <input type="number" min="0" max="5" value={draftAutomation.detectionCeiling}
+                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(5, Number(event.target.value))) }))} />
+                      </label>
+                      <label className="logistics-policy-field logistics-policy-check">
+                        <input type="checkbox" checked={draftAutomation.requireRecipeReady}
+                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, requireRecipeReady: event.target.checked }))} />
+                        Require ready recipe
+                      </label>
+                      <label className="logistics-policy-field logistics-policy-check">
+                        <input type="checkbox" checked={draftAutomation.pauseOnJam}
+                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, pauseOnJam: event.target.checked }))} />
+                        Pause on jam
+                      </label>
+                      <label className="logistics-policy-field logistics-policy-check">
+                        <input type="checkbox" checked={draftAutomation.quiet}
+                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, quiet: event.target.checked }))} />
+                        Quiet route
+                      </label>
+                      <label className="logistics-policy-field">
+                        Keep exotic reserve
+                        <input type="number" min="0" value={draftAutomation.minimumShipReserve.exotic}
+                          onChange={(event) => setDraftAutomation((policy) => ({
+                            ...policy,
+                            minimumShipReserve: { ...policy.minimumShipReserve, exotic: Math.max(0, Number(event.target.value)) },
+                          }))} />
+                      </label>
+                      <label className="logistics-policy-field">
+                        Keep He-3 reserve
+                        <input type="number" min="0" value={draftAutomation.minimumShipReserve.helium3}
+                          onChange={(event) => setDraftAutomation((policy) => ({
+                            ...policy,
+                            minimumShipReserve: { ...policy.minimumShipReserve, helium3: Math.max(0, Number(event.target.value)) },
+                          }))} />
+                      </label>
+                    </div>
+                  </details>
 
                   {/* Footer: cost + order + save */}
                   <div className="logistics-editor-footer">
@@ -938,61 +961,83 @@ function EdgePolicyPanel({
     return all.filter((item) => selected.has(item));
   };
   return (
-    <div className="logistics-edge-policies">
-      <div className="logistics-col-label">Edge policies · last-run flow appears on the map</div>
-      {edges.map((edge, index) => (
-        <details key={edgeKey(edge)} className="logistics-edge-policy">
-          <summary>{nodeName(edge.from)} → {nodeName(edge.to)}</summary>
-          <div className="logistics-policy-grid">
-            <label className="logistics-policy-field">Priority
-              <input type="number" min="0" value={edge.priority ?? 0}
-                onChange={(event) => onChange(index, { priority: Math.max(0, Number(event.target.value)) })} />
-            </label>
-            <label className="logistics-policy-field">Weight
-              <input type="number" min="1" value={edge.weight ?? 1}
-                onChange={(event) => onChange(index, { weight: Math.max(1, Number(event.target.value)) })} />
-            </label>
-            <label className="logistics-policy-field">Material cap
-              <input type="number" min="0" max={bandwidth} value={edge.unitCap ?? bandwidth}
-                onChange={(event) => onChange(index, { unitCap: Math.max(0, Math.min(bandwidth, Number(event.target.value))) })} />
-            </label>
-            <label className="logistics-policy-field">Overflow
-              <select value={edge.overflow ?? 'stockpile'} onChange={(event) => onChange(index, { overflow: event.target.value as RouteEdge['overflow'] })}>
-                <option value="next">Next eligible edge</option>
-                <option value="hold">Hold locally</option>
-                <option value="stockpile">Ship stockpile</option>
-              </select>
-            </label>
-          </div>
-          <div className="logistics-filter-head">Raw cargo <button onClick={() => onChange(index, { allowedRaw: undefined })}>Demand default</button></div>
-          <div className="logistics-filter-grid">
-            {ROUTABLE_RAW.map((type) => (
-              <label key={type} className="logistics-filter-item">
-                <input type="checkbox" checked={edge.allowedRaw?.includes(type) ?? true}
-                  onChange={() => onChange(index, { allowedRaw: toggle(edge.allowedRaw, ROUTABLE_RAW, type) })} />
-                <span>{RESOURCE_LABELS[type]}</span>
-                <input className="logistics-reserve-input" type="number" min="0" title="Minimum reserve at source"
-                  value={edge.minimumReserve?.raw?.[type] ?? 0}
-                  onChange={(event) => onChange(index, { minimumReserve: {
-                    ...edge.minimumReserve,
-                    raw: { ...(edge.minimumReserve?.raw ?? {}), [type]: Math.max(0, Number(event.target.value)) },
-                  } })} />
+    <details className="logistics-policy-panel logistics-edge-policies">
+      <summary className="logistics-policy-summary">
+        <span>Edge policies</span>
+        <span className="logistics-policy-summary-meta">{edges.length} edge{edges.length === 1 ? '' : 's'} · last-run flow on map</span>
+      </summary>
+      <div className="logistics-edge-policies-content">
+        {edges.map((edge, index) => (
+          <details key={edgeKey(edge)} className="logistics-edge-policy">
+            <summary>{nodeName(edge.from)} → {nodeName(edge.to)}</summary>
+            <div className="logistics-policy-grid">
+              <label className="logistics-policy-field">Priority
+                <input type="number" min="0" value={edge.priority ?? 0}
+                  onChange={(event) => onChange(index, { priority: Math.max(0, Number(event.target.value)) })} />
               </label>
-            ))}
-          </div>
-          <div className="logistics-filter-head">Materials <button onClick={() => onChange(index, { allowedMaterials: undefined })}>Demand default</button></div>
-          <div className="logistics-filter-grid logistics-filter-grid--materials">
-            {ROUTABLE_MATERIALS.map((id) => (
-              <label key={id} className="logistics-filter-item">
-                <input type="checkbox" checked={edge.allowedMaterials?.includes(id) ?? true}
-                  onChange={() => onChange(index, { allowedMaterials: toggle(edge.allowedMaterials, ROUTABLE_MATERIALS, id) })} />
-                <span>{materialName(id)}</span>
+              <label className="logistics-policy-field">Weight
+                <input type="number" min="1" value={edge.weight ?? 1}
+                  onChange={(event) => onChange(index, { weight: Math.max(1, Number(event.target.value)) })} />
               </label>
-            ))}
-          </div>
-        </details>
-      ))}
-    </div>
+              <label className="logistics-policy-field">Material cap
+                <input type="number" min="0" max={bandwidth} value={edge.unitCap ?? bandwidth}
+                  onChange={(event) => {
+                    const capped = Math.max(0, Math.min(bandwidth, Number(event.target.value)));
+                    onChange(index, { unitCap: capped >= bandwidth ? undefined : capped });
+                  }} />
+              </label>
+              <label className="logistics-policy-field">Overflow
+                <select value={edge.overflow ?? 'stockpile'} onChange={(event) => onChange(index, { overflow: event.target.value as RouteEdge['overflow'] })}>
+                  <option value="next">Next eligible edge</option>
+                  <option value="hold">Hold locally</option>
+                  <option value="stockpile">Ship stockpile</option>
+                </select>
+              </label>
+            </div>
+            <div className="logistics-filter-head">Raw cargo <button onClick={() => onChange(index, { allowedRaw: undefined })}>Demand default</button></div>
+            <div className="logistics-filter-grid">
+              {ROUTABLE_RAW.map((type) => (
+                <label key={type} className="logistics-filter-item">
+                  <input type="checkbox" checked={edge.allowedRaw?.includes(type) ?? true}
+                    onChange={() => onChange(index, { allowedRaw: toggle(edge.allowedRaw, ROUTABLE_RAW, type) })} />
+                  <span>{RESOURCE_LABELS[type]}</span>
+                  <input className="logistics-reserve-input" type="number" min="0" title="Minimum reserve at source"
+                    value={edge.minimumReserve?.raw?.[type] ?? 0}
+                    onChange={(event) => onChange(index, { minimumReserve: {
+                      ...edge.minimumReserve,
+                      raw: { ...(edge.minimumReserve?.raw ?? {}), [type]: Math.max(0, Number(event.target.value)) },
+                    } })} />
+                </label>
+              ))}
+            </div>
+            <div className="logistics-filter-head">Materials</div>
+            <details className="logistics-material-select">
+              <summary>
+                {edge.allowedMaterials === undefined
+                  ? 'Demand default'
+                  : `${edge.allowedMaterials.length} of ${ROUTABLE_MATERIALS.length} selected`}
+              </summary>
+              <div className="logistics-material-menu">
+                <div className="logistics-material-menu-actions">
+                  <button type="button" onClick={() => onChange(index, { allowedMaterials: undefined })}>Demand default</button>
+                  <button type="button" onClick={() => onChange(index, { allowedMaterials: [...ROUTABLE_MATERIALS] })}>Select all</button>
+                  <button type="button" onClick={() => onChange(index, { allowedMaterials: [] })}>Clear</button>
+                </div>
+                <div className="logistics-filter-grid logistics-filter-grid--materials">
+                  {ROUTABLE_MATERIALS.map((id) => (
+                    <label key={id} className="logistics-filter-item">
+                      <input type="checkbox" checked={edge.allowedMaterials?.includes(id) ?? true}
+                        onChange={() => onChange(index, { allowedMaterials: toggle(edge.allowedMaterials, ROUTABLE_MATERIALS, id) })} />
+                      <span>{materialName(id)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </details>
+          </details>
+        ))}
+      </div>
+    </details>
   );
 }
 

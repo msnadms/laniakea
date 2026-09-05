@@ -27,6 +27,15 @@ export const UPGRADE_POOL = 5;
 
 const STORAGE_BASE = 500;
 export const STORAGE_A_BONUS = [0, 500, 1500, 2000, 3000]; 
+export function resourceAmount(
+  state: { exoticMatter: number; helium3Reserves: number; alloys: number; nutrients: number; metallicHydrogen: number; neutronStarMatter: number },
+  type: Resource['type'],
+): number {
+  if (type === 'exotic') return state.exoticMatter;
+  if (type === 'helium-3') return state.helium3Reserves;
+  return state[type];
+}
+
 export function computeStorageCap(a: number): number {
   return STORAGE_BASE + STORAGE_A_BONUS[a];
 }
@@ -103,12 +112,14 @@ interface UIState {
   metallicHydrogen: number;
   neutronStarMatter: number;
   raiseDetection: (chance: number) => void;
+  raiseDetectionBy: (points: number) => void;
   tickDetectionDecay: () => void;
   checkDetectionLethal: () => boolean;
   purgeDetection: () => boolean;
   fireRailgun: () => void;
   reloadRailgun: () => void;
   addCargo: (type: Resource['type'], amount: number) => void;
+  depositCargo: (type: Resource['type'], amount: number) => number;
   selectedPlanetKey: string | null;
   setSelectedPlanet: (key: string | null) => void;
   setShipStats: (stats: { exoticMatter: number; detectionRating: number; railgunAmmo: number; helium3Reserves: number; lastDetectionChangeAt?: number; lastPurgeAt?: number }) => void;
@@ -190,8 +201,14 @@ export const useUIStore = create<UIState>((set, get) => ({
   raiseDetection: (chance) => {
     get().tickDetectionDecay();
     if (Math.random() >= chance) return;
+    get().raiseDetectionBy(1);
+  },
+  raiseDetectionBy: (points) => {
+    const steps = Math.floor(points);
+    if (steps <= 0) return;
+    get().tickDetectionDecay();
     const wasBelowMax = get().detectionRating < 5;
-    set((s) => ({ detectionRating: Math.min(5, s.detectionRating + 1), lastDetectionChangeAt: Date.now() }));
+    set((s) => ({ detectionRating: Math.min(5, s.detectionRating + steps), lastDetectionChangeAt: Date.now() }));
     if (wasBelowMax && get().detectionRating === 5) {
       get().triggerHudNotify('SIGNAL LOCKED — ALCUBIERRE CANNON CHARGING');
     }
@@ -253,6 +270,11 @@ export const useUIStore = create<UIState>((set, get) => ({
       lastPurgeAt: now,
     });
     return true;
+  },
+  depositCargo: (type, amount): number => {
+    const before = resourceAmount(get(), type);
+    get().addCargo(type, amount);
+    return Math.max(0, resourceAmount(get(), type) - before);
   },
   addCargo: (type, amount) => {
     if (type === 'exotic') useQuestStore.getState().completeQuest('first_exotic');

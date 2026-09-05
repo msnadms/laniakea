@@ -1,5 +1,9 @@
 # Logistics & Production Depth Plan
 
+> Superseded by [Instant Production and Logistics Skill Plan](instant-logistics-production-plan.md).
+> This file is retained as historical context; its timer-based recommendations are not the
+> current implementation target.
+
 Goal: make the crafting/logistics layer feel like Factorio — deep chains, rates and
 ratios, bottlenecks you can see, and layout decisions that matter — without
 abandoning the global stockpile or the exotic-matter / helium-3 economy.

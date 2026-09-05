@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ICON_PATHS } from './iconPaths';
 import { MAP_SIZE, NODE_R } from './logisticsProject';
 import type { ProjectedMapNode } from './logisticsProject';
@@ -8,6 +8,11 @@ import { edgeKey } from '../store/logisticsStore';
 
 const ICON_SIZE = NODE_R * 1.6;
 const ICON_HALF = ICON_SIZE / 2;
+
+const MIN_VIEW_SIZE = MAP_SIZE * 0.18;
+const MAX_VIEW_SIZE = MAP_SIZE * 2.5;
+const DEFAULT_VIEW = { cx: MAP_SIZE / 2, cy: MAP_SIZE / 2, size: MAP_SIZE };
+const ZOOM_STEP = 1.25;
 
 const STATUS_RING: Record<SlotStatus, string | null> = {
   idle: null,
@@ -28,6 +33,16 @@ function NodeIcon({ cx, cy, resourceType, color }: { cx: number; cy: number; res
       style={{ pointerEvents: 'none' }}
     />
   );
+}
+
+function clampViewSize(size: number): number {
+  return Math.max(MIN_VIEW_SIZE, Math.min(MAX_VIEW_SIZE, size));
+}
+
+function viewBoxOf(view: { cx: number; cy: number; size: number }, aspect: number) {
+  const w = aspect >= 1 ? view.size * aspect : view.size;
+  const h = aspect >= 1 ? view.size : view.size / aspect;
+  return { x: view.cx - w / 2, y: view.cy - h / 2, w, h };
 }
 
 function flowLabel(flow: EdgeFlowResult | undefined): string {
@@ -75,12 +90,69 @@ export function StationMap({
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const draggedRef = useRef(false);
+  const pannedRef = useRef(false);
+  const panRef = useRef<{ px: number; py: number; vx: number; vy: number } | null>(null);
   const [drag, setDrag] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
+  const [view, setView] = useState(DEFAULT_VIEW);
+  const [aspect, setAspect] = useState(1);
+  const [panning, setPanning] = useState(false);
+  const box = viewBoxOf(view, aspect);
+  const viewRef = useRef(view);
+  const boxRef = useRef(box);
+
+  useEffect(() => {
+    viewRef.current = view;
+    boxRef.current = box;
+  });
 
   const byNodeId = useMemo(
     () => Object.fromEntries(projected.map((p) => [p.nodeId, p])),
     [projected],
   );
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setAspect(width / height);
+    });
+    observer.observe(svg);
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const v = viewRef.current;
+      const size = clampViewSize(v.size * (e.deltaY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
+      const next = viewBoxOf({ ...v, size }, rect.width / rect.height);
+      const fx = (e.clientX - rect.left) / rect.width - 0.5;
+      const fy = (e.clientY - rect.top) / rect.height - 0.5;
+      setView({
+        cx: v.cx + fx * (boxRef.current.w - next.w),
+        cy: v.cy + fy * (boxRef.current.h - next.h),
+        size,
+      });
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      svg.removeEventListener('wheel', onWheel);
+    };
+  }, [projected.length]);
+
+  function zoomAtCenter(factor: number) {
+    setView((v) => ({ ...v, size: clampViewSize(v.size * factor) }));
+  }
+
+  function endPan() {
+    panRef.current = null;
+    setPanning(false);
+  }
+
+  function consumedByPan(): boolean {
+    if (!pannedRef.current) return false;
+    pannedRef.current = false;
+    return true;
+  }
 
   if (projected.length === 0) {
     return (
@@ -90,9 +162,10 @@ export function StationMap({
 
   function toSvg(e: React.PointerEvent): { x: number; y: number } {
     const rect = svgRef.current!.getBoundingClientRect();
+    const b = boxRef.current;
     return {
-      x: ((e.clientX - rect.left) / rect.width) * MAP_SIZE,
-      y: ((e.clientY - rect.top) / rect.height) * MAP_SIZE,
+      x: b.x + ((e.clientX - rect.left) / rect.width) * b.w,
+      y: b.y + ((e.clientY - rect.top) / rect.height) * b.h,
     };
   }
 
@@ -114,25 +187,48 @@ export function StationMap({
   }
 
   return (
+    <>
     <svg
       ref={svgRef}
-      viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`}
-      className="station-map-svg"
+      viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+      className={`station-map-svg${panning ? ' station-map-svg--panning' : ''}`}
       xmlns="http://www.w3.org/2000/svg"
-      onClick={onBackgroundClick}
+      onClick={() => {
+        if (consumedByPan()) return;
+        onBackgroundClick?.();
+      }}
+      onPointerDown={(e) => {
+        if (drag) return;
+        pannedRef.current = false;
+        panRef.current = { px: e.clientX, py: e.clientY, vx: view.cx, vy: view.cy };
+        setPanning(true);
+      }}
       onPointerMove={(e) => {
+        const pan = panRef.current;
+        if (pan) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const dx = (e.clientX - pan.px) * (boxRef.current.w / rect.width);
+          const dy = (e.clientY - pan.py) * (boxRef.current.h / rect.height);
+          if (Math.abs(dx) + Math.abs(dy) > 0.5) pannedRef.current = true;
+          setView((v) => ({ ...v, cx: pan.vx - dx, cy: pan.vy - dy }));
+          return;
+        }
         if (!drag) return;
         const p = toSvg(e);
         draggedRef.current = true;
         setDrag((d) => (d ? { ...d, x: p.x, y: p.y } : null));
       }}
       onPointerUp={() => {
+        endPan();
         if (drag?.over && drag.over !== drag.from && canLink(drag.from, drag.over)) {
           onAddEdge(drag.from, drag.over);
         }
         setDrag(null);
       }}
-      onPointerLeave={() => setDrag(null)}
+      onPointerLeave={() => {
+        endPan();
+        setDrag(null);
+      }}
     >
       <defs>
         <marker id="lm-arrow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
@@ -165,7 +261,7 @@ export function StationMap({
               stroke="transparent"
               strokeWidth="8"
               style={{ cursor: 'pointer' }}
-              onClick={(e) => { e.stopPropagation(); onRemoveEdge(edge); }}
+              onClick={(e) => { e.stopPropagation(); if (consumedByPan()) return; onRemoveEdge(edge); }}
             >
               <title>Click to remove link</title>
             </line>
@@ -236,6 +332,7 @@ export function StationMap({
             key={p.nodeId}
             onClick={(e) => {
               e.stopPropagation();
+              if (consumedByPan()) return;
               if (draggedRef.current) { draggedRef.current = false; return; }
               onNodeClick(p.nodeId);
             }}
@@ -320,5 +417,11 @@ export function StationMap({
         );
       })}
     </svg>
+    <div className="station-map-controls">
+      <button type="button" title="Zoom in" onClick={() => zoomAtCenter(1 / ZOOM_STEP)}>+</button>
+      <button type="button" title="Zoom out" onClick={() => zoomAtCenter(ZOOM_STEP)}>−</button>
+      <button type="button" title="Reset view" onClick={() => setView(DEFAULT_VIEW)}>⤾</button>
+    </div>
+    </>
   );
 }

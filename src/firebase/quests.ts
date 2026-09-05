@@ -8,7 +8,8 @@ const questRef = (uid: string) => doc(db, 'users', uid, 'quests', 'progress');
 export async function loadQuests(uid: string): Promise<CompletedQuests> {
   const snap = await getDoc(questRef(uid));
   if (!snap.exists()) return {};
-  return snap.data() as CompletedQuests;
+  const { first_colony, ...rest } = snap.data();
+  return (first_colony ? { ...rest, first_fabricator: true } : rest) as CompletedQuests;
 }
 
 export async function markQuestComplete(uid: string, id: QuestId): Promise<void> {

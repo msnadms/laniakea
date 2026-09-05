@@ -41,7 +41,7 @@ Beyond exploring, you run a ship that mines and ferries resources across the gal
 - **Logistics-B is throughput, not capacity.** It speeds up how fast stations fill (1.0×→2.0× at max tier) — invest here once you have more stations than your routes can keep collected.
 - **Build one connected network per route.** Every dispatch pays a flat base fee plus edge travel costs. Disconnected islands are rejected, and branch policy determines how much useful output one run produces.
 - **Dispatch is the production event.** A run collects cargo, processes all feasible fabricator batches in priority order, and carries output into later fabrication stages during the same traversal. An unchanged route does no work and spends no fuel.
-- **Mind the detection warning.** Routing through a region with more than 4 active, undampened stations raises your detection rating. Equip a **Signal Dampener** module on stations there to exempt them from that check.
+- **Mind route risk.** Undampened extractors and long route edges add detection risk to each dispatch. Equip **Signal Dampeners**, shorten the network, or use quiet automation to stay below its configured ceiling.
 - **Upgrade modules come from fabricators, not a shop.** Assign a module recipe and route its inputs; the finished module can reach the ship in that dispatch. Each extractor has two module slots managed from the Logistics panel.
 - **Drive upgrades compound with logistics.** Drive-A/B reduce both the flat dispatch fee and per-hop travel cost, so they pay off fastest once your network spans multiple systems or galaxies.
 

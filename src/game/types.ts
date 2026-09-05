@@ -168,6 +168,8 @@ export interface LogisticsRoute {
   id: string;
   name: string;
   edges: RouteEdge[];
+  /** Transitional input used only while converting pre-DAG route saves. */
+  legacyNodeKeys?: string[];
   active?: boolean;
   automation?: RouteAutomationPolicy;
   heldCargo?: Record<string, {
@@ -268,10 +270,6 @@ export const MAX_FABRICATOR_SLOTS = 8;
 export const FABRICATOR_COST = { alloys: 2000, helium3: 500, nutrients: 2000, metallicHydrogen: 500 } as const;
 export const FABRICATOR_UPGRADE_COST = { alloys: 1500, helium3: 1000, nutrients: 1500, metallicHydrogen: 1200 } as const;
 export const FABRICATOR_UPGRADE_MATERIALS: MaterialCost = { hea_billet: 2, ybco_tape: 1, metamaterial_film: 1 };
-export const FABRICATOR_SLOT_COSTS: Array<{ alloys?: number; exotic?: number }> = [
-  {}, {}, {}, {}, {},
-];
-
 export function includedFabricatorSlots(tier: FabricatorTier | undefined): number {
   return FABRICATOR_INCLUDED_SLOTS[tier ?? 1];
 }

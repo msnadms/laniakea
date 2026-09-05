@@ -88,7 +88,7 @@ Orbit radii grow by a factor of 1.55–2.2 per ring from a base of ~380–500 un
 - `extractorStore` — placed `Extractor`s keyed by `ExtractorKey`; `peekAccumulated`/`collectExtractor` derive accrued resources from elapsed time (`ACCUMULATION_RATE_PER_MS`) scaled by `storageB`/`logisticsB` tiers. Also owns the extractor-upgrade-module system: `ownedUpgrades` (inventory) and `nodeEquipped` (per-extractor `[slot0, slot1]` upgrade ids, see `getExtractorMultipliers`). `receiveFabricatorItems` deposits finished fabricator output — materials/rares to `stockpileStore`, modules to `ownedUpgrades`
 - `fabricatorStore` — placed `Fabricator`s and their `fabricatorStates` (per-fabricator production slots). See **Fabricator production model** below
 - `stockpileStore` — the ship's uncapped hold of crafted goods: `materials` (intermediate materials, with `hasMaterials`/`consumeMaterials`/`addMaterial`) and `rares` (rare assemblies from advanced fabricators, `addRare`). Persisted via `firebase/stockpile.ts`
-- `logisticsStore` — drone delivery `routes`, each a **DAG** over map-node ids (`LogisticsRoute.nodes` + `edges`). See **Logistics routes are DAGs** below
+- `logisticsStore` — drone delivery `routes`, each a **DAG** over map-node ids (membership derived from `LogisticsRoute.edges`). See **Logistics routes are DAGs** below
 
 ### Fabricator production model
 
@@ -134,6 +134,9 @@ and source reserves. Each edge independently enforces `computeMaterialBandwidth`
 use stable lexical tie-breaking, so edge creation order cannot change results.
 
 Routes can be activated with source-fill, recipe-ready, detection-ceiling, jam, and quiet policies.
+An automated route that cannot afford fuel or would breach its detection ceiling **holds** (staying active
+and retrying as detection decays); only `pauseOnJam` deactivates it, since a jam needs the player.
+Route risk is spent through `raiseDetectionBy` (detection points), not `raiseDetection` (a 0-1 probability).
 `useLogisticsAutomation` runs the same `dispatchRoute` path as manual operation and persists each
 completed run. Route-scoped detection risk combines undampened extractors and travel distance.
 
@@ -205,11 +208,11 @@ The logistics modal is split into two files: `LogisticsMap.tsx` owns map project
 
 ### Fabricator crafting
 
-Fabricators are the crafting layer — named `Fabricator` in code, UI strings and the Firestore `fabricators` collection alike (the older `colony`/`Settlement` naming and its migrations are gone). Every recipe — intermediate material or extractor module — is a `Craftable` (`src/data/upgrades.ts → ALL_CRAFTABLES`, looked up with `getCraftable`); see **Recipe data** above for the full field set.
+Fabricators are the crafting layer — named `Fabricator` in code, UI strings and the Firestore `fabricators` collection alike. Firestore loaders retain one-time compatibility for the older `settlements` collection, `first_colony` quest id, timed production slots, pending outputs, and ordered `nodeKeys` routes. Every recipe — intermediate material or extractor module — is a `Craftable` (`src/data/upgrades.ts → ALL_CRAFTABLES`, looked up with `getCraftable`); see **Recipe data** above for the full field set.
 
 **Intermediate materials** (`src/data/materials.json`, typed re-export in `materials.ts`) are real-science intermediates in three tiers (`MATERIAL_TIER_LABELS`: Refined → Engineered → Exotic) — graphene lattice, boron nitride ceramic, deuterium slush, silica aerogel, tritium residue; high-entropy alloy billet, YBCO tape, metamaterial film, BEC cell, tritium getter bed; Casimir plate stack, Penning positron trap, degenerate matter core, muon-catalysed fusion cell. Higher tiers consume lower tiers, so the tree bottoms out in raw extractor output. The graph is deliberately **wide, not linear**: every tier-1 material feeds several downstream recipes so tier-1 demand competes. Two materials have alternate routes (`graphene_lattice_carbide`, `silica_aerogel_vacuum`) trading a different raw mix for a better yield.
 
-**Extractor upgrade modules** (`src/data/upgrades.json`, typed re-export in `upgrades.ts`): data-driven defs (`EXTRACTOR_UPGRADES`) with raw `cost`, intermediate `materials`, and `effect` (`rate`, `storage`, or `detection` `upgType` + `multiplier`). Modules sit at the top of the tree and are earned only via fabricator production, then equipped two-per-extractor; a `detection` module (Signal Dampener) excludes that extractor from `willRaiseDetection` checks entirely rather than reducing a numeric detection value.
+**Extractor upgrade modules** (`src/data/upgrades.json`, typed re-export in `upgrades.ts`): data-driven defs (`EXTRACTOR_UPGRADES`) with raw `cost`, intermediate `materials`, and `effect` (`rate`, `storage`, or `detection` `upgType` + `multiplier`). Modules sit at the top of the tree and are earned only via fabricator production, then equipped two-per-extractor; a `detection` module (Signal Dampener) excludes that extractor from `routeDetectionRisk` entirely rather than reducing a numeric detection value.
 
 **Advanced fabricators** are the second fabricator tier (`Fabricator.tier`: `1` basic, `2` advanced; `FABRICATOR_TIER_LABELS`). They are not built directly: a planet only offers a basic fabricator, and an existing tier-1 fabricator is upgraded in place from `PlanetPanel` (`fabricatorStore.upgradeFabricator`) by paying `FABRICATOR_UPGRADE_COST` in raw resources plus `FABRICATOR_UPGRADE_MATERIALS` from the stockpile, so a basic fabricator has to run before one can exist. They craft everything a basic fabricator can, plus the `'rare'` category: **rare assemblies** (`src/data/rareResources.json`, typed re-export in `rareResources.ts`) — neutronium keel, zero-point capacitor, antihydrogen reservoir, frame-dragging gyroscope, closed ecology column — grouped by `role` (`RARE_ROLE_LABELS`) and reserved for player bases. Rare recipes take raw resources plus tier-2/3 intermediates, and their output lands in `stockpileStore.rares` rather than `materials`. `fabricatorCanCraft(tier, category)` gates rare targets to tier 2 in both `setSlotTarget` and `feedFabricator`; the slot picker only lists rare sections for an advanced fabricator, and advanced nodes render amber (rather than green) on the logistics map and in-system.
 
