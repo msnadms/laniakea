@@ -179,26 +179,7 @@ function makeCircleCanvas(size: number, baseColor: number) {
   return { canvas, ctx, r0, g0, b0 };
 }
 
-type ShadowOpts   = { inner: number; stop: number; midA: number; outerA: number };
-type SpecularOpts = { ox: number; oy: number; r: number; a: number };
-
-function applySphereShading(ctx: CanvasRenderingContext2D, SIZE: number, sh: ShadowOpts, sp: SpecularOpts) {
-  const shadow = ctx.createRadialGradient(SIZE/2, SIZE/2, SIZE*sh.inner, SIZE/2, SIZE/2, SIZE/2);
-  shadow.addColorStop(0,       'rgba(0,0,0,0)');
-  shadow.addColorStop(sh.stop, `rgba(0,0,0,${sh.midA})`);
-  shadow.addColorStop(1,       `rgba(0,0,0,${sh.outerA})`);
-  ctx.fillStyle = shadow;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-
-  const hi = ctx.createRadialGradient(SIZE*sp.ox, SIZE*sp.oy, 0, SIZE*sp.ox, SIZE*sp.oy, SIZE*sp.r);
-  hi.addColorStop(0,   `rgba(255,255,255,${sp.a})`);
-  hi.addColorStop(0.5, `rgba(255,255,255,${+(sp.a * 0.22).toFixed(2)})`);
-  hi.addColorStop(1,   'rgba(255,255,255,0)');
-  ctx.fillStyle = hi;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-}
-
-export function createRockyPlanetTexture(baseColor: number, seed: number): Texture {
+export function createRockyPlanetAlbedoTexture(baseColor: number, seed: number): Texture {
   const rng = createRng(seed);
   const SIZE = 256;
   const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
@@ -254,14 +235,10 @@ export function createRockyPlanetTexture(baseColor: number, seed: number): Textu
     ctx.fillRect(0, 0, SIZE, SIZE);
   }
 
-  applySphereShading(ctx, SIZE,
-    { inner: 0.25, stop: 0.6, midA: 0.2,  outerA: 0.78 },
-    { ox: 0.33,   oy: 0.28,  r: 0.28,    a: 0.38 },
-  );
   return Texture.from(canvas);
 }
 
-export function createHabitablePlanetTexture(baseColor: number, seed: number): Texture {
+export function createHabitablePlanetAlbedoTexture(baseColor: number, seed: number): Texture {
   const rng = createRng(seed);
   const SIZE = 256;
   const { canvas, ctx } = makeCircleCanvas(SIZE, baseColor);
@@ -353,14 +330,10 @@ export function createHabitablePlanetTexture(baseColor: number, seed: number): T
   ctx.fillStyle = atmo;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  applySphereShading(ctx, SIZE,
-    { inner: 0.25, stop: 0.6, midA: 0.15, outerA: 0.72 },
-    { ox: 0.33,   oy: 0.28,  r: 0.3,     a: 0.52 },
-  );
   return Texture.from(canvas);
 }
 
-export function createMoonTexture(baseColor: number, seed: number): Texture {
+export function createMoonAlbedoTexture(baseColor: number, seed: number): Texture {
   const rng = createRng(seed);
   const SIZE = 128;
   const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
@@ -404,10 +377,6 @@ export function createMoonTexture(baseColor: number, seed: number): Texture {
     ctx.stroke();
   }
 
-  applySphereShading(ctx, SIZE,
-    { inner: 0.2,  stop: 0.55, midA: 0.22, outerA: 0.82 },
-    { ox: 0.34,   oy: 0.28,   r: 0.26,    a: 0.22 },
-  );
   return Texture.from(canvas);
 }
 
@@ -539,7 +508,7 @@ export function createBrownDwarfTexture(seed: number): Texture {
   return Texture.from(canvas);
 }
 
-export function createGasGiantTexture(baseColor: number, seed: number, isIce = false): Texture {
+export function createGasGiantAlbedoTexture(baseColor: number, seed: number, isIce = false): Texture {
   const rng = createRng(seed);
   const SIZE = 256;
   const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
@@ -564,9 +533,5 @@ export function createGasGiantTexture(baseColor: number, seed: number, isIce = f
     y += bandH;
   }
 
-  applySphereShading(ctx, SIZE,
-    { inner: 0.25, stop: 0.6, midA: 0.15, outerA: 0.72 },
-    { ox: 0.33,   oy: 0.28,  r: 0.32,    a: 0.45 },
-  );
   return Texture.from(canvas);
 }
