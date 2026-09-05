@@ -45,7 +45,7 @@ export async function resetGame(): Promise<void> {
   applyUserSettings(defaultSettings);
   useUIStore.setState({ view: defaultSettings.lastView, address: defaultSettings.address });
   useGameStore.getState().resetToInitial();
-  useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {}, pendingUpgrades: [] });
+  useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {} });
   useFabricatorStore.setState({ fabricators: {}, fabricatorStates: {} });
   useLogisticsStore.setState({ routes: [] });
   useStockpileStore.setState({ materials: {}, rares: {} });
@@ -61,7 +61,7 @@ export async function resetGame(): Promise<void> {
     deleteAllLogisticsRoutes(user.uid),
     deleteAllDiscoveries(user.uid),
     deleteQuests(user.uid),
-    saveExtractorUpgrades(user.uid, { ownedUpgrades: [], nodeEquipped: {}, pendingUpgrades: [] }),
+    saveExtractorUpgrades(user.uid, { ownedUpgrades: [], nodeEquipped: {} }),
     saveStockpile(user.uid, {}, {}),
   ]);
 }

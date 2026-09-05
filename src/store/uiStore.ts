@@ -58,6 +58,13 @@ export function computeLogisticsCap(a: number): number {
 }
 export const LOGISTICS_B_RATE = [1.0, 1.25, 1.5, 1.75, 2.0];
 
+const MATERIAL_BANDWIDTH_BASE = 4;
+export const LOGISTICS_A_BANDWIDTH = [0, 2, 4, 7, 10];
+export const LOGISTICS_B_BANDWIDTH = [0, 1, 3, 5, 8];
+export function computeMaterialBandwidth(a: number, b: number): number {
+  return MATERIAL_BANDWIDTH_BASE + LOGISTICS_A_BANDWIDTH[a] + LOGISTICS_B_BANDWIDTH[b];
+}
+
 // Unlock threshold for the remote delivery panel (requires both logistics paths ≥ this tier).
 export const DELIVERY_UNLOCK_THRESHOLD = 2;
 

@@ -4,7 +4,6 @@
       "id": "neutronium_keel",
       "name": "Neutronium Keel",
       "role": "structure",
-      "craftHours": 24,
       "desc": "A spine of degenerate matter laid down first, so that everything built above it has something that will not bend.",
       "cost": { "alloys": 2500, "neutronStarMatter": 900 },
       "materials": { "degenerate_core": 2, "hea_billet": 4 }
@@ -13,7 +12,6 @@
       "id": "zero_point_capacitor",
       "name": "Zero-Point Capacitor",
       "role": "power",
-      "craftHours": 24,
       "desc": "It draws on the vacuum itself and gives back a little less than it takes, which is enough.",
       "cost": { "exotic": 800 },
       "materials": { "casimir_plate": 2, "bec_cell": 1 }
@@ -22,7 +20,6 @@
       "id": "antihydrogen_reservoir",
       "name": "Antihydrogen Reservoir",
       "role": "fuel",
-      "craftHours": 30,
       "desc": "A gram of antihydrogen suspended in nothing, waiting a very long time to touch something.",
       "cost": { "helium": 2200, "metallicHydrogen": 800 },
       "materials": { "positron_trap": 2, "deuterium_slush": 4 }
@@ -31,7 +28,6 @@
       "id": "frame_dragging_gyro",
       "name": "Frame-Dragging Gyroscope",
       "role": "field",
-      "craftHours": 30,
       "desc": "It measures how a station's own turning drags spacetime along behind it, and corrects the drift before anyone aboard can feel it.",
       "cost": { "alloys": 1800, "exotic": 1200 },
       "materials": { "ybco_tape": 3, "degenerate_core": 1 }
@@ -40,7 +36,6 @@
       "id": "closed_ecology_column",
       "name": "Closed Ecology Column",
       "role": "life",
-      "craftHours": 36,
       "desc": "Algae, water and light in a loop that has to close perfectly, because out here there is nothing left to top it up with.",
       "cost": { "nutrients": 3200, "alloys": 1200 },
       "materials": { "silica_aerogel": 6, "graphene_lattice": 4, "muon_cell": 1 }

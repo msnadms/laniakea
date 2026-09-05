@@ -3,7 +3,7 @@ import {
   useUIStore,
   UPGRADE_COSTS, UPGRADE_POOL,
   EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE,
-  computeStorageCap, computeDriveMultiplier, computeLogisticsCap,
+  computeStorageCap, computeDriveMultiplier, computeLogisticsCap, computeMaterialBandwidth,
 } from '../store/uiStore';
 import './ShipUpgradePanel.css';
 
@@ -310,7 +310,7 @@ function ShipUpgradePanelInner() {
               maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - logisticsB),
               names: LOGISTICS_A_NAMES,
               descs: LOGISTICS_A_DESCS,
-              stat: (lvl) => `${computeLogisticsCap(lvl)} station cap`,
+              stat: (lvl) => `${computeLogisticsCap(lvl)} stations · ${computeMaterialBandwidth(lvl, logisticsB)} bandwidth`,
               costs: UPGRADE_COSTS.logisticsA,
               currency: 'alloys',
               canAfford: alloys >= logisticsACost,
@@ -321,7 +321,7 @@ function ShipUpgradePanelInner() {
               maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - logisticsA),
               names: LOGISTICS_B_NAMES,
               descs: LOGISTICS_B_DESCS,
-              stat: (lvl) => `${LOGISTICS_B_RATE[lvl]}× collection rate`,
+              stat: (lvl) => `${LOGISTICS_B_RATE[lvl]}× rate · ${computeMaterialBandwidth(logisticsA, lvl)} bandwidth`,
               costs: UPGRADE_COSTS.logisticsB,
               currency: 'alloys',
               canAfford: alloys >= logisticsBCost,

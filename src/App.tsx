@@ -11,6 +11,7 @@ import { ShipHUD } from './ui/ShipHUD';
 import { PlanetPanel } from './ui/PlanetPanel';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
 import { useQuestPersist } from './hooks/useQuestPersist';
+import { useLogisticsAutomation } from './hooks/useLogisticsAutomation';
 import { initAuth, useAuthStore } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
 import { BootSequence } from './ui/BootSequence';
@@ -68,6 +69,7 @@ function AddressBar() {
 export default function App() {
   useSettingsPersist();
   useQuestPersist();
+  useLogisticsAutomation();
   useEffect(() => initAuth(), []);
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);

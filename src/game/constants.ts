@@ -48,12 +48,17 @@ export const BARRED_TWIST_MAX = 1.9;
 export const BAR_CLOUD_DENSITY = 0.1;
 export const BAR_CLOUD_NEBULA_CHANCE = 0.95;
 
-// A bar feeds gas into a wide central region rather than a compact bulge, so the
-// barred core glow reaches further and its particle count grows with the area.
-// The reach is round rather than following CORE_ELLIPSE's flattening, so it can't
-// be mistaken for a second bar lying across the real one.
-export const BARRED_CORE_SPREAD = 1.35;
-export const BARRED_CORE_COUNT_SCALE = 3.4;
+// The barred core is a lens lying along the bar: it swells to a bulge at the
+// centre and narrows to the bar's own width at each end, so the bar reads as one
+// shape running out of the bulge instead of a circle with a slab through it.
+// Length is a fraction of the bar's half-length, height a multiple of its
+// half-width, and BARRED_CORE_END_WIDTH is the share of that height still left
+// where the lens meets the bar.
+export const BARRED_CORE_LENGTH_FRACTION = 0.8;
+export const BARRED_CORE_BULGE_SCALE = 1.7;
+export const BARRED_CORE_END_WIDTH = 0.38;
+export const BARRED_CORE_LENS = 0.8;
+export const BARRED_CORE_COUNT_SCALE = 1.8;
 
 // Alpha holds full inside BARRED_CORE_PLATEAU of the reach, keeping the solid
 // bright centre, then falls as (1 - r)^f so the extra reach is a faint white haze.
@@ -61,7 +66,7 @@ export const BARRED_CORE_COUNT_SCALE = 3.4;
 // unscaled core ellipse did.
 export const BARRED_CORE_PLATEAU = 0.25;
 export const BARRED_CORE_FALLOFF = 3.2;
-export const BARRED_CORE_ALPHA_SCALE = 2.2;
+export const BARRED_CORE_ALPHA_SCALE = 1.6;
 
 // Power curve for elliptical radius: radius = R * u^c, so surface density goes
 // as r^(1/c - 2). 0.5 is a flat disc; at 1.0 and above the centre becomes a

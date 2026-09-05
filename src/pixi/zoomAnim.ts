@@ -13,6 +13,9 @@ export function fireCodexNavigate(onFadeStart: () => void, onComplete: () => voi
   return _codexNavigateFn ? _codexNavigateFn(onFadeStart, onComplete) : false;
 }
 
+let _cancelIntro: (() => void) | null = null;
+export function cancelIntroZoom(): void { _cancelIntro?.(); }
+
 const FADE_START_T = 0.9;
 
 // Anchor math is intentionally identical to scroll-wheel zoom: worldX/Y stays pinned at anchorScreenX/Y.
@@ -103,11 +106,17 @@ export function animateIntro(
     camera.current.y = getY(scale);
     world.scale.set(scale);
     world.position.set(camera.current.x, camera.current.y);
-    if (t >= 1) Ticker.shared.remove(tick);
+    if (t >= 1) stop();
+  };
+
+  const stop = () => {
+    Ticker.shared.remove(tick);
+    if (_cancelIntro === stop) _cancelIntro = null;
   };
 
   Ticker.shared.add(tick);
-  return () => Ticker.shared.remove(tick);
+  _cancelIntro = stop;
+  return stop;
 }
 
 export function registerCodexZoomOut(

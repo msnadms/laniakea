@@ -4,11 +4,11 @@ import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
-import { loadAllFabricators } from '../firebase/fabricators';
+import { loadAllFabricators, saveFabricatorState } from '../firebase/fabricators';
 import { loadQuests } from '../firebase/quests';
 import { loadLogisticsRoutes } from '../firebase/logisticsRoutes';
-import { loadExtractorUpgrades } from '../firebase/extractorUpgrades';
-import { loadStockpile } from '../firebase/stockpile';
+import { loadExtractorUpgrades, saveExtractorUpgrades } from '../firebase/extractorUpgrades';
+import { loadStockpile, saveStockpile } from '../firebase/stockpile';
 import { applyUserSettings, useUIStore } from './uiStore';
 import { cancelDeathSequence } from './resetGame';
 import { useCodexStore } from './codexStore';
@@ -70,11 +70,25 @@ export function initAuth(): () => void {
           : baseSettings;
         applyUserSettings(settings);
         useExtractorStore.getState().restoreExtractors(extractors);
-        useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped, extractorUpgrades.pendingUpgrades ?? []);
+        useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped);
         useFabricatorStore.getState().restoreFabricators(fabricators.fabricators);
         useFabricatorStore.getState().restoreFabricatorStates(fabricators.fabricatorStates);
         useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
         useStockpileStore.getState().restoreStockpile(stockpile.materials, stockpile.rares);
+        if (fabricators.legacyProductionItems.length > 0) {
+          useExtractorStore.getState().receiveFabricatorItems(fabricators.legacyProductionItems);
+          const normalizedStates = useFabricatorStore.getState().fabricatorStates;
+          const migratedStockpile = useStockpileStore.getState();
+          const migratedUpgrades = useExtractorStore.getState();
+          await Promise.all([
+            ...Object.entries(normalizedStates).map(([key, state]) => saveFabricatorState(user.uid, key, state)),
+            saveStockpile(user.uid, migratedStockpile.materials, migratedStockpile.rares),
+            saveExtractorUpgrades(user.uid, {
+              ownedUpgrades: migratedUpgrades.ownedUpgrades,
+              nodeEquipped: migratedUpgrades.nodeEquipped,
+            }),
+          ]);
+        }
         useCodexStore.getState().setAll(discoveries);
         useQuestStore.getState().restoreQuests(quests);
 

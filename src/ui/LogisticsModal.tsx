@@ -1,19 +1,48 @@
 import { createPortal } from 'react-dom';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useLogisticsStore, computeRouteCost, willRaiseDetection, canFeedFabricatorMaterials } from '../store/logisticsStore';
+import {
+  useLogisticsStore,
+  computeRouteCost,
+  canFeedFabricatorMaterials,
+  resolveNodeGroups,
+  routeExtractorKeys,
+  routeFabricatorKeys,
+  routeIsValid,
+  routeIslandNodes,
+  topoOrder,
+  successors,
+  routeNodes,
+  wouldCreateCycle,
+  fabricatorNodeStatus,
+  edgeKey,
+  DEFAULT_AUTOMATION_POLICY,
+} from '../store/logisticsStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
-import { useFabricatorStore } from '../store/fabricatorStore';
-import { useUIStore } from '../store/uiStore';
+import {
+  useFabricatorStore,
+  hasDispatchableFabricatorCargo,
+  slotStatus,
+} from '../store/fabricatorStore';
+import type { SlotRunResult } from '../store/fabricatorStore';
+import { useUIStore, computeMaterialBandwidth } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
-import { RESOURCE_LABELS, COST_KEY_TO_RESOURCE, MATERIAL_TIER_LABELS, RARE_ROLE_LABELS, FABRICATOR_TIER_LABELS } from '../game/types';
+import {
+  RESOURCE_LABELS,
+  COST_KEY_TO_RESOURCE,
+  MATERIAL_TIER_LABELS,
+  RARE_ROLE_LABELS,
+  FABRICATOR_TIER_LABELS,
+  SLOT_STATUS_LABELS,
+  bufferDepth,
+} from '../game/types';
 import { EXTRACTOR_UPGRADES, getCraftable } from '../data/upgrades';
 import type { Craftable } from '../data/upgrades';
-import { CRAFT_MATERIALS, MATERIAL_TIERS, materialName } from '../data/materials';
+import { CRAFTABLE_MATERIALS, STOCKED_MATERIALS, MATERIAL_TIERS, materialName } from '../data/materials';
 import { RARE_RESOURCES, RARE_ROLES } from '../data/rareResources';
 import { useStockpileStore } from '../store/stockpileStore';
 import { UpgradeModuleIcon } from './CargoIcons';
-import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost } from '../game/types';
-import { MAX_FABRICATOR_SLOTS, FABRICATOR_SLOT_COSTS } from '../game/types';
+import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, Resource } from '../game/types';
+import { maxFabricatorSlots, makeEmptyFabricatorSlot } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
 import { updateExtractorCollected } from '../firebase/extractors';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
@@ -25,6 +54,7 @@ import { getSystemKey, getSystemName, projectNodes } from './logisticsProject';
 import type { ProjectedMapNode } from './logisticsProject';
 import { useNow } from './useNow';
 import './LogisticsModal.css';
+import './LogisticsPolicies.css';
 
 type AnimLine = { text: string; isCost: boolean; revealStep: number };
 type DispatchAnim = {
@@ -33,6 +63,12 @@ type DispatchAnim = {
   lines: AnimLine[];
   done: boolean;
 };
+
+const ROUTABLE_RAW: Resource['type'][] = [
+  'exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter',
+];
+
+const ROUTABLE_MATERIALS = [...new Set(STOCKED_MATERIALS.map((material) => material.id))];
 
 function costParts(exotic: number, helium: number): Array<[string, number]> {
   const parts: Array<[string, number]> = [];
@@ -56,8 +92,6 @@ function CostChips({ exotic, helium, affordable = true }: { exotic: number; heli
   );
 }
 
-type DraftNode = { nodeId: string; name: string; keys: string[]; isFabricator: boolean; isAdvanced: boolean };
-
 export function LogisticsModal({ onClose }: { onClose: () => void }) {
   return createPortal(
     <LogisticsModalInner onClose={onClose} />,
@@ -71,32 +105,37 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const updateRoute = useLogisticsStore((s) => s.updateRoute);
   const removeRoute = useLogisticsStore((s) => s.removeRoute);
   const dispatchRoute = useLogisticsStore((s) => s.dispatchRoute);
+  const previewRoute = useLogisticsStore((s) => s.previewRoute);
+  const setRouteActive = useLogisticsStore((s) => s.setRouteActive);
+  const lastRuns = useLogisticsStore((s) => s.lastRuns);
   const extractors = useExtractorStore((s) => s.extractors);
   const ownedUpgrades = useExtractorStore((s) => s.ownedUpgrades);
   const nodeEquipped = useExtractorStore((s) => s.nodeEquipped);
-  const pendingUpgrades = useExtractorStore((s) => s.pendingUpgrades);
   const equipUpgrade = useExtractorStore((s) => s.equipUpgrade);
-  const claimPendingUpgrade = useExtractorStore((s) => s.claimPendingUpgrade);
   const stockpileMaterials = useStockpileStore((s) => s.materials);
   const stockpileRares = useStockpileStore((s) => s.rares);
   const fabricators = useFabricatorStore((s) => s.fabricators);
   const fabricatorStates = useFabricatorStore((s) => s.fabricatorStates);
+  const lastFabricatorRun = useFabricatorStore((s) => s.lastRun);
   const setSlotTarget = useFabricatorStore((s) => s.setSlotTarget);
   const unlockFabricatorSlot = useFabricatorStore((s) => s.unlockFabricatorSlot);
+  const setSlotPriority = useFabricatorStore((s) => s.setSlotPriority);
   const logisticsA = useUIStore((s) => s.logisticsA);
+  const logisticsB = useUIStore((s) => s.logisticsB);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const helium3 = useUIStore((s) => s.helium3Reserves);
-  const alloys = useUIStore((s) => s.alloys);
   const user = useAuthStore((s) => s.user);
 
   const driveA = useUIStore((s) => s.driveA);
   const driveB = useUIStore((s) => s.driveB);
   void driveA; void driveB;
 
+  const bandwidth = computeMaterialBandwidth(logisticsA, logisticsB);
+
   function saveUpgrades() {
     if (!user) return;
-    const { ownedUpgrades: owned, nodeEquipped: equipped, pendingUpgrades: pending } = useExtractorStore.getState();
-    saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped, pendingUpgrades: pending });
+    const { ownedUpgrades: owned, nodeEquipped: equipped } = useExtractorStore.getState();
+    saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped });
   }
 
   const handleSetSlotTarget = useCallback((key: string, slotIdx: number, upgradeId: string | null) => {
@@ -106,33 +145,26 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       if (cs) saveFabricatorState(user.uid, key, cs);
       const { materials, rares } = useStockpileStore.getState();
       saveStockpile(user.uid, materials, rares);
+      const { ownedUpgrades: owned, nodeEquipped: equipped } = useExtractorStore.getState();
+      saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped });
     }
   }, [setSlotTarget, user]);
 
+  const handleSetSlotPriority = useCallback((key: string, slotIdx: number, priority: number) => {
+    setSlotPriority(key, slotIdx, priority);
+    if (user) {
+      const state = useFabricatorStore.getState().fabricatorStates[key];
+      if (state) saveFabricatorState(user.uid, key, state);
+    }
+  }, [setSlotPriority, user]);
+
   const handleUnlockFabricatorSlot = useCallback((key: string) => {
-    const cs = useFabricatorStore.getState().fabricatorStates[key];
-    const slotCount = cs?.slots.length ?? 1;
-    const costIdx = slotCount - 1;
-    const cost = FABRICATOR_SLOT_COSTS[costIdx];
-    if (!cost) return;
-    const ui = useUIStore.getState();
-    if ((cost.alloys ?? 0) > ui.alloys || (cost.exotic ?? 0) > ui.exoticMatter) return;
-    if (cost.alloys) ui.spendAlloys(cost.alloys);
-    if (cost.exotic) ui.consumeExoticMatter(cost.exotic);
     unlockFabricatorSlot(key);
     if (user) {
       const updated = useFabricatorStore.getState().fabricatorStates[key];
       if (updated) saveFabricatorState(user.uid, key, updated);
     }
   }, [unlockFabricatorSlot, user]);
-
-  const handleClaimUpgrade = useCallback((pendingId: string) => {
-    claimPendingUpgrade(pendingId);
-    if (user) {
-      const { ownedUpgrades: owned, nodeEquipped: equipped, pendingUpgrades: pending } = useExtractorStore.getState();
-      saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped, pendingUpgrades: pending });
-    }
-  }, [claimPendingUpgrade, user]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -143,7 +175,9 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
-  const [draftNodeKeys, setDraftNodeKeys] = useState<string[]>([]);
+  const [draftEdges, setDraftEdges] = useState<RouteEdge[]>([]);
+  const [draftActive, setDraftActive] = useState(false);
+  const [draftAutomation, setDraftAutomation] = useState<RouteAutomationPolicy>(DEFAULT_AUTOMATION_POLICY);
   const [lastHoveredNodeId, setLastHoveredNodeId] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<'resources' | 'materials' | 'modules'>('resources');
   const [pendingEquip, setPendingEquip] = useState<{ extractorKey: string; nodeName: string; resourceLabel: string; slot: 0 | 1 } | null>(null);
@@ -184,7 +218,9 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     setEditingId(null);
     setIsEditing(true);
     setDraftName(defaultName);
-    setDraftNodeKeys([]);
+    setDraftEdges([]);
+    setDraftActive(false);
+    setDraftAutomation(DEFAULT_AUTOMATION_POLICY);
   }
 
   function startEdit(id: string) {
@@ -193,28 +229,54 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     setEditingId(id);
     setIsEditing(true);
     setDraftName(route.name);
-    setDraftNodeKeys([...route.nodeKeys]);
+    setDraftEdges([...route.edges]);
+    setDraftActive(route.active ?? false);
+    setDraftAutomation({ ...DEFAULT_AUTOMATION_POLICY, ...(route.automation ?? {}) });
   }
 
-  function toggleNode(keys: string[]) {
-    setDraftNodeKeys((prev) => {
-      const anyIn = keys.some((k) => prev.includes(k));
-      if (anyIn) return prev.filter((k) => !keys.includes(k));
-      return [...prev, ...keys];
-    });
+  function unlinkNode(nodeId: string) {
+    setDraftEdges((edges) => edges.filter((e) => e.from !== nodeId && e.to !== nodeId));
   }
+
+  const canLink = useCallback(
+    (from: string, to: string) =>
+      !draftEdges.some((e) => e.from === from && e.to === to) &&
+      !draftEdges.some((e) => e.from === to && e.to === from) &&
+      !wouldCreateCycle(draftEdges, from, to),
+    [draftEdges],
+  );
+
+  function addEdge(from: string, to: string) {
+    setDraftEdges((prev) => (canLink(from, to) ? [...prev, { from, to }] : prev));
+  }
+
+  function removeEdge(edge: RouteEdge) {
+    setDraftEdges((prev) => prev.filter((e) => !(e.from === edge.from && e.to === edge.to)));
+  }
+
+  function updateDraftEdge(index: number, patch: Partial<RouteEdge>) {
+    setDraftEdges((edges) => edges.map((edge, edgeIndex) => edgeIndex === index ? { ...edge, ...patch } : edge));
+  }
+
+  const draftNodes = useMemo(() => routeNodes(draftEdges), [draftEdges]);
+  const draftValid = routeIsValid(draftEdges);
 
   function handleSave() {
-    const validKeys = draftNodeKeys.filter((k) => !!extractors[k] || !!fabricators[k]);
-    if (validKeys.length < 2) return;
+    if (!draftValid) return;
     const name = draftName.trim() || 'Route';
     if (editingId) {
-      updateRoute(editingId, { name, nodeKeys: validKeys });
-      if (user) saveLogisticsRoute(user.uid, { id: editingId, name, nodeKeys: validKeys });
+      const route = {
+        id: editingId, name, edges: draftEdges, active: draftActive, automation: draftAutomation,
+        heldCargo: Object.fromEntries(Object.entries(
+          routes.find((candidate) => candidate.id === editingId)?.heldCargo ?? {},
+        ).filter(([nodeId]) => draftNodes.includes(nodeId))),
+      };
+      updateRoute(editingId, { name, edges: draftEdges, active: draftActive, automation: draftAutomation });
+      if (user) saveLogisticsRoute(user.uid, route);
     } else {
       if (routes.length >= maxRoutes) return;
       const id = crypto.randomUUID();
-      const route = { id, name, nodeKeys: validKeys };
+      const route = { id, name, edges: draftEdges, active: draftActive, automation: draftAutomation, heldCargo: {} };
       addRoute(route);
       if (user) saveLogisticsRoute(user.uid, route);
       setEditingId(id);
@@ -228,12 +290,13 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const { extractors: liveExtractors } = useExtractorStore.getState();
     const liveFabricators = useFabricatorStore.getState().fabricators;
 
-    const cost = computeRouteCost(route.nodeKeys, liveExtractors, liveFabricators);
+    const cost = computeRouteCost(route.edges, liveExtractors, liveFabricators);
+    const groups = resolveNodeGroups(routeNodes(route.edges), liveExtractors, liveFabricators);
+    const fabricatorKeys = routeFabricatorKeys(groups);
 
-    const fabricatorKeys = route.nodeKeys.filter((k) => !!liveFabricators[k]);
     const result = dispatchRoute(routeId);
     if (result !== false) {
-      const { collected, deliveries } = result;
+      const { collected, deliveries, order, carried, materialsMoved } = result;
       if (user) {
         if (collected.length > 0) {
           const updatedExtractors = useExtractorStore.getState().extractors;
@@ -247,26 +310,15 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
           const cs = updatedFabricatorStates[fabricatorKey];
           if (cs) saveFabricatorState(user.uid, fabricatorKey, cs);
         }
-        const { ownedUpgrades: owned, nodeEquipped: equipped, pendingUpgrades: pending } = useExtractorStore.getState();
-        saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped, pendingUpgrades: pending });
+        const { ownedUpgrades: owned, nodeEquipped: equipped } = useExtractorStore.getState();
+        saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped });
         if (fabricatorKeys.length > 0) {
           const { materials, rares } = useStockpileStore.getState();
           saveStockpile(user.uid, materials, rares);
         }
       }
 
-      // Build dispatch animation
-      const orderedNodeIds: string[] = [];
-      const seenNodeIds = new Set<string>();
-      for (const k of route.nodeKeys) {
-        const ext = liveExtractors[k];
-        const col = liveFabricators[k];
-        let nodeId: string | null = null;
-        if (ext) nodeId = getSystemKey(ext);
-        else if (col) nodeId = `fabricator:${col.galaxySeed}|${col.systemId}`;
-        if (nodeId && !seenNodeIds.has(nodeId)) { seenNodeIds.add(nodeId); orderedNodeIds.push(nodeId); }
-      }
-
+      const orderedNodeIds = order;
       const nodeCollected = new Map<string, Map<string, number>>();
       for (const { key, amount } of collected) {
         const ext = liveExtractors[key];
@@ -294,6 +346,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       }
 
       const lastStep = Math.max(0, orderedNodeIds.length - 1);
+      for (const [matId, count] of Object.entries(carried)) {
+        if (count > 0) {
+          lines.push({ text: `⇢ ${count}x ${materialName(matId)} carried`, isCost: false, revealStep: lastStep });
+        }
+      }
       for (const d of deliveries) {
         lines.push({
           text: `+${d.count}x ${d.name}`,
@@ -301,52 +358,63 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
           revealStep: lastStep,
         });
       }
+      if (materialsMoved > 0) {
+        lines.push({ text: `${materialsMoved} material-edge units moved · ${bandwidth} cap/edge`, isCost: true, revealStep: lastStep });
+      }
 
       if (orderedNodeIds.length > 0) {
         setDispatchAnim({ orderedNodeIds, step: 0, lines, done: false });
       }
     }
-  }, [routes, dispatchRoute, user]);
+  }, [routes, dispatchRoute, user, bandwidth]);
 
   function handleDelete(routeId: string) {
     if (editingId === routeId) {
       setEditingId(null);
       setIsEditing(false);
       setDraftName('');
-      setDraftNodeKeys([]);
+      setDraftEdges([]);
     }
     removeRoute(routeId);
     if (user) deleteLogisticsRoute(user.uid, routeId);
   }
 
-  const draftCost = computeRouteCost(draftNodeKeys, extractors, fabricators);
+  function handleToggleActive(routeId: string, active: boolean) {
+    const route = routes.find((candidate) => candidate.id === routeId);
+    if (!route) return;
+    setRouteActive(routeId, active);
+    if (editingId === routeId) setDraftActive(active);
+    if (user) saveLogisticsRoute(user.uid, { ...route, active });
+  }
 
-  const draftOrderChain = useMemo(() => {
-    const byNodeId = new Map<string, DraftNode>();
-    const result: DraftNode[] = [];
-    for (const k of draftNodeKeys) {
-      const ext = extractors[k];
-      const col = fabricators[k];
-      if (ext) {
-        const sk = getSystemKey(ext);
-        if (!byNodeId.has(sk)) {
-          const node: DraftNode = { nodeId: sk, name: getSystemName([ext]), keys: [], isFabricator: false, isAdvanced: false };
-          byNodeId.set(sk, node);
-          result.push(node);
-        }
-        byNodeId.get(sk)!.keys.push(k);
-      } else if (col) {
-        const colId = `fabricator:${col.galaxySeed}|${col.systemId}`;
-        if (!byNodeId.has(colId)) {
-          const node: DraftNode = { nodeId: colId, name: col.systemName || col.planetName, keys: [], isFabricator: true, isAdvanced: (col.tier ?? 1) >= 2 };
-          byNodeId.set(colId, node);
-          result.push(node);
-        }
-        byNodeId.get(colId)!.keys.push(k);
-      }
+  const draftCost = computeRouteCost(draftEdges, extractors, fabricators);
+  const draftIslands = useMemo(() => routeIslandNodes(draftEdges), [draftEdges]);
+
+  const nodeName = useCallback(
+    (nodeId: string) => projected.find((p) => p.nodeId === nodeId)?.name ?? nodeId,
+    [projected],
+  );
+
+  const draftChain = useMemo(() => {
+    const order = topoOrder(draftNodes, draftEdges);
+    if (!order) return null;
+    return order.map((nodeId) => ({
+      nodeId,
+      name: nodeName(nodeId),
+      isFabricator: nodeId.startsWith('fabricator:'),
+      isAdvanced: !!projected.find((p) => p.nodeId === nodeId)?.advanced,
+      branches: successors(draftEdges, nodeId).length,
+    }));
+  }, [draftNodes, draftEdges, nodeName, projected]);
+
+  const nodeStatus = useMemo(() => {
+    const map: Record<string, SlotStatus> = {};
+    for (const p of projected) {
+      if (p.nodeType !== 'fabricator') continue;
+      map[p.nodeId] = fabricatorNodeStatus(p.keys, fabricatorStates, fabricators);
     }
-    return result;
-  }, [draftNodeKeys, extractors, fabricators]);
+    return map;
+  }, [projected, fabricatorStates, fabricators]);
 
   const systemGroups = useMemo(() => {
     const map = new Map<string, Extractor[]>();
@@ -397,29 +465,32 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
                 <div className="logistics-routes-list">
                   {routes.map((route) => {
-                    const cost = computeRouteCost(route.nodeKeys, extractors, fabricators);
-                    const extractorKeys = route.nodeKeys.filter((k) => !!extractors[k]);
-                    const stations = extractorKeys.map((k) => extractors[k]) as Extractor[];
-                    const fabricatorCount = route.nodeKeys.filter((k) => !!fabricators[k]).length;
-                    const nodeCount = route.nodeKeys.filter((k) => !!extractors[k] || !!fabricators[k]).length;
+                    const preview = previewRoute(route.id);
+                    const cost = computeRouteCost(route.edges, extractors, fabricators);
+                    const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
+                    const extractorKeys = routeExtractorKeys(groups);
+                    const fabKeys = routeFabricatorKeys(groups);
+                    const stations = extractorKeys.map((k) => extractors[k]);
+                    const fabricatorCount = fabKeys.length;
+                    const nodeCount = groups.size;
+                    const valid = routeIsValid(route.edges);
                     const anyAccum = stations.some((s) => peekAccumulated(s) > 0);
-                    const routeFabricatorKeys = route.nodeKeys.filter((k) => !!fabricators[k]);
-                    const hasReadyFabricatorItems = routeFabricatorKeys.some((k) =>
-                      (fabricatorStates[k]?.slots ?? []).some(
-                        (slot) => slot.inProduction && slot.inProduction.availableAt <= Date.now(),
-                      ),
+                    const hasFabricatorOutput = hasDispatchableFabricatorCargo(
+                      fabKeys,
+                      fabricatorStates,
+                      fabricators,
                     );
                     const canAfford = exoticMatter >= cost.exotic && helium3 >= cost.helium;
-                    const canFeedMaterials = canFeedFabricatorMaterials(routeFabricatorKeys, fabricatorStates, stockpileMaterials);
+                    const canFeedMaterials = canFeedFabricatorMaterials(fabKeys, fabricatorStates, fabricators, stockpileMaterials);
                     const canDispatch =
-                      route.nodeKeys.length >= 2 &&
-                      (anyAccum || hasReadyFabricatorItems || canFeedMaterials) &&
-                      canAfford;
-                    const raisesDetection = willRaiseDetection(extractorKeys, extractors);
+                      valid && (anyAccum || hasFabricatorOutput || canFeedMaterials) && canAfford;
+                    const raisesDetection = (preview?.detectionRisk ?? 0) >= 5;
+                    const stalledStatus = fabricatorNodeStatus(fabKeys, fabricatorStates, fabricators);
+                    const stalled = stalledStatus === 'jammed' || stalledStatus === 'starved';
 
                     const status = canDispatch
                       ? { key: 'ready', label: 'Ready' }
-                      : route.nodeKeys.length < 2
+                      : !valid
                         ? { key: 'idle', label: 'Incomplete' }
                         : !canAfford
                           ? { key: 'blocked', label: 'Low Fuel' }
@@ -463,6 +534,29 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           </div>
                         )}
 
+                        {stalled && (
+                          <div className={`lroute-warn lroute-warn--${stalledStatus}`}>
+                            <span className="lroute-warn-icon">◈</span>
+                            {SLOT_STATUS_LABELS[stalledStatus]} fabricator on route
+                          </div>
+                        )}
+
+                        {preview && preview.reason !== 'Ready' && (
+                          <div className="lroute-warn lroute-warn--preview">
+                            <span className="lroute-warn-icon">◇</span>
+                            {preview.reason}
+                          </div>
+                        )}
+
+                        {preview && (
+                          <div className="lroute-preview">
+                            Dry run · {preview.expectedBatches} ready slot{preview.expectedBatches === 1 ? '' : 's'} ·{' '}
+                            {Object.values(preview.expectedEdgeUse).reduce((sum, edge) => sum + edge.used, 0)} expected edge units ·{' '}
+                            {preview.shortages.length} shortage{preview.shortages.length === 1 ? '' : 's'} · {preview.detectionRisk} risk
+                            {preview.expectedRecipes.length > 0 && <span title={preview.expectedRecipes.join(', ')}> · recipes: {preview.expectedRecipes.slice(0, 2).join(', ')}{preview.expectedRecipes.length > 2 ? '…' : ''}</span>}
+                          </div>
+                        )}
+
                         <div className="lroute-actions" onClick={(e) => e.stopPropagation()}>
                           <button
                             className="lroute-dispatch"
@@ -470,6 +564,13 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                             onClick={() => handleDispatch(route.id)}
                           >
                             Dispatch
+                          </button>
+                          <button
+                            className={`lroute-auto${route.active ? ' lroute-auto--active' : ''}`}
+                            disabled={!valid}
+                            onClick={() => handleToggleActive(route.id, !route.active)}
+                          >
+                            {route.active ? 'Pause' : 'Activate'}
                           </button>
                           <button
                             className="lroute-delete"
@@ -511,14 +612,20 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                   {/* Station map */}
                   <div className="logistics-map-section">
                     <div className="logistics-col-label">
-                      Extractors &amp; fabricators — click to add/remove from route
+                      Drag node to node to link · click a link to cut it · click a node for details
                     </div>
                     <div className="station-map-container">
                       <StationMap
                         projected={projected}
-                        draftNodeKeys={draftNodeKeys}
-                        onToggle={toggleNode}
-                        onNodeHover={setLastHoveredNodeId}
+                        draftNodes={draftNodes}
+                        draftEdges={draftEdges}
+                        nodeStatus={nodeStatus}
+                        edgeFlows={editingId ? lastRuns[editingId]?.edgeFlows : undefined}
+                        islandNodes={draftIslands}
+                        onAddEdge={addEdge}
+                        onRemoveEdge={removeEdge}
+                        canLink={canLink}
+                        onNodeClick={setLastHoveredNodeId}
                         onBackgroundClick={() => setLastHoveredNodeId(null)}
                         animActiveNodeId={dispatchAnim && !dispatchAnim.done ? (dispatchAnim.orderedNodeIds[dispatchAnim.step] ?? null) : null}
                       />
@@ -550,13 +657,90 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
 
+                  {draftIslands.length > 0 && (
+                    <div className="logistics-route-error">
+                      Disconnected island: {draftIslands.map(nodeName).join(', ')}. Link every node into one network.
+                    </div>
+                  )}
+
+                  {draftEdges.length > 0 && (
+                    <EdgePolicyPanel
+                      edges={draftEdges}
+                      bandwidth={bandwidth}
+                      nodeName={nodeName}
+                      onChange={updateDraftEdge}
+                    />
+                  )}
+
+                  <div className="logistics-automation-panel">
+                    <label className="logistics-policy-field logistics-policy-check">
+                      <input type="checkbox" checked={draftActive} onChange={(event) => setDraftActive(event.target.checked)} />
+                      Activate after save
+                    </label>
+                    <label className="logistics-policy-field">
+                      Source fill %
+                      <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                    </label>
+                    <label className="logistics-policy-field">
+                      Detection ceiling
+                      <input type="number" min="0" max="5" value={draftAutomation.detectionCeiling}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(5, Number(event.target.value))) }))} />
+                    </label>
+                    <label className="logistics-policy-field">
+                      Keep exotic
+                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.exotic}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, minimumShipReserve: {
+                          ...policy.minimumShipReserve, exotic: Math.max(0, Number(event.target.value)),
+                        } }))} />
+                    </label>
+                    <label className="logistics-policy-field">
+                      Keep helium-3
+                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.helium3}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, minimumShipReserve: {
+                          ...policy.minimumShipReserve, helium3: Math.max(0, Number(event.target.value)),
+                        } }))} />
+                    </label>
+                    <label className="logistics-policy-field logistics-policy-check">
+                      <input type="checkbox" checked={draftAutomation.requireRecipeReady}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, requireRecipeReady: event.target.checked }))} />
+                      Require ready recipe
+                    </label>
+                    <label className="logistics-policy-field logistics-policy-check">
+                      <input type="checkbox" checked={draftAutomation.pauseOnJam}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, pauseOnJam: event.target.checked }))} />
+                      Pause on jam
+                    </label>
+                    <label className="logistics-policy-field logistics-policy-check">
+                      <input type="checkbox" checked={draftAutomation.quiet}
+                        onChange={(event) => setDraftAutomation((policy) => ({ ...policy, quiet: event.target.checked }))} />
+                      Quiet route
+                    </label>
+                    <label className="logistics-policy-field">
+                      Keep exotic reserve
+                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.exotic}
+                        onChange={(event) => setDraftAutomation((policy) => ({
+                          ...policy,
+                          minimumShipReserve: { ...policy.minimumShipReserve, exotic: Math.max(0, Number(event.target.value)) },
+                        }))} />
+                    </label>
+                    <label className="logistics-policy-field">
+                      Keep He-3 reserve
+                      <input type="number" min="0" value={draftAutomation.minimumShipReserve.helium3}
+                        onChange={(event) => setDraftAutomation((policy) => ({
+                          ...policy,
+                          minimumShipReserve: { ...policy.minimumShipReserve, helium3: Math.max(0, Number(event.target.value)) },
+                        }))} />
+                    </label>
+                  </div>
+
                   {/* Footer: cost + order + save */}
                   <div className="logistics-editor-footer">
                     <div className="logistics-cost-display">
                       <div className="logistics-cost-label">Route Cost</div>
                       <div className="logistics-cost-value">
-                        {draftNodeKeys.length < 2 ? (
-                          <span className="logistics-cost-hint">Add at least 2 nodes</span>
+                        {draftEdges.length === 0 ? (
+                          <span className="logistics-cost-hint">Link at least 2 nodes</span>
                         ) : (
                           <CostChips
                             exotic={draftCost.exotic}
@@ -565,21 +749,24 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           />
                         )}
                       </div>
+                      <div className="logistics-bandwidth">{bandwidth} material units / edge / dispatch</div>
                     </div>
                     <div className="logistics-footer-divider" />
                     <div className="logistics-route-order">
-                      <span className="logistics-cost-label">Order</span>
+                      <span className="logistics-cost-label">Flow</span>
                       <span className="logistics-order-chain">
-                        {draftOrderChain.length === 0 ? (
+                        {draftEdges.length === 0 ? (
                           <span className="logistics-order-placeholder">—</span>
+                        ) : !draftChain ? (
+                          <span className="logistics-order-invalid">Cycle in route</span>
                         ) : (
                           <>
-                            {draftOrderChain.slice(0, 5).map((node, i, arr) => (
+                            {draftChain.slice(0, 5).map((node, i, arr) => (
                               <span key={node.nodeId} className="logistics-order-chain-item">
                                 <span
                                   className="logistics-order-node"
-                                  onClick={() => toggleNode(node.keys)}
-                                  title="Click to remove"
+                                  onClick={() => unlinkNode(node.nodeId)}
+                                  title="Click to unlink"
                                   style={node.isFabricator
                                     ? node.isAdvanced
                                       ? { color: 'rgba(255,200,90,0.85)', borderColor: 'rgba(150,110,35,0.4)' }
@@ -589,13 +776,15 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                                   <span className="logistics-order-num">{i + 1}</span>
                                   {node.name.length > 8 ? node.name.slice(0, 7) + '…' : node.name}
                                 </span>
-                                {(i < arr.length - 1 || draftOrderChain.length > 5) && (
-                                  <span className="logistics-order-arrow">→</span>
+                                {(i < arr.length - 1 || draftChain.length > 5) && (
+                                  <span className="logistics-order-arrow">
+                                    {node.branches > 1 ? '⑂' : '→'}
+                                  </span>
                                 )}
                               </span>
                             ))}
-                            {draftOrderChain.length > 5 && (
-                              <span className="logistics-order-overflow">+{draftOrderChain.length - 5}</span>
+                            {draftChain.length > 5 && (
+                              <span className="logistics-order-overflow">+{draftChain.length - 5}</span>
                             )}
                           </>
                         )}
@@ -603,10 +792,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     </div>
                     <button
                       className="logistics-save-btn"
-                      disabled={
-                        draftNodeKeys.filter((k) => !!extractors[k] || !!fabricators[k]).length < 2 ||
-                        (!editingId && !canAddRoute)
-                      }
+                      disabled={!draftValid || (!editingId && !canAddRoute)}
                       onClick={handleSave}
                     >
                       Save Route
@@ -635,10 +821,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                 node={lastHoveredNode}
                 fabricators={fabricators}
                 fabricatorStates={fabricatorStates}
-                exoticMatter={exoticMatter}
-                alloys={alloys}
+                lastRun={lastFabricatorRun}
                 onClose={() => setLastHoveredNodeId(null)}
                 onSetTarget={handleSetSlotTarget}
+                onSetPriority={handleSetSlotPriority}
                 onUnlockSlot={handleUnlockFabricatorSlot}
               />
             )}
@@ -725,33 +911,6 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                       })}
                     </Section>
                   )}
-                  {pendingUpgrades.length > 0 && (
-                    <Section title="Fabricator Output" count={`${pendingUpgrades.length}`} defaultOpen>
-                      <div className="lm-pending-list">
-                      {pendingUpgrades.map((item) => {
-                        const upg = getCraftable(item.upgradeId);
-                        const msLeft = item.availableAt - now;
-                        const ready = msLeft <= 0;
-                        const hoursLeft = ready ? 0 : Math.ceil(msLeft / (60 * 60 * 1000));
-                        return (
-                          <div key={item.id} className="lm-pending-item">
-                            <div className="lm-pending-item-name">{upg?.name ?? item.upgradeId}</div>
-                            <div className="lm-pending-item-row">
-                              <span className={`lm-pending-item-status${ready ? ' lm-pending-item-status--ready' : ''}`}>
-                                {ready ? 'Ready' : `${hoursLeft}h`}
-                              </span>
-                              {ready && (
-                                <button className="lm-pending-claim-btn" onClick={() => handleClaimUpgrade(item.id)}>
-                                  Claim
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      </div>
-                    </Section>
-                  )}
                 </div>
               </>
             )}
@@ -765,12 +924,80 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
 // ── Fabricator sidebar ────────────────────────────────────────────────────────────
 
-function materialCostEntries(materials: MaterialCost): Array<[string, number]> {
-  return Object.entries(materials).filter(([, amt]) => !!amt) as Array<[string, number]>;
+function EdgePolicyPanel({
+  edges, bandwidth, nodeName, onChange,
+}: {
+  edges: RouteEdge[];
+  bandwidth: number;
+  nodeName: (nodeId: string) => string;
+  onChange: (index: number, patch: Partial<RouteEdge>) => void;
+}) {
+  const toggle = <T extends string,>(current: T[] | undefined, all: T[], value: T): T[] => {
+    const selected = new Set(current ?? all);
+    if (selected.has(value)) selected.delete(value); else selected.add(value);
+    return all.filter((item) => selected.has(item));
+  };
+  return (
+    <div className="logistics-edge-policies">
+      <div className="logistics-col-label">Edge policies · last-run flow appears on the map</div>
+      {edges.map((edge, index) => (
+        <details key={edgeKey(edge)} className="logistics-edge-policy">
+          <summary>{nodeName(edge.from)} → {nodeName(edge.to)}</summary>
+          <div className="logistics-policy-grid">
+            <label className="logistics-policy-field">Priority
+              <input type="number" min="0" value={edge.priority ?? 0}
+                onChange={(event) => onChange(index, { priority: Math.max(0, Number(event.target.value)) })} />
+            </label>
+            <label className="logistics-policy-field">Weight
+              <input type="number" min="1" value={edge.weight ?? 1}
+                onChange={(event) => onChange(index, { weight: Math.max(1, Number(event.target.value)) })} />
+            </label>
+            <label className="logistics-policy-field">Material cap
+              <input type="number" min="0" max={bandwidth} value={edge.unitCap ?? bandwidth}
+                onChange={(event) => onChange(index, { unitCap: Math.max(0, Math.min(bandwidth, Number(event.target.value))) })} />
+            </label>
+            <label className="logistics-policy-field">Overflow
+              <select value={edge.overflow ?? 'stockpile'} onChange={(event) => onChange(index, { overflow: event.target.value as RouteEdge['overflow'] })}>
+                <option value="next">Next eligible edge</option>
+                <option value="hold">Hold locally</option>
+                <option value="stockpile">Ship stockpile</option>
+              </select>
+            </label>
+          </div>
+          <div className="logistics-filter-head">Raw cargo <button onClick={() => onChange(index, { allowedRaw: undefined })}>Demand default</button></div>
+          <div className="logistics-filter-grid">
+            {ROUTABLE_RAW.map((type) => (
+              <label key={type} className="logistics-filter-item">
+                <input type="checkbox" checked={edge.allowedRaw?.includes(type) ?? true}
+                  onChange={() => onChange(index, { allowedRaw: toggle(edge.allowedRaw, ROUTABLE_RAW, type) })} />
+                <span>{RESOURCE_LABELS[type]}</span>
+                <input className="logistics-reserve-input" type="number" min="0" title="Minimum reserve at source"
+                  value={edge.minimumReserve?.raw?.[type] ?? 0}
+                  onChange={(event) => onChange(index, { minimumReserve: {
+                    ...edge.minimumReserve,
+                    raw: { ...(edge.minimumReserve?.raw ?? {}), [type]: Math.max(0, Number(event.target.value)) },
+                  } })} />
+              </label>
+            ))}
+          </div>
+          <div className="logistics-filter-head">Materials <button onClick={() => onChange(index, { allowedMaterials: undefined })}>Demand default</button></div>
+          <div className="logistics-filter-grid logistics-filter-grid--materials">
+            {ROUTABLE_MATERIALS.map((id) => (
+              <label key={id} className="logistics-filter-item">
+                <input type="checkbox" checked={edge.allowedMaterials?.includes(id) ?? true}
+                  onChange={() => onChange(index, { allowedMaterials: toggle(edge.allowedMaterials, ROUTABLE_MATERIALS, id) })} />
+                <span>{materialName(id)}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
 }
 
-function craftTimeLabel(hours: number): string {
-  return hours >= 24 && hours % 24 === 0 ? `${hours / 24}d` : `${hours}h`;
+function materialCostEntries(materials: MaterialCost): Array<[string, number]> {
+  return Object.entries(materials).filter(([, amt]) => !!amt) as Array<[string, number]>;
 }
 
 type SlotMenuState = { fabricatorKey: string; slotIdx: number; rect: DOMRect; advanced: boolean };
@@ -826,7 +1053,7 @@ function SlotPickerMenu({
         <UpgradeModuleIcon size={16} />
         <span className="lm-slot-menu-row-name">{recipe.name}</span>
         {short && <span className="lm-slot-menu-row-short">short</span>}
-        <span className="lm-slot-menu-row-time">{craftTimeLabel(recipe.craftHours)}</span>
+        <span className="lm-slot-menu-row-time">instant</span>
       </button>
     );
   }
@@ -849,7 +1076,7 @@ function SlotPickerMenu({
             title={`${MATERIAL_TIER_LABELS[tier] ?? `Tier ${tier}`} Materials`}
             defaultOpen={tier === MATERIAL_TIERS[0]}
           >
-            {CRAFT_MATERIALS.filter((m) => m.tier === tier).map((m) => {
+            {CRAFTABLE_MATERIALS.filter((m) => m.tier === tier).map((m) => {
               const recipe = getCraftable(m.id);
               return recipe ? renderRow(recipe, m.desc) : null;
             })}
@@ -881,30 +1108,40 @@ function SlotView({
   slotIdx,
   fabricatorKey,
   advanced,
+  depth,
   isMenuOpen,
   onOpenMenu,
+  onSetPriority,
+  lastResult,
 }: {
   slot: FabricatorProductionSlot;
   slotIdx: number;
   fabricatorKey: string;
   advanced: boolean;
+  depth: number;
   isMenuOpen: boolean;
   onOpenMenu: (state: SlotMenuState) => void;
+  onSetPriority: (priority: number) => void;
+  lastResult?: SlotRunResult;
 }) {
-  const now = useNow(60_000);
   const stockpile = useStockpileStore((s) => s.materials);
-  const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : null;
-  const ip = slot.inProduction;
-  const msLeft = ip ? ip.availableAt - now : 0;
-  const ready = ip && msLeft <= 0;
-  const hoursLeft = ip && !ready ? Math.ceil(msLeft / (60 * 60 * 1000)) : 0;
+  const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
+  const status = lastResult?.status ?? slotStatus(slot, recipe, depth);
 
   return (
     <div className="lm-fabricator-slot-block">
-      <div className="lm-fabricator-slot-label">Slot {slotIdx + 1}</div>
+      <div className="lm-fabricator-slot-head">
+        <span className="lm-fabricator-slot-label">Slot {slotIdx + 1}</span>
+        <span className="lm-slot-priority-controls">
+          <button disabled={slot.priority <= 0} onClick={() => onSetPriority(slot.priority - 1)} title="Higher priority">↑</button>
+          <button onClick={() => onSetPriority(slot.priority + 1)} title="Lower priority">↓</button>
+        </span>
+        {recipe && (
+          <span className={`lm-slot-status lm-slot-status--${status}`}>{SLOT_STATUS_LABELS[status]}</span>
+        )}
+      </div>
       <button
         className={`lm-fabricator-slot-btn${slot.targetUpgradeId ? ' lm-fabricator-slot-btn--filled' : ''}${isMenuOpen ? ' lm-fabricator-slot-btn--open' : ''}`}
-        disabled={!!ip}
         onClick={(e) => onOpenMenu({ fabricatorKey, slotIdx, rect: e.currentTarget.getBoundingClientRect(), advanced })}
       >
         {slot.targetUpgradeId ? (
@@ -916,27 +1153,31 @@ function SlotView({
           <span className="lm-fabricator-slot-btn-label">Choose target —</span>
         )}
       </button>
-      {recipe && !ip && (
+      {recipe && (
         <div className="lm-fabricator-recipe">
           {Object.entries(recipe.cost).map(([costKey, costAmt]) => {
             if (!costAmt) return null;
             const resourceType = COST_KEY_TO_RESOURCE[costKey];
             if (!resourceType) return null;
+            const cap = costAmt * depth;
             const have = slot.pendingResources[resourceType] ?? 0;
-            const pct = Math.min(100, (have / costAmt) * 100);
+            const pct = Math.min(100, (have / cap) * 100);
             return (
               <div key={costKey} className="lm-fabricator-recipe-row">
                 <span className="lm-fabricator-recipe-label">{RESOURCE_LABELS[resourceType]}</span>
                 <div className="lm-fabricator-progress-track">
                   <div className="lm-fabricator-progress-fill" style={{ width: `${pct}%` }} />
                 </div>
-                <span className="lm-fabricator-recipe-val">{fmt(have)}/{fmt(costAmt)}</span>
+                <span className={`lm-fabricator-recipe-val${have < costAmt ? ' lm-fabricator-recipe-val--short' : ''}`}>
+                  {fmt(have)}/{fmt(cap)}
+                </span>
               </div>
             );
           })}
           {materialCostEntries(recipe.materials).map(([matId, costAmt]) => {
-            const have = slot.pendingMaterials?.[matId] ?? 0;
-            const pct = Math.min(100, (have / costAmt) * 100);
+            const cap = costAmt * depth;
+            const have = slot.pendingMaterials[matId] ?? 0;
+            const pct = Math.min(100, (have / cap) * 100);
             const held = stockpile[matId] ?? 0;
             return (
               <div key={matId} className="lm-fabricator-recipe-row lm-fabricator-recipe-row--mat">
@@ -945,20 +1186,48 @@ function SlotView({
                   <div className="lm-fabricator-progress-fill lm-fabricator-progress-fill--mat" style={{ width: `${pct}%` }} />
                 </div>
                 <span className={`lm-fabricator-recipe-val${have < costAmt && held === 0 ? ' lm-fabricator-recipe-val--short' : ''}`}>
-                  {have}/{costAmt}
+                  {have}/{cap}
                 </span>
               </div>
             );
           })}
-          <div className="lm-fabricator-recipe-time">{craftTimeLabel(recipe.craftHours)} once fed</div>
-        </div>
-      )}
-      {ip && (
-        <div className="lm-fabricator-queue-item">
-          <span className="lm-fabricator-queue-name">{getCraftable(ip.upgradeId)?.name ?? ip.upgradeId}</span>
-          <span className={`lm-fabricator-queue-time${ready ? ' lm-fabricator-queue-time--ready' : ''}`}>
-            {ready ? 'Ready — dispatch to collect' : `${hoursLeft}h`}
-          </span>
+          <div className="lm-fabricator-slot-meters">
+            <span className="lm-fabricator-meter">
+              Priority {slot.priority + 1}
+            </span>
+            <span className="lm-fabricator-meter">
+              Processes on dispatch
+            </span>
+          </div>
+          {lastResult && (
+            <div className="lm-slot-last-run">
+              Last run: {lastResult.batches} batch{lastResult.batches === 1 ? '' : 'es'}
+              {Object.keys(lastResult.missingResources).length + Object.keys(lastResult.missingMaterials).length > 0
+                ? ` · missing ${[
+                    ...Object.entries(lastResult.missingResources).map(([id, amount]) => `${amount} ${RESOURCE_LABELS[id as Resource['type']] ?? id}`),
+                    ...Object.entries(lastResult.missingMaterials).map(([id, amount]) => `${amount} ${materialName(id)}`),
+                  ].join(', ')}`
+                : ''}
+            </div>
+          )}
+          {materialCostEntries(recipe.byproducts).map(([matId, amt]) => {
+            const have = slot.byproducts[matId] ?? 0;
+            const cap = amt * depth;
+            return (
+              <div key={matId} className="lm-fabricator-recipe-row lm-fabricator-recipe-row--byproduct">
+                <span className="lm-fabricator-recipe-label">{materialName(matId)}</span>
+                <div className="lm-fabricator-progress-track">
+                  <div
+                    className="lm-fabricator-progress-fill lm-fabricator-progress-fill--byproduct"
+                    style={{ width: `${Math.min(100, (have / cap) * 100)}%` }}
+                  />
+                </div>
+                <span className={`lm-fabricator-recipe-val${have >= cap ? ' lm-fabricator-recipe-val--short' : ''}`}>
+                  {have}/{cap}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -969,19 +1238,19 @@ function FabricatorSidebar({
   node,
   fabricators,
   fabricatorStates,
-  exoticMatter,
-  alloys,
+  lastRun,
   onClose,
   onSetTarget,
+  onSetPriority,
   onUnlockSlot,
 }: {
   node: ProjectedMapNode;
   fabricators: Record<string, Fabricator>;
   fabricatorStates: Record<string, FabricatorState>;
-  exoticMatter: number;
-  alloys: number;
+  lastRun: Record<string, SlotRunResult[]>;
   onClose: () => void;
   onSetTarget: (key: string, slotIdx: number, upgradeId: string | null) => void;
+  onSetPriority: (key: string, slotIdx: number, priority: number) => void;
   onUnlockSlot: (key: string) => void;
 }) {
   const [openSlot, setOpenSlot] = useState<SlotMenuState | null>(null);
@@ -995,23 +1264,16 @@ function FabricatorSidebar({
       <div className="lm-fabricator-title-label">Fabrication</div>
       {node.keys.map((k) => {
         const fabricator = fabricators[k];
-        const cs = fabricatorStates[k] ?? { slots: [{ targetUpgradeId: null, pendingResources: {}, inProduction: null }] };
+        const cs = fabricatorStates[k] ?? { slots: [makeEmptyFabricatorSlot()] };
+        const depth = bufferDepth(fabricator?.tier);
         const slotCount = cs.slots.length;
-        const costIdx = slotCount - 1;
-        const nextCost = FABRICATOR_SLOT_COSTS[costIdx];
-        const canUnlock = slotCount < MAX_FABRICATOR_SLOTS && !!nextCost;
-        const canAffordUnlock = canUnlock
-          ? (nextCost.alloys ?? 0) <= alloys && (nextCost.exotic ?? 0) <= exoticMatter
-          : false;
-        const unlockLabel = nextCost
-          ? [nextCost.alloys ? `${fmt(nextCost.alloys)} alloys` : '', nextCost.exotic ? `${fmt(nextCost.exotic)} EM` : ''].filter(Boolean).join(' + ')
-          : '';
+        const canUnlock = slotCount < maxFabricatorSlots(fabricator?.tier);
         return (
           <div key={k} className="lm-fabricator-entry">
             {fabricator && (
               <div className="lm-fabricator-planet-name">
                 {node.keys.length > 1 ? `${fabricator.planetName} · ` : ''}
-                {FABRICATOR_TIER_LABELS[fabricator.tier ?? 1]}
+                {FABRICATOR_TIER_LABELS[fabricator.tier]} · {depth}× buffers
               </div>
             )}
             {cs.slots.map((slot, i) => (
@@ -1021,18 +1283,20 @@ function FabricatorSidebar({
                 slotIdx={i}
                 fabricatorKey={k}
                 advanced={(fabricator?.tier ?? 1) >= 2}
+                depth={depth}
                 isMenuOpen={openSlot?.fabricatorKey === k && openSlot.slotIdx === i}
                 onOpenMenu={setOpenSlot}
+                onSetPriority={(priority) => onSetPriority(k, i, priority)}
+                lastResult={lastRun[k]?.[i]}
               />
             ))}
             {canUnlock && (
               <button
                 className="lm-fabricator-unlock-btn"
-                disabled={!canAffordUnlock}
                 onClick={() => onUnlockSlot(k)}
-                title={unlockLabel}
+                title="Free configuration slot"
               >
-                + Unlock Slot {slotCount + 1} · {unlockLabel}
+                + Configure Slot {slotCount + 1} · Free
               </button>
             )}
           </div>
@@ -1187,8 +1451,9 @@ function recipeTip(
   desc: string,
   stockpile: Record<string, number>,
   note?: string,
+  fallbackTitle = '',
 ): TipContent {
-  if (!recipe) return { title: '', desc, rows: [] };
+  if (!recipe) return { title: fallbackTitle, desc, rows: [], note: 'Recovered as a byproduct only.' };
   const rows: TipRow[] = [];
   for (const [costKey, amt] of Object.entries(recipe.cost)) {
     if (!amt) continue;
@@ -1201,7 +1466,19 @@ function recipeTip(
     const held = stockpile[id] ?? 0;
     rows.push({ label: materialName(id), value: `${amt}  (${held} held)`, short: held < amt });
   }
-  return { title: recipe.name, time: craftTimeLabel(recipe.craftHours), desc, rows, note };
+  const yields: string[] = [];
+  if (recipe.outputs > 1) yields.push(`yields ${recipe.outputs}× ${materialName(recipe.produces)}`);
+  for (const [id, amt] of materialCostEntries(recipe.byproducts)) {
+    yields.push(`leaves ${amt}× ${materialName(id)}`);
+  }
+  const notes = [yields.join(' · '), note].filter(Boolean).join(' — ');
+  return {
+    title: recipe.name,
+    time: 'Instant on dispatch',
+    desc,
+    rows,
+    note: notes || undefined,
+  };
 }
 
 // ── Collapsible section ────────────────────────────────────────────────────────
@@ -1380,8 +1657,9 @@ function MaterialsPanel({
     const counts: Record<string, number> = {};
     for (const cs of Object.values(fabricatorStates)) {
       for (const slot of cs.slots) {
-        const id = slot.inProduction?.upgradeId ?? slot.targetUpgradeId;
-        if (id) counts[id] = (counts[id] ?? 0) + 1;
+        if (!slot.targetUpgradeId) continue;
+        const id = getCraftable(slot.targetUpgradeId)?.produces ?? slot.targetUpgradeId;
+        counts[id] = (counts[id] ?? 0) + 1;
       }
     }
     return counts;
@@ -1397,7 +1675,7 @@ function MaterialsPanel({
       </div>
       <div className="lm-inventory-list">
         {MATERIAL_TIERS.map((tier) => {
-          const items = CRAFT_MATERIALS.filter((m) => m.tier === tier);
+          const items = STOCKED_MATERIALS.filter((m) => m.tier === tier);
           const heldInTier = items.reduce((n, m) => n + (stockpile[m.id] ?? 0), 0);
           return (
             <Section
@@ -1414,7 +1692,7 @@ function MaterialsPanel({
                   <div
                     key={m.id}
                     className={`lm-row${held > 0 ? ' lm-row--held' : ''}`}
-                    {...bind(recipeTip(getCraftable(m.id), m.desc, stockpile, note))}
+                    {...bind(recipeTip(getCraftable(m.id), m.desc, stockpile, note, m.name))}
                   >
                     <span className="lm-row-name">{m.name}</span>
                     {lines > 0 && <span className="lm-row-badge lm-row-badge--live">{lines}</span>}

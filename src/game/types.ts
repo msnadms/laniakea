@@ -138,10 +138,50 @@ export interface Extractor {
   superclusSeed: number;
 }
 
+export interface RouteEdge {
+  from: string;
+  to: string;
+  /** Undefined means all raw cargo is allowed (save-data compatible default). */
+  allowedRaw?: Resource['type'][];
+  /** Undefined means all crafted materials are allowed. */
+  allowedMaterials?: string[];
+  priority?: number;
+  weight?: number;
+  unitCap?: number;
+  overflow?: 'next' | 'hold' | 'stockpile';
+  minimumReserve?: {
+    raw?: Partial<Record<Resource['type'], number>>;
+    materials?: MaterialCost;
+  };
+}
+
+export interface RouteAutomationPolicy {
+  sourceFillPercent: number;
+  requireRecipeReady: boolean;
+  detectionCeiling: number;
+  pauseOnJam: boolean;
+  quiet: boolean;
+  minimumShipReserve: { exotic: number; helium3: number };
+}
+
 export interface LogisticsRoute {
   id: string;
   name: string;
-  nodeKeys: string[];
+  edges: RouteEdge[];
+  active?: boolean;
+  automation?: RouteAutomationPolicy;
+  heldCargo?: Record<string, {
+    raw: Partial<Record<Resource['type'], number>>;
+    materials: MaterialCost;
+  }>;
+}
+
+export function extractorNodeId(galaxySeed: number, systemId: number): string {
+  return `${galaxySeed}|${systemId}`;
+}
+
+export function fabricatorNodeId(galaxySeed: number, systemId: number): string {
+  return `fabricator:${galaxySeed}|${systemId}`;
 }
 
 export function makeExtractorKey(galaxySeed: number, systemId: number, planetName: string): ExtractorKey {
@@ -180,15 +220,16 @@ export type CraftCategory = 'material' | 'extractor' | 'rare';
 
 export interface FabricatorProductionItem {
   upgradeId: string;
-  availableAt: number;
-  category?: CraftCategory;
+  category: CraftCategory;
+  count: number;
 }
 
 export interface FabricatorProductionSlot {
   targetUpgradeId: string | null;
   pendingResources: Partial<Record<Resource['type'], number>>;
   pendingMaterials: Record<string, number>;
-  inProduction: FabricatorProductionItem | null;
+  byproducts: MaterialCost;
+  priority: number;
 }
 
 export interface FabricatorState {
@@ -196,17 +237,48 @@ export interface FabricatorState {
 }
 
 export function makeEmptyFabricatorSlot(): FabricatorProductionSlot {
-  return { targetUpgradeId: null, pendingResources: {}, pendingMaterials: {}, inProduction: null };
+  return {
+    targetUpgradeId: null,
+    pendingResources: {},
+    pendingMaterials: {},
+    byproducts: {},
+    priority: 0,
+  };
 }
 
-export const MAX_FABRICATOR_SLOTS = 3;
+export const FABRICATOR_BUFFER_DEPTH: Record<FabricatorTier, number> = { 1: 3, 2: 5 };
+
+export function bufferDepth(tier: FabricatorTier | undefined): number {
+  return FABRICATOR_BUFFER_DEPTH[tier ?? 1];
+}
+
+export type SlotStatus = 'idle' | 'ready' | 'starved' | 'jammed' | 'flowing';
+
+export const SLOT_STATUS_LABELS: Record<SlotStatus, string> = {
+  idle: 'Idle',
+  ready: 'Ready',
+  starved: 'Starved',
+  jammed: 'Jammed',
+  flowing: 'Flowing',
+};
+
+export const FABRICATOR_INCLUDED_SLOTS: Record<FabricatorTier, number> = { 1: 5, 2: 8 };
+export const FABRICATOR_MAX_SLOTS: Record<FabricatorTier, number> = { 1: 6, 2: 8 };
+export const MAX_FABRICATOR_SLOTS = 8;
 export const FABRICATOR_COST = { alloys: 2000, helium3: 500, nutrients: 2000, metallicHydrogen: 500 } as const;
 export const FABRICATOR_UPGRADE_COST = { alloys: 1500, helium3: 1000, nutrients: 1500, metallicHydrogen: 1200 } as const;
 export const FABRICATOR_UPGRADE_MATERIALS: MaterialCost = { hea_billet: 2, ybco_tape: 1, metamaterial_film: 1 };
 export const FABRICATOR_SLOT_COSTS: Array<{ alloys?: number; exotic?: number }> = [
-  { alloys: 2000 },
-  { alloys: 3000, exotic: 1500 },
+  {}, {}, {}, {}, {},
 ];
+
+export function includedFabricatorSlots(tier: FabricatorTier | undefined): number {
+  return FABRICATOR_INCLUDED_SLOTS[tier ?? 1];
+}
+
+export function maxFabricatorSlots(tier: FabricatorTier | undefined): number {
+  return FABRICATOR_MAX_SLOTS[tier ?? 1];
+}
 
 // Maps recipe cost keys to Resource['type'] values
 export const COST_KEY_TO_RESOURCE: Record<string, Resource['type']> = {
@@ -249,7 +321,6 @@ export type MaterialCost = Record<string, number>;
 export interface ExtractorUpgrade {
   id: string;
   name: string;
-  craftHours: number;
   cost: ResourceCost;
   materials: MaterialCost;
   effect: UpgradeEffect;
@@ -259,17 +330,19 @@ export interface CraftMaterial {
   id: string;
   name: string;
   tier: number;
-  craftHours: number;
   desc: string;
   cost: ResourceCost;
   materials: MaterialCost;
+  outputs?: number;
+  byproducts?: MaterialCost;
+  produces?: string;
+  byproductOnly?: boolean;
 }
 
 export interface RareResource {
   id: string;
   name: string;
   role: string;
-  craftHours: number;
   desc: string;
   cost: ResourceCost;
   materials: MaterialCost;
@@ -288,4 +361,3 @@ export const MATERIAL_TIER_LABELS: Record<number, string> = {
   2: 'Engineered',
   3: 'Exotic',
 };
-

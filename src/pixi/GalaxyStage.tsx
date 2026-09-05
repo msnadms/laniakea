@@ -172,10 +172,13 @@ export function GalaxyWorld() {
     for (let p = 0; p < glow.count; p++) {
       const unitX = ((rng() + rng()) / 2 - 0.5) * 2;
       const unitY = ((rng() + rng()) / 2 - 0.5) * 2;
+      const halfWidth = glow.lens > 0
+        ? glow.lensFloor + (1 - glow.lensFloor) * Math.pow(Math.max(0, 1 - unitX * unitX), glow.lens)
+        : 1;
       const [offsetX, offsetY] = rotate(
         unitX * CORE_ELLIPSE_X * glow.scaleX,
-        unitY * CORE_ELLIPSE_Y * glow.scaleY,
-        config.orientation,
+        unitY * halfWidth * CORE_ELLIPSE_Y * glow.scaleY,
+        config.orientation + glow.angle,
       );
       const particleRadius = 20 + rng() * 60;
       const coreColor = CORE_COLORS[Math.floor(rng() * CORE_COLORS.length)];

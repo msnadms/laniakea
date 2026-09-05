@@ -25,24 +25,24 @@ A breadcrumb address bar tracks your position through the hierarchy: `Observable
 - **Star rendering** — The sun is rendered with a texture-based gradient, a pulsing scale animation, and a procedural corona (12 long rays + 22 short white rays in screen blend mode that rotates and breathes). A large nebula glow sprite behind the system uses the star's color.
 - **Planet resources** — Each planet and moon carries typed resources matching its zone: alloys in the hot zone, nutrients + alloys in the habitable zone, exotic matter from gas and ice giants.
 - **Toggleable overlays** — Hyperlane network, attractor labels, and orbit rings can be toggled on/off from the config panel.
-- **Resource economy** — Place mining stations on planet resources, settle habitable worlds into colonies, and automate collection with drone logistics routes (see [Gameplay: Extraction & Automation](#gameplay-extraction--automation) below).
+- **Resource economy** — Place extractors on planet resources, build fabricators on habitable worlds, and automate connected production networks with drone routes (see [Gameplay: Extraction & Automation](#gameplay-extraction--automation) below).
 
 ## Gameplay: Extraction & Automation
 
 Beyond exploring, you run a ship that mines and ferries resources across the galaxy.
 
 - **Mining stations** — Open a planet's panel and place a station (200 alloys) on one of its surface or moon resources. Stations passively accumulate that resource over time, up to a hold cap, and must be collected before they fill up.
-- **Colonies** — Settle a habitable planet (2000 alloys, 500 He-3, 2000 nutrients, 500 metallic hydrogen) to unlock colony production slots that craft upgrade modules over ~24h once fed enough resources.
-- **Drone logistics** — The "AUTO" button on the ship HUD opens a network panel where you build multi-stop routes between stations/colonies and dispatch a drone to collect everything along the way, instead of flying to each one yourself.
+- **Fabricators** — Build on a habitable planet to configure five basic recipe slots (six maximum), or upgrade to an eight-slot advanced production hub. Recipes process their entire feasible batch instantly when a route visits.
+- **Drone logistics** — The "AUTO" button opens a DAG editor for connected extraction and fabrication networks. Routes support demand-aware branches, cargo filters, priorities, weighted splits, reserves, per-edge bandwidth, dry runs, and automatic activation.
 
 ### Tips for automating extraction
 
 - **Unlock logistics before scaling up.** Drone routes are locked until you put at least one point into the **Logistics-A** workshop track. That first point also raises your station cap from 5 to 8 and grants your first route slot; each additional tier adds +3 stations and +1 route (up to 17 stations / 4 routes at max tier).
 - **Logistics-B is throughput, not capacity.** It speeds up how fast stations fill (1.0×→2.0× at max tier) — invest here once you have more stations than your routes can keep collected.
-- **Chain stops instead of running many short routes.** Every dispatch pays the same flat base fee (scaled down by Drive-A/B) regardless of stop count, plus distance-based travel cost per hop — bundling nearby stations and colonies into one route avoids paying that base fee over and over.
-- **Dispatch is gated, not just a button press.** A route only dispatches once it has ≥2 stops, something to actually collect (accumulated station cargo or a finished colony item), and enough exotic matter/helium-3 on hand to cover the trip — check each route card's cost preview first.
+- **Build one connected network per route.** Every dispatch pays a flat base fee plus edge travel costs. Disconnected islands are rejected, and branch policy determines how much useful output one run produces.
+- **Dispatch is the production event.** A run collects cargo, processes all feasible fabricator batches in priority order, and carries output into later fabrication stages during the same traversal. An unchanged route does no work and spends no fuel.
 - **Mind the detection warning.** Routing through a region with more than 4 active, undampened stations raises your detection rating. Equip a **Signal Dampener** module on stations there to exempt them from that check.
-- **Upgrade modules come from colonies, not a shop.** Assign a colony's production slot to a module recipe, dispatch resources to it until production completes, then collect the finished module on a later run. Each station has two module slots (rate, storage, or detection effects) managed from the Logistics panel's Inventory tab.
+- **Upgrade modules come from fabricators, not a shop.** Assign a module recipe and route its inputs; the finished module can reach the ship in that dispatch. Each extractor has two module slots managed from the Logistics panel.
 - **Drive upgrades compound with logistics.** Drive-A/B reduce both the flat dispatch fee and per-hop travel cost, so they pay off fastest once your network spans multiple systems or galaxies.
 
 ## Getting Started
@@ -51,6 +51,7 @@ Beyond exploring, you run a ship that mines and ferries resources across the gal
 npm install
 npm run dev       # Start dev server with HMR at localhost:5173
 npm run build     # Type-check then build for production
+npm test          # Run focused production/logistics tests
 npm run preview   # Serve the production build locally
 npm run lint      # ESLint
 ```

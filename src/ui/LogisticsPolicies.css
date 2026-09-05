@@ -1,0 +1,46 @@
+.lroute-auto {
+  background: rgba(30, 90, 70, 0.2);
+  border: 1px solid rgba(80, 190, 130, 0.4);
+  color: rgba(130, 225, 175, 0.8);
+  font: 9px monospace;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.lroute-auto--active { background: rgba(40, 150, 90, 0.35); color: #aaffc8; }
+.lroute-auto:disabled { opacity: 0.3; cursor: default; }
+.lroute-preview { margin-top: 6px; color: rgba(130, 195, 220, 0.6); font-size: 9px; }
+.lroute-warn--preview { color: #d4b878; border-left-color: rgba(210, 175, 90, 0.65); }
+.logistics-route-error {
+  padding: 7px 9px;
+  border-left: 2px solid rgba(255, 90, 90, 0.8);
+  background: rgba(100, 20, 20, 0.25);
+  color: #ef9990;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.logistics-edge-policies,
+.logistics-automation-panel {
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 120, 165, 0.28);
+  background: rgba(0, 35, 55, 0.3);
+  padding: 8px;
+}
+.logistics-edge-policy { border-top: 1px solid rgba(0, 120, 165, 0.2); padding: 5px 0; }
+.logistics-edge-policy summary { color: #8ed8ed; cursor: pointer; font: 10px monospace; text-transform: uppercase; }
+.logistics-policy-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 8px 0; }
+.logistics-policy-field { display: flex; flex-direction: column; gap: 3px; color: rgba(140, 200, 220, 0.7); font: 8px monospace; text-transform: uppercase; }
+.logistics-policy-field input,
+.logistics-policy-field select { min-width: 0; background: rgba(0, 35, 55, 0.9); border: 1px solid rgba(0, 150, 190, 0.35); color: #a8e8f5; font: 9px monospace; padding: 3px; }
+.logistics-policy-check { flex-direction: row; align-items: center; }
+.logistics-filter-head { display: flex; justify-content: space-between; margin: 7px 0 4px; color: rgba(100, 205, 230, 0.75); font: 8px monospace; text-transform: uppercase; }
+.logistics-filter-head button { background: none; border: 0; color: rgba(110, 185, 210, 0.65); font: 8px monospace; cursor: pointer; }
+.logistics-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 8px; }
+.logistics-filter-grid--materials { max-height: 100px; overflow-y: auto; }
+.logistics-filter-item { display: grid; grid-template-columns: auto 1fr 42px; align-items: center; gap: 4px; color: rgba(160, 210, 220, 0.7); font: 8px monospace; }
+.logistics-filter-grid--materials .logistics-filter-item { grid-template-columns: auto 1fr; }
+.logistics-reserve-input { width: 36px; }
+.logistics-automation-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.lm-slot-priority-controls { display: inline-flex; gap: 2px; }
+.lm-slot-priority-controls button { padding: 0 4px; background: transparent; border: 1px solid rgba(60, 180, 100, 0.35); color: rgba(100, 220, 140, 0.8); cursor: pointer; }
+.lm-slot-priority-controls button:disabled { opacity: 0.25; }
+.lm-slot-last-run { margin-top: 5px; color: rgba(140, 205, 180, 0.65); font: 8px/1.4 monospace; }

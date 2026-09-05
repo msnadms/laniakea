@@ -219,7 +219,7 @@ export function generatePlanets(layout: SystemLayout): Planet[] {
   const nameRng = createRng((layout.seed ^ 0xb1a2c3d4) >>> 0);
 
   const usedNames = new Set<string>();
-  return layout.planets.map((planet) => {
+  const planets = layout.planets.map((planet) => {
     let planetName = makePlanetName(nameRng);
     while (usedNames.has(planetName)) planetName = makePlanetName(nameRng);
     usedNames.add(planetName);
@@ -234,4 +234,13 @@ export function generatePlanets(layout: SystemLayout): Planet[] {
       moons,
     };
   });
+  if (isNeutronStar && !planets.some((planet) => planet.resources?.some((resource) => resource.type === 'neutronStarMatter'))) {
+    const sourceIndex = Math.floor(rng() * planets.length);
+    const source = planets[sourceIndex];
+    planets[sourceIndex] = {
+      ...source,
+      resources: [...(source.resources ?? []), { type: 'neutronStarMatter', count: rcRoll(RC.nsmHot, rng) }],
+    };
+  }
+  return planets;
 }

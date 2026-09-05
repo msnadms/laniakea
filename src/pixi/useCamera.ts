@@ -7,6 +7,7 @@ import {
   CAMERA_ZOOM_FACTOR,
   DRAG_THRESHOLD_PX,
 } from '../game/constants';
+import { cancelIntroZoom } from './zoomAnim';
 
 export function useCamera(
   worldRef: React.RefObject<Container | null>,
@@ -77,6 +78,7 @@ export function useCamera(
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       if (!worldRef.current) return;
+      cancelIntroZoom();
       const zoomFactor = event.deltaY < 0 ? CAMERA_ZOOM_FACTOR : 1 / CAMERA_ZOOM_FACTOR;
       const mouseX = event.clientX;
       const mouseY = event.clientY;

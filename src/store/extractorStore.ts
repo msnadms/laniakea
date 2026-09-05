@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { CraftCategory, Extractor, FabricatorProductionItem } from '../game/types';
 import { EXTRACTOR_UPGRADES, getCraftable } from '../data/upgrades';
+import { materialName } from '../data/materials';
 import { useStockpileStore } from './stockpileStore';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap } from './uiStore';
 import { useQuestStore } from './questStore';
@@ -37,13 +38,6 @@ export function peekAccumulated(extractor: Extractor, now: number = Date.now()):
   );
 }
 
-export interface PendingUpgrade {
-  id: string;
-  upgradeId: string;
-  availableAt: number;
-  category: CraftCategory;
-}
-
 export interface FabricatorDelivery {
   upgradeId: string;
   name: string;
@@ -59,12 +53,10 @@ interface ExtractorState {
   restoreExtractors: (list: Extractor[]) => void;
   ownedUpgrades: string[];
   nodeEquipped: Record<string, [string | null, string | null]>;  // keyed by ExtractorKey
-  pendingUpgrades: PendingUpgrade[];
   purchaseUpgrade: (upgradeId: string) => boolean;
   equipUpgrade: (extractorKey: string, slot: 0 | 1, upgradeId: string | null) => void;
   receiveFabricatorItems: (items: FabricatorProductionItem[]) => FabricatorDelivery[];
-  claimPendingUpgrade: (id: string) => boolean;
-  restoreUpgrades: (ownedUpgrades: string[], nodeEquipped: Record<string, [string | null, string | null]>, pendingUpgrades?: PendingUpgrade[]) => void;
+  restoreUpgrades: (ownedUpgrades: string[], nodeEquipped: Record<string, [string | null, string | null]>) => void;
 }
 
 export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector((set, get) => ({
@@ -114,45 +106,31 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
 
   ownedUpgrades: [],
   nodeEquipped: {},
-  pendingUpgrades: [],
 
   receiveFabricatorItems: (items) => {
     const deliveries = new Map<string, FabricatorDelivery>();
     const modules: string[] = [];
+    const stockpile = useStockpileStore.getState();
     for (const item of items) {
-      const recipe = getCraftable(item.upgradeId);
-      const category = item.category ?? recipe?.category ?? 'extractor';
-      if (category === 'material') useStockpileStore.getState().addMaterial(item.upgradeId, 1);
-      else if (category === 'rare') useStockpileStore.getState().addRare(item.upgradeId, 1);
-      else modules.push(item.upgradeId);
+      if (item.count <= 0) continue;
+      const name = getCraftable(item.upgradeId)?.name ?? materialName(item.upgradeId);
+      if (item.category === 'material') stockpile.addMaterial(item.upgradeId, item.count);
+      else if (item.category === 'rare') stockpile.addRare(item.upgradeId, item.count);
+      else for (let i = 0; i < item.count; i++) modules.push(item.upgradeId);
       const existing = deliveries.get(item.upgradeId);
-      if (existing) existing.count++;
+      if (existing) existing.count += item.count;
       else deliveries.set(item.upgradeId, {
         upgradeId: item.upgradeId,
-        name: recipe?.name ?? item.upgradeId,
-        category,
-        count: 1,
+        name,
+        category: item.category,
+        count: item.count,
       });
     }
     if (modules.length > 0) set((s) => ({ ownedUpgrades: [...s.ownedUpgrades, ...modules] }));
     return [...deliveries.values()];
   },
 
-  claimPendingUpgrade: (id) => {
-    if (useUIStore.getState().checkDetectionLethal()) return false;
-    const pending = get().pendingUpgrades.find((p) => p.id === id);
-    if (!pending || pending.availableAt > Date.now()) return false;
-    const category = pending.category ?? getCraftable(pending.upgradeId)?.category ?? 'extractor';
-    if (category === 'material') useStockpileStore.getState().addMaterial(pending.upgradeId, 1);
-    set((s) => ({
-      pendingUpgrades: s.pendingUpgrades.filter((p) => p.id !== id),
-      ownedUpgrades: category === 'material' ? s.ownedUpgrades : [...s.ownedUpgrades, pending.upgradeId],
-    }));
-    return true;
-  },
-
-  restoreUpgrades: (ownedUpgrades, nodeEquipped, pendingUpgrades = []) =>
-    set({ ownedUpgrades, nodeEquipped, pendingUpgrades }),
+  restoreUpgrades: (ownedUpgrades, nodeEquipped) => set({ ownedUpgrades, nodeEquipped }),
 
   purchaseUpgrade: (upgradeId) => {
     if (useUIStore.getState().checkDetectionLethal()) return false;

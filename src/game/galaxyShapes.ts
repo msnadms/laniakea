@@ -29,7 +29,10 @@ import {
   IRREGULAR_CLUMP_SIGMA,
   IRREGULAR_CORE_GLOW,
   IRREGULAR_CORE_SPREAD,
-  BARRED_CORE_SPREAD,
+  BARRED_CORE_LENGTH_FRACTION,
+  BARRED_CORE_BULGE_SCALE,
+  BARRED_CORE_END_WIDTH,
+  BARRED_CORE_LENS,
   BARRED_CORE_COUNT_SCALE,
   BARRED_CORE_PLATEAU,
   BARRED_CORE_FALLOFF,
@@ -348,33 +351,39 @@ export interface CoreGlow {
   plateau: number;
   falloff: number;
   alphaScale: number;
+  angle: number;
+  lens: number;
+  lensFloor: number;
 }
+
+const ROUND_CORE = { plateau: 0, falloff: 0, alphaScale: 1, angle: 0, lens: 0, lensFloor: 1 };
 
 export function coreGlow(config: GalaxyConfig): CoreGlow {
   switch (config.type) {
     case 'elliptical':
-      return { scaleX: 1, scaleY: config.axisRatio / 0.6, count: CORE_PARTICLE_COUNT, plateau: 0, falloff: 0, alphaScale: 1 };
+      return { ...ROUND_CORE, scaleX: 1, scaleY: config.axisRatio / 0.6, count: CORE_PARTICLE_COUNT };
     case 'irregular':
       // no central bulge to glow, so this is a faint wide wash rather than a core
       return {
+        ...ROUND_CORE,
         scaleX: IRREGULAR_CORE_SPREAD,
         scaleY: IRREGULAR_CORE_SPREAD,
         count: Math.round(CORE_PARTICLE_COUNT * IRREGULAR_CORE_GLOW),
-        plateau: 0,
-        falloff: 0,
-        alphaScale: 1,
       };
     case 'barred':
       return {
-        scaleX: BARRED_CORE_SPREAD,
-        scaleY: BARRED_CORE_SPREAD * (CORE_ELLIPSE_X / CORE_ELLIPSE_Y),
+        scaleX: (GALAXY_RADIUS * config.barLength * BARRED_CORE_LENGTH_FRACTION) / CORE_ELLIPSE_X,
+        scaleY: (GALAXY_RADIUS * BAR_WIDTH * BARRED_CORE_BULGE_SCALE) / CORE_ELLIPSE_Y,
         count: Math.round(CORE_PARTICLE_COUNT * BARRED_CORE_COUNT_SCALE),
         plateau: BARRED_CORE_PLATEAU,
         falloff: BARRED_CORE_FALLOFF,
         alphaScale: BARRED_CORE_ALPHA_SCALE,
+        angle: config.barAngle,
+        lens: BARRED_CORE_LENS,
+        lensFloor: BARRED_CORE_END_WIDTH,
       };
     default:
-      return { scaleX: 1, scaleY: 1, count: CORE_PARTICLE_COUNT, plateau: 0, falloff: 0, alphaScale: 1 };
+      return { ...ROUND_CORE, scaleX: 1, scaleY: 1, count: CORE_PARTICLE_COUNT };
   }
 }
 

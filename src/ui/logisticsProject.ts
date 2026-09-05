@@ -1,10 +1,10 @@
 import { peekAccumulated, getExtractorMultipliers } from '../store/extractorStore';
-import { RESOURCE_LABELS } from '../game/types';
+import { RESOURCE_LABELS, extractorNodeId, fabricatorNodeId } from '../game/types';
 import type { Extractor, Fabricator } from '../game/types';
 import { GALAXY_RADIUS, SC_WORLD_HALF } from '../game/constants';
 
 export function getSystemKey(ext: Extractor): string {
-  return `${ext.galaxySeed}|${ext.systemId}`;
+  return extractorNodeId(ext.galaxySeed, ext.systemId);
 }
 
 export function getSystemName(exts: Extractor[]): string {
@@ -121,7 +121,7 @@ function buildRawNodes(
 
   const colMap = new Map<string, Fabricator[]>();
   for (const s of fabricators) {
-    const sk = `fabricator:${s.galaxySeed}|${s.systemId}`;
+    const sk = fabricatorNodeId(s.galaxySeed, s.systemId);
     if (!colMap.has(sk)) colMap.set(sk, []);
     colMap.get(sk)!.push(s);
   }
@@ -138,7 +138,7 @@ function buildRawNodes(
       sysY: rep.systemY,
       galX: rep.galaxyX,
       galY: rep.galaxyY,
-      advanced: cols.some((c) => (c.tier ?? 1) >= 2),
+      advanced: cols.some((c) => c.tier >= 2),
     });
   }
 

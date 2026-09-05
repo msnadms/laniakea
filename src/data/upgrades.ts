@@ -1,5 +1,5 @@
 import type { ExtractorUpgrade, CraftCategory, ResourceCost, MaterialCost } from '../game/types';
-import { CRAFT_MATERIALS } from './materials';
+import { CRAFTABLE_MATERIALS } from './materials';
 import { RARE_RESOURCES } from './rareResources';
 import raw from './upgrades.json';
 
@@ -10,34 +10,42 @@ export interface Craftable {
   name: string;
   cost: ResourceCost;
   materials: MaterialCost;
-  craftHours: number;
   category: CraftCategory;
+  outputs: number;
+  byproducts: MaterialCost;
+  produces: string;
 }
 
 export const ALL_CRAFTABLES: Craftable[] = [
-  ...CRAFT_MATERIALS.map((m) => ({
+  ...CRAFTABLE_MATERIALS.map((m) => ({
     id: m.id,
     name: m.name,
     cost: m.cost,
     materials: m.materials,
-    craftHours: m.craftHours,
     category: 'material' as const,
+    outputs: m.outputs ?? 1,
+    byproducts: m.byproducts ?? {},
+    produces: m.produces ?? m.id,
   })),
   ...EXTRACTOR_UPGRADES.map((u) => ({
     id: u.id,
     name: u.name,
     cost: u.cost,
     materials: u.materials,
-    craftHours: u.craftHours,
     category: 'extractor' as const,
+    outputs: 1,
+    byproducts: {},
+    produces: u.id,
   })),
   ...RARE_RESOURCES.map((r) => ({
     id: r.id,
     name: r.name,
     cost: r.cost,
     materials: r.materials,
-    craftHours: r.craftHours,
     category: 'rare' as const,
+    outputs: 1,
+    byproducts: {},
+    produces: r.id,
   })),
 ];
 

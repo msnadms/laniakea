@@ -1,10 +1,21 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ICON_PATHS } from './iconPaths';
 import { MAP_SIZE, NODE_R } from './logisticsProject';
 import type { ProjectedMapNode } from './logisticsProject';
+import type { RouteEdge, SlotStatus } from '../game/types';
+import type { EdgeFlowResult } from '../store/logisticsStore';
+import { edgeKey } from '../store/logisticsStore';
 
 const ICON_SIZE = NODE_R * 1.6;
 const ICON_HALF = ICON_SIZE / 2;
+
+const STATUS_RING: Record<SlotStatus, string | null> = {
+  idle: null,
+  ready: 'rgba(120,220,255,0.9)',
+  starved: 'rgba(255,180,60,0.9)',
+  jammed: 'rgba(255,80,80,0.95)',
+  flowing: 'rgba(60,220,120,0.9)',
+};
 
 function NodeIcon({ cx, cy, resourceType, color }: { cx: number; cy: number; resourceType: string; color: string }) {
   const d = ICON_PATHS[resourceType as keyof typeof ICON_PATHS];
@@ -19,31 +30,57 @@ function NodeIcon({ cx, cy, resourceType, color }: { cx: number; cy: number; res
   );
 }
 
+function flowLabel(flow: EdgeFlowResult | undefined): string {
+  if (!flow) return '';
+  return `${flow.used}/${flow.capacity}`;
+}
+
+function flowDetail(flow: EdgeFlowResult | undefined): string {
+  if (!flow) return 'No dispatch data yet';
+  const cargo = [
+    ...Object.entries(flow.raw).map(([id, amount]) => `${id}: ${amount}`),
+    ...Object.entries(flow.materials).map(([id, amount]) => `${id}: ${amount}`),
+  ];
+  const rejected = Object.entries(flow.rejected).filter(([, amount]) => amount > 0)
+    .map(([id, amount]) => `${id}: ${amount}`).join(', ');
+  return [`${flow.used}/${flow.capacity} material capacity`, cargo.join(', ') || 'No cargo moved', rejected ? `Redirected: ${rejected}` : ''].filter(Boolean).join('\n');
+}
+
 export function StationMap({
   projected,
-  draftNodeKeys,
-  onToggle,
-  onNodeHover,
+  draftNodes,
+  draftEdges,
+  nodeStatus,
+  edgeFlows,
+  islandNodes = [],
+  onAddEdge,
+  onRemoveEdge,
+  onNodeClick,
   onBackgroundClick,
   animActiveNodeId,
+  canLink,
 }: {
   projected: ProjectedMapNode[];
-  draftNodeKeys: string[];
-  onToggle: (keys: string[]) => void;
-  onNodeHover: (nodeId: string) => void;
+  draftNodes: string[];
+  draftEdges: RouteEdge[];
+  nodeStatus?: Record<string, SlotStatus>;
+  edgeFlows?: Record<string, EdgeFlowResult>;
+  islandNodes?: string[];
+  onAddEdge: (from: string, to: string) => void;
+  onRemoveEdge: (edge: RouteEdge) => void;
+  onNodeClick: (nodeId: string) => void;
   onBackgroundClick?: () => void;
   animActiveNodeId?: string | null;
+  canLink: (from: string, to: string) => boolean;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const draggedRef = useRef(false);
+  const [drag, setDrag] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
+
   const byNodeId = useMemo(
     () => Object.fromEntries(projected.map((p) => [p.nodeId, p])),
     [projected],
   );
-
-  const keyToNodeId = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const p of projected) for (const k of p.keys) m[k] = p.nodeId;
-    return m;
-  }, [projected]);
 
   if (projected.length === 0) {
     return (
@@ -51,38 +88,51 @@ export function StationMap({
     );
   }
 
-  const routeNodeIds: string[] = [];
-  const seenInRoute = new Set<string>();
-  for (const k of draftNodeKeys) {
-    const nid = keyToNodeId[k];
-    if (nid && !seenInRoute.has(nid)) { seenInRoute.add(nid); routeNodeIds.push(nid); }
+  function toSvg(e: React.PointerEvent): { x: number; y: number } {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * MAP_SIZE,
+      y: ((e.clientY - rect.top) / rect.height) * MAP_SIZE,
+    };
   }
 
-  const edges: { x1: number; y1: number; x2: number; y2: number; i: number }[] = [];
-  for (let i = 0; i < routeNodeIds.length - 1; i++) {
-    const a = byNodeId[routeNodeIds[i]];
-    const b = byNodeId[routeNodeIds[i + 1]];
-    if (a && b) {
-      const dx = b.svgX - a.svgX;
-      const dy = b.svgY - a.svgY;
-      const len = Math.hypot(dx, dy) || 1;
-      const pad = NODE_R + 2;
-      edges.push({
-        x1: a.svgX + (dx / len) * pad,
-        y1: a.svgY + (dy / len) * pad,
-        x2: b.svgX - (dx / len) * pad,
-        y2: b.svgY - (dy / len) * pad,
-        i,
-      });
-    }
+  function edgeGeometry(edge: RouteEdge) {
+    const a = byNodeId[edge.from];
+    const b = byNodeId[edge.to];
+    if (!a || !b) return null;
+    const dx = b.svgX - a.svgX;
+    const dy = b.svgY - a.svgY;
+    const len = Math.hypot(dx, dy) || 1;
+    const pad = NODE_R + 3;
+    return {
+      x1: a.svgX + (dx / len) * pad,
+      y1: a.svgY + (dy / len) * pad,
+      x2: b.svgX - (dx / len) * pad,
+      y2: b.svgY - (dy / len) * pad,
+      toFabricator: b.nodeType === 'fabricator',
+    };
   }
 
   return (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`}
       className="station-map-svg"
       xmlns="http://www.w3.org/2000/svg"
       onClick={onBackgroundClick}
+      onPointerMove={(e) => {
+        if (!drag) return;
+        const p = toSvg(e);
+        draggedRef.current = true;
+        setDrag((d) => (d ? { ...d, x: p.x, y: p.y } : null));
+      }}
+      onPointerUp={() => {
+        if (drag?.over && drag.over !== drag.from && canLink(drag.from, drag.over)) {
+          onAddEdge(drag.from, drag.over);
+        }
+        setDrag(null);
+      }}
+      onPointerLeave={() => setDrag(null)}
     >
       <defs>
         <marker id="lm-arrow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
@@ -93,26 +143,69 @@ export function StationMap({
         </marker>
       </defs>
 
-      {edges.map((e) => {
-        const toNode = byNodeId[routeNodeIds[e.i + 1]];
-        const toFabricator = toNode?.nodeType === 'fabricator';
+      {draftEdges.map((edge) => {
+        const g = edgeGeometry(edge);
+        if (!g) return null;
+        const label = flowLabel(edgeFlows?.[edgeKey(edge)]);
+        const mx = (g.x1 + g.x2) / 2;
+        const my = (g.y1 + g.y2) / 2;
         return (
-          <line
-            key={e.i}
-            x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-            stroke={toFabricator ? 'rgba(60,200,100,0.45)' : 'rgba(0,180,220,0.45)'}
-            strokeWidth="1.2"
-            strokeDasharray="5 3"
-            markerEnd={toFabricator ? 'url(#lm-arrow-col)' : 'url(#lm-arrow)'}
-          />
+          <g key={`${edge.from}->${edge.to}`}>
+            <title>{flowDetail(edgeFlows?.[edgeKey(edge)])}</title>
+            <line
+              x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}
+              stroke={g.toFabricator ? 'rgba(60,200,100,0.45)' : 'rgba(0,180,220,0.45)'}
+              strokeWidth="1.2"
+              strokeDasharray="5 3"
+              markerEnd={g.toFabricator ? 'url(#lm-arrow-col)' : 'url(#lm-arrow)'}
+              style={{ pointerEvents: 'none' }}
+            />
+            <line
+              x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}
+              stroke="transparent"
+              strokeWidth="8"
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => { e.stopPropagation(); onRemoveEdge(edge); }}
+            >
+              <title>Click to remove link</title>
+            </line>
+            {label && (
+              <text
+                x={mx} y={my - 2}
+                textAnchor="middle"
+                fill="rgba(150,200,220,0.6)"
+                fontSize="5"
+                fontFamily="monospace"
+                style={{ pointerEvents: 'none' }}
+              >
+                {label}
+              </text>
+            )}
+          </g>
         );
       })}
 
+      {drag && byNodeId[drag.from] && (
+        <line
+          x1={byNodeId[drag.from].svgX} y1={byNodeId[drag.from].svgY}
+          x2={drag.x} y2={drag.y}
+          stroke={drag.over && drag.over !== drag.from && canLink(drag.from, drag.over)
+            ? 'rgba(120,255,180,0.8)'
+            : 'rgba(255,120,120,0.6)'}
+          strokeWidth="1.4"
+          strokeDasharray="3 3"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+
       {projected.map((p) => {
-        const inRoute = p.keys.some((k) => draftNodeKeys.includes(k));
+        const inRoute = draftNodes.includes(p.nodeId);
         const shortName = p.name.length > 9 ? p.name.slice(0, 8) + '…' : p.name;
         const isFabricator = p.nodeType === 'fabricator';
         const isAdvanced = isFabricator && !!p.advanced;
+        const status = nodeStatus?.[p.nodeId];
+        const statusRing = status ? STATUS_RING[status] : null;
+        const island = islandNodes.includes(p.nodeId);
 
         const fabStrokeActive = isAdvanced ? 'rgba(255,190,80,0.9)' : 'rgba(60,220,100,0.9)';
         const fabStrokeIdle = isAdvanced ? 'rgba(150,105,30,0.5)' : 'rgba(30,140,60,0.5)';
@@ -141,8 +234,19 @@ export function StationMap({
         return (
           <g
             key={p.nodeId}
-            onClick={(e) => { e.stopPropagation(); onToggle(p.keys); }}
-            onMouseEnter={() => onNodeHover(p.nodeId)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (draggedRef.current) { draggedRef.current = false; return; }
+              onNodeClick(p.nodeId);
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              const pt = toSvg(e);
+              draggedRef.current = false;
+              setDrag({ from: p.nodeId, x: pt.x, y: pt.y, over: null });
+            }}
+            onPointerEnter={() => setDrag((d) => (d ? { ...d, over: p.nodeId } : null))}
+            onPointerLeave={() => setDrag((d) => (d && d.over === p.nodeId ? { ...d, over: null } : d))}
             style={{ cursor: 'pointer' }}
           >
             <circle cx={p.svgX} cy={p.svgY} r={NODE_R + 6} fill="transparent" />
@@ -163,6 +267,26 @@ export function StationMap({
                 strokeWidth="3"
               />
             )}
+            {island && (
+              <circle
+                cx={p.svgX} cy={p.svgY} r={NODE_R + 7}
+                fill="rgba(255,70,70,0.05)"
+                stroke="rgba(255,90,90,0.9)"
+                strokeWidth="1.4"
+                strokeDasharray="2 2"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+            {statusRing && (
+              <circle
+                cx={p.svgX} cy={p.svgY} r={NODE_R + 4}
+                fill="none"
+                stroke={statusRing}
+                strokeWidth="1.2"
+                strokeDasharray={status === 'flowing' ? undefined : '3 2'}
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
             <circle
               cx={p.svgX} cy={p.svgY} r={NODE_R}
               fill={inRoute ? fillActive : fillIdle}
@@ -170,22 +294,11 @@ export function StationMap({
               strokeWidth="1.5"
             />
             {isFabricator ? (
-              <>
-                <polygon
-                  points={`${p.svgX},${p.svgY - ICON_HALF * 0.85} ${p.svgX + ICON_HALF * 0.65},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 0.85} ${p.svgX - ICON_HALF * 0.65},${p.svgY}`}
-                  fill={iconColor}
-                  style={{ pointerEvents: 'none' }}
-                />
-                {isAdvanced && (
-                  <polygon
-                    points={`${p.svgX},${p.svgY - ICON_HALF * 1.45} ${p.svgX + ICON_HALF * 1.1},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 1.45} ${p.svgX - ICON_HALF * 1.1},${p.svgY}`}
-                    fill="none"
-                    stroke={iconColor}
-                    strokeWidth="0.9"
-                    style={{ pointerEvents: 'none' }}
-                  />
-                )}
-              </>
+              <polygon
+                points={`${p.svgX},${p.svgY - ICON_HALF * 0.85} ${p.svgX + ICON_HALF * 0.65},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 0.85} ${p.svgX - ICON_HALF * 0.65},${p.svgY}`}
+                fill={iconColor}
+                style={{ pointerEvents: 'none' }}
+              />
             ) : p.resources && p.resources.length > 1 ? (
               <NodeIcon cx={p.svgX} cy={p.svgY} resourceType="multiSystem" color={iconColor} />
             ) : primaryRes ? (
