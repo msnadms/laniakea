@@ -23,10 +23,12 @@ export const STAR_TYPE_LABELS: Record<StarType, string> = {
   N: 'N-class (Neutron Star)',
 };
 
+// x and y are galactic-plane coordinates; z is height above that plane.
 export interface StarSystem {
   id: number;
   x: number;
   y: number;
+  z: number;
   name: string;
   starType: StarType;
   color: number;

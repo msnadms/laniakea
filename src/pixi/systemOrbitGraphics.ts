@@ -1,6 +1,6 @@
 import { Graphics } from 'pixi.js';
 import type { PlanetLayout } from '../game/planetGen';
-import { projectOrbitPoint, type SystemCamera3D } from './systemProjection';
+import { projectOrbitPointWithBasis, updateProjectionBasis, type Camera3D } from './projection';
 
 const SYSTEM_SEGMENTS = 96;
 const MOON_SEGMENTS = 48;
@@ -14,15 +14,16 @@ type Segment = {
   depth: number;
 };
 
-export function createSystemOrbitGraphics(planets: PlanetLayout[], camera: SystemCamera3D): Graphics[] {
+export function createSystemOrbitGraphics(planets: PlanetLayout[], camera: Camera3D): Graphics[] {
+  const basis = updateProjectionBasis(camera);
   const segments: Segment[] = [];
   let minDepth = Infinity;
   let maxDepth = -Infinity;
 
   for (const planet of planets) {
-    let previous = projectOrbitPoint(0, planet.orbitRadius, camera);
+    let previous = projectOrbitPointWithBasis(0, planet.orbitRadius, basis);
     for (let index = 1; index <= SYSTEM_SEGMENTS; index++) {
-      const current = projectOrbitPoint(index / SYSTEM_SEGMENTS * Math.PI * 2, planet.orbitRadius, camera);
+      const current = projectOrbitPointWithBasis(index / SYSTEM_SEGMENTS * Math.PI * 2, planet.orbitRadius, basis);
       const depth = (previous.depth + current.depth) * 0.5;
       segments.push({ ax: previous.x, ay: previous.y, bx: current.x, by: current.y, depth });
       minDepth = Math.min(minDepth, depth);
@@ -47,15 +48,16 @@ export function createSystemOrbitGraphics(planets: PlanetLayout[], camera: Syste
   return bands;
 }
 
-export function createMoonOrbitGraphics(distances: number[], camera: SystemCamera3D): { far: Graphics; near: Graphics } {
+export function createMoonOrbitGraphics(distances: number[], camera: Camera3D): { far: Graphics; near: Graphics } {
   const far = new Graphics();
   const near = new Graphics();
   const orthographicCamera = { ...camera, perspectiveStrength: 0 };
+  const basis = updateProjectionBasis(orthographicCamera);
 
   for (const distance of distances) {
-    let previous = projectOrbitPoint(0, distance, orthographicCamera);
+    let previous = projectOrbitPointWithBasis(0, distance, basis);
     for (let index = 1; index <= MOON_SEGMENTS; index++) {
-      const current = projectOrbitPoint(index / MOON_SEGMENTS * Math.PI * 2, distance, orthographicCamera);
+      const current = projectOrbitPointWithBasis(index / MOON_SEGMENTS * Math.PI * 2, distance, basis);
       const target = previous.depth + current.depth < 0 ? far : near;
       target.moveTo(previous.x, previous.y).lineTo(current.x, current.y);
       previous = current;

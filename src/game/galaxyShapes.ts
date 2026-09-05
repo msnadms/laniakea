@@ -17,8 +17,12 @@ import {
   ELLIPTICAL_NEBULA_CLOUDS,
   ELLIPTICAL_NEBULA_EXTENT,
   ELLIPTICAL_NEBULA_FALLOFF,
+  ELLIPTICAL_NEBULA_ALPHA_SCALE,
   BAR_FRACTION,
   BARRED_ARM_SPREAD_SCALE,
+  BARRED_ARM_NEBULA_ALPHA_SCALE,
+  BARRED_ARM_ROOT_NEBULA_SPREAD_SCALE,
+  BARRED_ARM_ROOT_NEBULA_SPREAD_EXTENT,
   IRREGULAR_HAZE_FRACTION,
   IRREGULAR_HAZE_EXTENT,
   IRREGULAR_NEBULA_REACH,
@@ -37,6 +41,8 @@ import {
   BARRED_CORE_PLATEAU,
   BARRED_CORE_FALLOFF,
   BARRED_CORE_ALPHA_SCALE,
+  BARRED_CORE_FLATTENING,
+  IRREGULAR_CORE_FLATTENING,
   CORE_ELLIPSE_X,
   CORE_ELLIPSE_Y,
   CORE_PARTICLE_COUNT,
@@ -63,6 +69,7 @@ export interface NebulaCloud {
   blobScale: number;
   count: number;
   nebulaChance: number;
+  opacityScale?: number;
 }
 
 function defaultNebulaChance(t: number) {
@@ -216,14 +223,19 @@ function armClouds(config: GalaxyConfig, innerFraction: number, baseAngleFor: (a
 
       const taper = Math.pow(1 - Math.max(0, (t - 0.90) / 0.10), 1.5);
       const nearCore = Math.hypot(x, y) < NEBULA_CLOUD_OFFSET;
+      const rootTaper = config.type === 'barred'
+        ? Math.pow(Math.max(0, 1 - t / BARRED_ARM_ROOT_NEBULA_SPREAD_EXTENT), 2)
+        : 0;
+      const rootSpreadScale = 1 + (BARRED_ARM_ROOT_NEBULA_SPREAD_SCALE - 1) * rootTaper;
       clouds.push({
         x,
         y,
         t,
-        spread: GALAXY_RADIUS * NEBULA_SPREAD * armSpreadScale(config) * (0.35 + radius / GALAXY_RADIUS) * (0.5 + 0.5 * taper),
+        spread: GALAXY_RADIUS * NEBULA_SPREAD * armSpreadScale(config) * (0.35 + radius / GALAXY_RADIUS) * (0.5 + 0.5 * taper) * rootSpreadScale,
         blobScale: nearCore ? 1.5 : NEBULA_RADIUS_MULTIPLIER,
         count: nearCore ? 20 : Math.max(1, Math.round(NEBULA_PARTICLES_PER_STEP * taper * density)),
         nebulaChance: defaultNebulaChance(t),
+        opacityScale: config.type === 'barred' ? BARRED_ARM_NEBULA_ALPHA_SCALE : 1,
       });
     }
   }
@@ -268,6 +280,7 @@ function ellipticalClouds(rng: Rng, config: GalaxyConfig): NebulaCloud[] {
       blobScale: NEBULA_RADIUS_MULTIPLIER * lerp(2.2, 1.3, t),
       count: Math.max(1, Math.round(NEBULA_PARTICLES_PER_STEP * 0.06 * taper)),
       nebulaChance: defaultNebulaChance(t),
+      opacityScale: ELLIPTICAL_NEBULA_ALPHA_SCALE,
     });
   }
   return clouds;
@@ -347,6 +360,7 @@ export function nebulaClouds(rng: Rng, config: GalaxyConfig): NebulaCloud[] {
 export interface CoreGlow {
   scaleX: number;
   scaleY: number;
+  flattening: number;
   count: number;
   plateau: number;
   falloff: number;
@@ -356,7 +370,7 @@ export interface CoreGlow {
   lensFloor: number;
 }
 
-const ROUND_CORE = { plateau: 0, falloff: 0, alphaScale: 1, angle: 0, lens: 0, lensFloor: 1 };
+const ROUND_CORE = { plateau: 0, falloff: 0, alphaScale: 1, angle: 0, lens: 0, lensFloor: 1, flattening: 1 };
 
 export function coreGlow(config: GalaxyConfig): CoreGlow {
   switch (config.type) {
@@ -368,12 +382,14 @@ export function coreGlow(config: GalaxyConfig): CoreGlow {
         ...ROUND_CORE,
         scaleX: IRREGULAR_CORE_SPREAD,
         scaleY: IRREGULAR_CORE_SPREAD,
+        flattening: IRREGULAR_CORE_FLATTENING,
         count: Math.round(CORE_PARTICLE_COUNT * IRREGULAR_CORE_GLOW),
       };
     case 'barred':
       return {
         scaleX: (GALAXY_RADIUS * config.barLength * BARRED_CORE_LENGTH_FRACTION) / CORE_ELLIPSE_X,
         scaleY: (GALAXY_RADIUS * BAR_WIDTH * BARRED_CORE_BULGE_SCALE) / CORE_ELLIPSE_Y,
+        flattening: BARRED_CORE_FLATTENING,
         count: Math.round(CORE_PARTICLE_COUNT * BARRED_CORE_COUNT_SCALE),
         plateau: BARRED_CORE_PLATEAU,
         falloff: BARRED_CORE_FALLOFF,
@@ -386,4 +402,3 @@ export function coreGlow(config: GalaxyConfig): CoreGlow {
       return { ...ROUND_CORE, scaleX: 1, scaleY: 1, count: CORE_PARTICLE_COUNT };
   }
 }
-

@@ -18,6 +18,30 @@ export function cancelIntroZoom(): void { _cancelIntro?.(); }
 
 const FADE_START_T = 0.9;
 
+// Galaxy geometry is baked at a fixed tilt, so the opening settle eases the
+// layer's vertical scale rather than re-projecting anything.
+export function animateTiltSettle(root: Container, fromScaleY: number, durationMs: number): () => void {
+  let elapsed = 0;
+  root.scale.y = fromScaleY;
+
+  const tick = (ticker: Ticker) => {
+    elapsed += ticker.deltaMS;
+    const t = Math.min(elapsed / durationMs, 1);
+    const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+    root.scale.y = fromScaleY + (1 - fromScaleY) * eased;
+    if (t >= 1) {
+      root.scale.y = 1;
+      Ticker.shared.remove(tick);
+    }
+  };
+
+  Ticker.shared.add(tick);
+  return () => {
+    Ticker.shared.remove(tick);
+    root.scale.y = 1;
+  };
+}
+
 // Anchor math is intentionally identical to scroll-wheel zoom: worldX/Y stays pinned at anchorScreenX/Y.
 export function animateZoomTo(
   camera: { current: { x: number; y: number; scale: number } },

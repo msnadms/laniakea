@@ -68,7 +68,8 @@ export class GalaxyConfig {
         if (this.type === 'barred' && overrides?.numArms === undefined) {
             this.numArms = randInt(2) === 0 ? 2 : 4;
         }
-        this.galaxyEllipse = rng() * 0.25 + 0.75 // 0.75 to 1
+        // Mild in-plane ellipticity only; inclination comes from the camera tilt.
+        this.galaxyEllipse = rng() * 0.08 + 0.92;
         this.spiralTwist = this.type === 'barred'
             ? randRange(BARRED_TWIST_MIN, BARRED_TWIST_MAX)
             : (SPIRAL_TWISTS[this.numArms] ?? 2.0);

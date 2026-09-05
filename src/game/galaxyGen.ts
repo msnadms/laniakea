@@ -9,6 +9,10 @@ import {
   NUM_BROWN_DWARFS,
   NEBULA_COLORS,
   INNER_NEBULA_COLORS,
+  GALAXY_RADIUS,
+  BULGE_RADIUS_FRACTION,
+  POPULATION_SCALE_HEIGHT,
+  SPHEROID_FLOOR,
 } from './constants';
 import { GalaxyConfig, type GalaxyOverrides } from './galaxyConfig';
 import { sampleStar, edgeStar } from './galaxyShapes';
@@ -116,6 +120,18 @@ function lerp(start: number, end: number, t: number) {
   return start + (end - start) * t;
 }
 
+function spheroidFactor(planeRadius: number, extent: number) {
+  const t = Math.min(1, planeRadius / extent);
+  return lerp(SPHEROID_FLOOR, 1, Math.sqrt(1 - t * t));
+}
+
+function sampleHeight(rng: Rng, population: StarPopulation, planeRadius: number): number {
+  let scaleHeight = POPULATION_SCALE_HEIGHT[population] * GALAXY_RADIUS;
+  if (population === 'bulge') scaleHeight *= spheroidFactor(planeRadius, GALAXY_RADIUS * BULGE_RADIUS_FRACTION);
+  else if (population === 'halo') scaleHeight *= spheroidFactor(planeRadius, GALAXY_RADIUS);
+  return (rng() + rng() - 1) * scaleHeight;
+}
+
 
 
 export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): Galaxy {
@@ -157,6 +173,10 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
     }
   }
 
+  // Heights come from their own RNG so the primary sequence, and therefore every
+  // existing galaxy's stars, are untouched.
+  const heightRng = createRng((seed ^ 0x1b873593) >>> 0);
+
   const systems: StarSystem[] = positions.map(([x, y], id) => {
     const rawType = isBrownDwarf[id] ? 'L' : pickStarType(rng, populations[id], armFractions[id]);
     const starType = isNeutronStar[id] ? 'N' : rawType;
@@ -166,6 +186,7 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
       id,
       x,
       y,
+      z: sampleHeight(heightRng, populations[id], Math.hypot(x, y)),
       name: makeName(rng),
       starType,
       color: STAR_COLORS[starType],
@@ -189,6 +210,7 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
     for (const s of NEARBY_SYSTEMS_DATA) {
       systems[s.id] = {
         ...s,
+        z: systems[s.id].z,
         seed: (seed ^ (s.id * 2654435761)) >>> 0,
         visited: false,
         current: false,

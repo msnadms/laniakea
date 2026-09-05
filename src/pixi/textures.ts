@@ -27,7 +27,7 @@ export function createDisplacementTexture(size = 512, lowRes = 64): Texture {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(tmp, 0, 0, size, size);
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createDisplacementSetup(container: Container, initialScale: number) {
@@ -39,10 +39,10 @@ export function createDisplacementSetup(container: Container, initialScale: numb
   dispSprite.renderable = false;
 
   const dispFilter = new DisplacementFilter({ sprite: dispSprite, scale: initialScale });
-  container.filters = [dispFilter];
   container.addChild(dispSprite);
 
   return {
+    filter: dispFilter,
     update(elapsedSecs: number, filterScale: number) {
       dispSprite.x = Math.sin(elapsedSecs * 0.06) * 120;
       dispSprite.y = Math.cos(elapsedSecs * 0.045) * 120;
@@ -52,6 +52,8 @@ export function createDisplacementSetup(container: Container, initialScale: numb
     },
     destroy() {
       dispFilter.destroy();
+      container.removeChild(dispSprite);
+      dispSprite.destroy();
       dispTexture.destroy(true);
     },
   };
@@ -79,7 +81,7 @@ export function createSunTexture(color: number): Texture {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createNebulaGlowTexture(color: number): Texture {
@@ -108,7 +110,26 @@ export function createNebulaGlowTexture(color: number): Texture {
 
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, SIZE, SIZE);
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
+}
+
+export function createBodyShadowTexture(): Texture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+  const gradient = ctx.createLinearGradient(0, 0, size, 0);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.96)');
+  gradient.addColorStop(0.42, 'rgba(0,0,0,0.72)');
+  gradient.addColorStop(0.68, 'rgba(0,0,0,0.18)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  return Texture.from(canvas, true);
 }
 
 export function createStarTexture(color: number, size: number): Texture {
@@ -162,7 +183,7 @@ export function createStarTexture(color: number, size: number): Texture {
     ctx.restore();
   }
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 function makeCircleCanvas(size: number, baseColor: number) {
@@ -235,7 +256,7 @@ export function createRockyPlanetAlbedoTexture(baseColor: number, seed: number):
     ctx.fillRect(0, 0, SIZE, SIZE);
   }
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createHabitablePlanetAlbedoTexture(baseColor: number, seed: number): Texture {
@@ -330,7 +351,7 @@ export function createHabitablePlanetAlbedoTexture(baseColor: number, seed: numb
   ctx.fillStyle = atmo;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createMoonAlbedoTexture(baseColor: number, seed: number): Texture {
@@ -377,7 +398,7 @@ export function createMoonAlbedoTexture(baseColor: number, seed: number): Textur
     ctx.stroke();
   }
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createNeutronStarTexture(seed: number): Texture {
@@ -431,7 +452,7 @@ export function createNeutronStarTexture(seed: number): Texture {
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createBrownDwarfTexture(seed: number): Texture {
@@ -505,7 +526,7 @@ export function createBrownDwarfTexture(seed: number): Texture {
   ctx.fillStyle = hi;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }
 
 export function createGasGiantAlbedoTexture(baseColor: number, seed: number, isIce = false): Texture {
@@ -533,5 +554,5 @@ export function createGasGiantAlbedoTexture(baseColor: number, seed: number, isI
     y += bandH;
   }
 
-  return Texture.from(canvas);
+  return Texture.from(canvas, true);
 }

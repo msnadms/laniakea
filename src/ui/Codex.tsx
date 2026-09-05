@@ -372,7 +372,7 @@ function travelToSystem(
   ui.pushAddress(buildAddressComponent(scName, scx, scy, scz, 'supercluster'));
   pushAttractor(ui, state.supercluster, dot?.x ?? 0, dot?.y ?? 0);
   ui.pushAddress(buildAddressComponent(galaxyName, dot?.x ?? 0, dot?.y ?? 0, dot?.z ?? 0, 'galaxy'));
-  ui.pushAddress(buildAddressComponent(systemName, system.x, system.y, 0, 'system'));
+  ui.pushAddress(buildAddressComponent(systemName, system.x, system.y, system.z, 'system'));
   ui.setView('system');
 }
 

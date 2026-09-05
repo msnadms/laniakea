@@ -1,5 +1,5 @@
 import { Filter, GlProgram, GpuProgram, UniformGroup } from 'pixi.js';
-import type { SystemPoint3D } from './systemProjection';
+import type { Point3D } from './projection';
 
 const glVertex = `
 in vec2 aPosition;
@@ -130,7 +130,7 @@ export class SystemBodyLightingFilter extends Filter {
     this.lightDirection = lightDirection;
   }
 
-  setLightDirection(direction: SystemPoint3D) {
+  setLightDirection(direction: Point3D) {
     this.lightDirection[0] = direction.x;
     this.lightDirection[1] = direction.y;
     this.lightDirection[2] = direction.z;

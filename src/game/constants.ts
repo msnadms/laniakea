@@ -37,6 +37,12 @@ export const BAR_FRACTION = 0.18;
 
 // Bar-fed arms are broader and more diffuse than core-fed ones.
 export const BARRED_ARM_SPREAD_SCALE = 1.6;
+export const BARRED_ARM_NEBULA_ALPHA_SCALE = 0.8;
+
+// Nebula billows outward where each arm leaves the bar, then settles back to
+// the regular barred-arm width over the inner part of the arm.
+export const BARRED_ARM_ROOT_NEBULA_SPREAD_SCALE = 2.5;
+export const BARRED_ARM_ROOT_NEBULA_SPREAD_EXTENT = 0.3;
 
 // Bar-fed arms wind less than core-fed ones, so they get their own twist range.
 export const BARRED_TWIST_MIN = 1.1;
@@ -67,6 +73,7 @@ export const BARRED_CORE_COUNT_SCALE = 1.8;
 export const BARRED_CORE_PLATEAU = 0.25;
 export const BARRED_CORE_FALLOFF = 3.2;
 export const BARRED_CORE_ALPHA_SCALE = 1.6;
+export const BARRED_CORE_CENTER_ALPHA_SCALE = 1.3;
 
 // Power curve for elliptical radius: radius = R * u^c, so surface density goes
 // as r^(1/c - 2). 0.5 is a flat disc; at 1.0 and above the centre becomes a
@@ -82,6 +89,7 @@ export const ELLIPTICAL_AXIS_MAX = 0.85;
 // few dense ones, so no cloud is big or solid enough to read as its own puff.
 export const ELLIPTICAL_NEBULA_CLOUDS = 1500;
 export const ELLIPTICAL_NEBULA_EXTENT = 1.05;
+export const ELLIPTICAL_NEBULA_ALPHA_SCALE = 0.75;
 
 // Radius power for cloud placement: surface density goes as r^(1/p - 2), so 0.5
 // is an even wash. Anything near the stars' own concentration piles the whole
@@ -242,6 +250,11 @@ export const CORE_PARTICLE_COUNT = 500;
 
 export const CORE_COLORS = [0xffffff, 0xffe8c0]
 
+// Flatten the centre-biased particle distribution without changing its bounds,
+// then soften the combined glow slightly.
+export const CORE_DISTRIBUTION_POWER = 0.8;
+export const CORE_ALPHA_SCALE = 0.85;
+
 // Half-width and half-height of the ellipse the core particles scatter within.
 export const CORE_ELLIPSE_X = 180;
 export const CORE_ELLIPSE_Y = 110;
@@ -290,7 +303,45 @@ export const CAMERA_MAX_SCALE = 6;
 // Zoom multiplier applied per scroll step (12% per tick).
 export const CAMERA_ZOOM_FACTOR = 1.12;
 
+export const GALAXY_TILT = 50 * Math.PI / 180;
+
+// Short focal length so the near edge of the disk is visibly larger than the far
+// edge; the cost is that the scale bar is exact only where depth is zero.
+export const GALAXY_FOCAL_LENGTH = 3;
+export const GALAXY_PERSPECTIVE = 0.8;
+
+// Depth slabs the galaxy is split into so stars and gas sort between each other.
+// Each slab is one more offscreen filter pass, so turn this down first if the
+// galaxy view ever costs frame time.
+export const GALAXY_DEPTH_SLABS = 3;
+
+// Scale heights are a fraction of GALAXY_RADIUS, and far past physical: a real
+// disk is a hundred times wider than it is thick, which a tilt cannot show.
+export const POPULATION_SCALE_HEIGHT = {
+  arm: 0.055,
+  bar: 0.045,
+  disk: 0.075,
+  starburst: 0.090,
+  bulge: 0.160,
+  halo: 0.220,
+} as const;
+
+export const SPHEROID_FLOOR = 0.25;
+
+export const NEBULA_SCALE_HEIGHT = 0.045;
+
+export const CORE_HEIGHT_SCALE = 0.85;
+
+export const BARRED_CORE_FLATTENING = 0.7;
+
+export const IRREGULAR_CORE_FLATTENING = 0.6;
+
+export const DEPTH_FADE = 0.35;
+
+export const GALAXY_INTRO_TILT_OFFSET = 8 * Math.PI / 180;
+
+export const GALAXY_INTRO_TILT_MS = 700;
+
 // Pointer must move more than this many pixels before a press is treated as a
 // drag rather than a click.
 export const DRAG_THRESHOLD_PX = 4;
-
