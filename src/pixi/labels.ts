@@ -3,7 +3,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 function makeLabelBox(label: string, fontSize: number, alpha: number) {
   const textObj = new Text({
     text: label,
-    style: { fontFamily: 'sans-serif', fontSize, fill: 0x8ec4d4, align: 'center' },
+    style: { fontFamily: 'Saira Condensed', fontSize, fill: 0x8ec4d4, align: 'center' },
   });
   textObj.anchor.set(0.5, 0.5);
   const padX = fontSize * 0.45;

@@ -31,6 +31,7 @@
 }
 
 .galaxy-title {
+  font-family: var(--font-display);
   position: absolute;
   top: 20px;
   left: 50%;
@@ -47,6 +48,7 @@
 }
 
 .galaxy-title-sub {
+  font-family: var(--font-display);
   margin-top: 4px;
   color: #7d94b8;
   font-size: 11px;
@@ -102,7 +104,7 @@
 
 .hud-address-coords {
   font-size: 10px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.12em;
   color: #1e4a6a;
   margin-top: 4px;
@@ -129,6 +131,7 @@
 }
 
 .system-panel-name {
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 600;
   color: #e8f0f8;
@@ -145,5 +148,5 @@
 .system-panel-coords {
   font-size: 11px;
   color: #3a5a72;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }

@@ -11,6 +11,7 @@
 }
 
 .address-breadcrumb {
+  font-family: var(--font-display);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -35,7 +36,7 @@
 
 .address-coords {
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.06em;
   color: #2a4060;
 }

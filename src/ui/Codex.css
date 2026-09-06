@@ -15,7 +15,7 @@
   filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.3));
   color: rgba(0, 180, 220, 0.55);
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -68,7 +68,7 @@
   display: flex;
   flex-direction: column;
   pointer-events: all;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: #c0dde8;
 }
@@ -83,6 +83,7 @@
 }
 
 .codex-title {
+  font-family: var(--font-display);
   font-size: 11px;
   font-weight: 600;
   color: #c0dde8;
@@ -95,7 +96,7 @@
   border: none;
   color: rgba(0, 180, 220, 0.55);
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1;
   padding: 2px 4px;
@@ -121,7 +122,7 @@
   border: 1px solid #1a3a5c;
   padding: 5px 8px;
   color: #c0dde8;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   outline: none;
   letter-spacing: 0.04em;
@@ -141,7 +142,7 @@
   border: none;
   color: #2a6a8a;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 2px 4px;
   line-height: 1;
@@ -455,7 +456,7 @@
   border: none;
   color: #2a6a8a;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 16px;
   padding: 2px 4px;
   line-height: 1;
@@ -494,7 +495,7 @@
   border: none;
   color: #884444;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 1px 4px;
   line-height: 1;

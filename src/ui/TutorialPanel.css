@@ -132,7 +132,7 @@
 
 .tutorial-card-section li::marker {
   color: rgba(0, 190, 230, 0.68);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
 }
 

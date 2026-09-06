@@ -273,8 +273,7 @@ export function StationMap({
                 textAnchor="middle"
                 fill="rgba(150,200,220,0.6)"
                 fontSize="5"
-                fontFamily="monospace"
-                style={{ pointerEvents: 'none' }}
+                style={{ pointerEvents: 'none', fontFamily: 'var(--font-mono)' }}
               >
                 {label}
               </text>
@@ -415,9 +414,8 @@ export function StationMap({
               dominantBaseline="hanging"
               fill={inRoute ? labelActive : labelIdle}
               fontSize="6"
-              fontFamily="monospace"
               letterSpacing="0.5"
-              style={{ pointerEvents: 'none' }}
+              style={{ pointerEvents: 'none', fontFamily: 'var(--font-mono)' }}
             >
               {shortName}
             </text>

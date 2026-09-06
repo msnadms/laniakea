@@ -1,3 +1,11 @@
+@import './fonts.css';
+
+:root {
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Saira Condensed', 'IBM Plex Sans', sans-serif;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -6,7 +14,7 @@
 
 body {
   background: #050810;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-ui);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }

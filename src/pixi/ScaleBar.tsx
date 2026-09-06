@@ -21,7 +21,7 @@ export function ScaleBar({ camera, unitsPerWorldPx, unit, niceValues }: Props) {
     const barGfx = new Graphics();
     const barLabel = new Text({
       text: '',
-      style: { fontFamily: 'sans-serif', fontSize: 14, fill: 0x00bee6, align: 'center' },
+      style: { fontFamily: 'IBM Plex Mono', fontSize: 14, fill: 0x00bee6, align: 'center' },
     });
     barLabel.anchor.set(0.5, 1.0);
     barLabel.alpha = 0.75;

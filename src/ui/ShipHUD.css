@@ -17,6 +17,7 @@
 }
 
 .hud-header {
+  font-family: var(--font-display);
   font-size: 10px;
   letter-spacing: 0.24em;
   color: rgba(0, 180, 220, 0.4);
@@ -118,7 +119,7 @@
 
 .hud-value {
   font-size: 13px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #00c8e8;
   text-shadow: 0 0 8px rgba(0, 200, 232, 0.55);
   white-space: nowrap;
@@ -176,7 +177,7 @@
 
 .hud-vcargo-value {
   font-size: 10px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #00c8e8;
   text-shadow: 0 0 6px rgba(0, 200, 232, 0.55);
   line-height: 1;
@@ -325,7 +326,7 @@
 }
 
 .hud-action-btn {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.1em;
   color: #00c8e8;
@@ -348,7 +349,7 @@
 }
 
 .hud-shield {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #7ddbf0;
   white-space: nowrap;

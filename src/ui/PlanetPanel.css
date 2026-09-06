@@ -14,7 +14,7 @@
   border: 1px solid #1a3a5c;
   box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
   padding: 18px 20px 20px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #c0dde8;
   user-select: none;
 }
@@ -55,6 +55,7 @@
 .planet-panel-zone-dot.ice      { background: #88aacc; }
 
 .planet-panel-name {
+  font-family: var(--font-display);
   font-size: 15px;
   color: #00c8e8;
   text-shadow: 0 0 8px rgba(0, 200, 232, 0.5);
@@ -185,7 +186,7 @@
   background: rgba(0, 136, 187, 0.12);
   border: 1px solid rgba(0, 190, 230, 0.45);
   color: #00c8e8;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;

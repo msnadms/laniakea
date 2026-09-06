@@ -16,7 +16,7 @@
 }
 
 .death-line {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0.22em;
   text-transform: uppercase;

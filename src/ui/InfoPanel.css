@@ -47,7 +47,7 @@
   font-size: 9px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
   writing-mode: vertical-lr;
   text-orientation: upright;
 }
@@ -75,7 +75,7 @@
   letter-spacing: 0.26em;
   color: rgba(0, 180, 220, 0.4);
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-display);
   text-align: center;
   padding: 18px 0 14px;
   border-bottom: 1px solid rgba(0, 190, 230, 0.18);
@@ -103,7 +103,7 @@
   border: 1px solid rgba(0, 190, 230, 0.3);
   color: rgba(0, 180, 220, 0.5);
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
@@ -163,7 +163,7 @@
   letter-spacing: 0.22em;
   color: rgba(0, 180, 220, 0.4);
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-display);
   margin-bottom: 10px;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(0, 190, 230, 0.12);
@@ -173,7 +173,7 @@
   font-size: 14px;
   line-height: 1.7;
   color: rgba(0, 180, 220, 0.5);
-  font-family: monospace;
+  font-family: var(--font-mono);
   text-indent: 20px;
   display: flex;
   gap: 10px;
@@ -192,12 +192,12 @@
   letter-spacing: 0.12em;
   color: #2a6a8a;
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .info-stat-value {
   font-size: 12px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #00c8e8;
   text-shadow: 0 0 6px rgba(0, 200, 232, 0.45);
 }
@@ -226,7 +226,7 @@
   font-size: 10px;
   letter-spacing: 0.1em;
   color: #00c8e8;
-  font-family: monospace;
+  font-family: var(--font-mono);
   width: 24px;
   flex-shrink: 0;
 }
@@ -235,13 +235,13 @@
   font-size: 9px;
   letter-spacing: 0.06em;
   color: rgba(0, 180, 220, 0.45);
-  font-family: monospace;
+  font-family: var(--font-mono);
   flex: 1;
 }
 
 .info-table-temp {
   font-size: 9px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #2a6a8a;
   white-space: nowrap;
 }
@@ -284,7 +284,7 @@
   font-size: 10px;
   line-height: 1.7;
   color: rgba(0, 180, 220, 0.5);
-  font-family: monospace;
+  font-family: var(--font-mono);
   margin: 0 0 10px;
 }
 
@@ -301,7 +301,7 @@
   letter-spacing: 0.2em;
   color: rgba(0, 180, 220, 0.35);
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
   margin-bottom: 6px;
 }
 
@@ -309,7 +309,7 @@
   font-size: 9px;
   line-height: 1.65;
   color: rgba(0, 180, 220, 0.45);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .info-empty {
@@ -317,7 +317,7 @@
   letter-spacing: 0.18em;
   color: #2a6a8a;
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
   text-align: center;
   padding: 32px 0;
 }
@@ -333,7 +333,7 @@
 
 .info-quest-title {
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #00c8e8;
   letter-spacing: 0.08em;
   margin-bottom: 4px;
@@ -341,7 +341,7 @@
 
 .info-quest-desc {
   font-size: 10px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: rgba(0, 180, 220, 0.45);
   letter-spacing: 0.04em;
   line-height: 1.5;
@@ -377,7 +377,7 @@
   font-size: 8px;
   letter-spacing: 0.14em;
   color: #2a6a8a;
-  font-family: monospace;
+  font-family: var(--font-mono);
   text-transform: uppercase;
 }
 
@@ -385,5 +385,5 @@
   font-size: 10px;
   letter-spacing: 0.06em;
   color: rgba(0, 180, 220, 0.6);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }

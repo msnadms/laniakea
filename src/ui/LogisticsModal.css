@@ -22,7 +22,7 @@
   animation: logistics-slide-up 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) both;
   background: rgba(6, 12, 28, 0.96);
   box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #c0dde8;
   user-select: none;
   display: flex;
@@ -47,6 +47,7 @@
 }
 
 .logistics-title {
+  font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 0.28em;
   color: rgba(0, 180, 220, 0.55);
@@ -121,7 +122,7 @@
   text-transform: uppercase;
   padding: 8px 0;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
@@ -183,6 +184,7 @@
 }
 
 .lroute-name {
+  font-family: var(--font-display);
   font-size: 13px;
   letter-spacing: 0.06em;
   color: #6fe4ff;
@@ -251,7 +253,7 @@
   border-left: 3px solid rgba(0, 215, 255, 0.75);
   background: rgba(4, 14, 28, 0.97);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #c0dde8;
   pointer-events: none;
   animation: logistics-detail-fade 0.1s ease both;
@@ -381,7 +383,7 @@
   text-transform: uppercase;
   padding: 7px 0;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -406,7 +408,7 @@
   color: rgba(200, 80, 70, 0.7);
   font-size: 11px;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .lroute-delete:hover {
@@ -449,6 +451,7 @@
 }
 
 .logistics-locked-title {
+  font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 0.22em;
   color: rgba(0, 180, 220, 0.4);
@@ -487,7 +490,7 @@
   border: 1px solid rgba(0, 190, 230, 0.3);
   color: #00c8e8;
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.08em;
   padding: 5px 8px;
   outline: none;
@@ -753,7 +756,7 @@
   text-transform: uppercase;
   padding: 9px 22px;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -889,7 +892,7 @@
 
 .logistics-resource-amount {
   font-size: 10px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: #00c8e8;
   text-shadow: 0 0 6px rgba(0, 200, 232, 0.35);
   white-space: nowrap;
@@ -935,11 +938,12 @@
   overflow-y: auto;
   background: rgba(4, 10, 24, 0.96);
   border-bottom: 1px solid rgba(0, 150, 190, 0.4);
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 12px 13px 10px;
 }
 
 .lm-submodal-header {
+  font-family: var(--font-display);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -963,7 +967,7 @@
   background: transparent;
   border: none;
   color: rgba(120, 175, 200, 0.65);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1;
   padding: 2px 3px;
@@ -1055,7 +1059,7 @@
   border: 1px dashed rgba(0, 130, 170, 0.4);
   color: rgba(0, 160, 200, 0.55);
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   min-height: 48px;
   text-align: left;
   transition: border-color 0.12s, color 0.12s;
@@ -1140,7 +1144,7 @@
   text-transform: uppercase;
   padding: 10px 6px;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
   transition: color 0.12s, border-color 0.12s;
 }
 
@@ -1266,7 +1270,7 @@
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: rgba(90, 170, 130, 0.6);
 }
 
@@ -1277,7 +1281,7 @@
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 4px 8px;
   cursor: pointer;
 }
@@ -1305,7 +1309,7 @@
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-family: monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
 }
 
@@ -1336,7 +1340,7 @@
   text-transform: uppercase;
   padding: 5px 0;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .lm-fabricator-unlock-btn:hover:not(:disabled) {
@@ -1367,7 +1371,7 @@
   background: rgba(0, 30, 20, 0.4);
   border: 1px dashed rgba(60, 180, 100, 0.4);
   color: rgba(60, 200, 100, 0.6);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1449,7 +1453,7 @@
 
 .lm-fabricator-recipe-val {
   font-size: 9px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: rgba(60, 200, 100, 0.65);
   white-space: nowrap;
   flex-shrink: 0;
@@ -1472,7 +1476,7 @@
   background: rgba(4, 10, 24, 0.98);
   border: 1px solid rgba(0, 150, 190, 0.5);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 8px 10px;
   pointer-events: none;
 }
@@ -1509,7 +1513,7 @@
   background: rgba(4, 10, 24, 0.98);
   border: 1px solid rgba(60, 190, 130, 0.5);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 4px 0;
   pointer-events: auto;
   overflow-y: auto;
@@ -1525,7 +1529,7 @@
   cursor: pointer;
   padding: 6px 10px;
   text-align: left;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: rgba(0, 200, 232, 0.8);
 }
 
@@ -1623,7 +1627,7 @@
   align-items: baseline;
   gap: 6px;
   font-size: 12px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.04em;
   animation: dispatch-line-in 0.18s ease-out both;
 }
@@ -1660,7 +1664,7 @@
   border: none;
   border-left: 2px solid transparent;
   color: rgba(120, 215, 245, 0.85);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -1790,7 +1794,7 @@
   background: transparent;
   border: 1px solid rgba(0, 200, 245, 0.55);
   color: rgba(140, 235, 255, 0.95);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1829,7 +1833,7 @@
   background: rgba(4, 16, 32, 0.98);
   border: 1px solid rgba(0, 190, 235, 0.5);
   box-shadow: 0 0 18px rgba(0, 0, 0, 0.6);
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 9px 11px 10px;
   pointer-events: none;
 }
