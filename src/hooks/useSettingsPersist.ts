@@ -39,6 +39,7 @@ export function useSettingsPersist() {
           infiniteExplore: s.infiniteExplore,
           exoticMatter: s.exoticMatter,
           detectionRating: s.detectionRating,
+          detectionHeat: s.detectionHeat,
           lastDetectionChangeAt: s.lastDetectionChangeAt,
           lastPurgeAt: s.lastPurgeAt,
           railgunAmmo: s.railgunAmmo,

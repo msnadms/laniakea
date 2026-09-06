@@ -14,6 +14,7 @@ import {
   fabricatorNodeStatus,
   edgeKey,
   DEFAULT_AUTOMATION_POLICY,
+  AUTOMATION_POLL_MS,
 } from '../store/logisticsStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import {
@@ -43,7 +44,7 @@ import { CRAFTABLE_MATERIALS, STOCKED_MATERIALS, MATERIAL_TIERS, materialName } 
 import { RARE_RESOURCES, RARE_ROLES } from '../data/rareResources';
 import { useStockpileStore } from '../store/stockpileStore';
 import { UpgradeModuleIcon } from './CargoIcons';
-import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, Resource, SlotFillMode } from '../game/types';
+import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, RouteFillAggregate, Resource, SlotFillMode } from '../game/types';
 import { maxFabricatorSlots, makeEmptyFabricatorSlot, RAW_TYPES } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
 import { updateExtractorReserve } from '../firebase/extractors';
@@ -109,6 +110,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const dispatchRoute = useLogisticsStore((s) => s.dispatchRoute);
   const previewRoute = useLogisticsStore((s) => s.previewRoute);
   const setRouteActive = useLogisticsStore((s) => s.setRouteActive);
+  const flushHeldCargo = useLogisticsStore((s) => s.flushHeldCargo);
   const lastRuns = useLogisticsStore((s) => s.lastRuns);
   const extractors = useExtractorStore((s) => s.extractors);
   const ownedUpgrades = useExtractorStore((s) => s.ownedUpgrades);
@@ -136,7 +138,9 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
   const driveA = useUIStore((s) => s.driveA);
   const driveB = useUIStore((s) => s.driveB);
-  void driveA; void driveB;
+  const previewWorldKey = useUIStore((s) => [
+    s.storageA, s.detectionHeat, s.alloys, s.nutrients, s.metallicHydrogen, s.neutronStarMatter,
+  ].join('|'));
 
   const bandwidth = computeMaterialBandwidth(logisticsA, logisticsB);
 
@@ -260,7 +264,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   }
 
   function unlinkNode(nodeId: string) {
-    setDraftEdges((edges) => edges.filter((e) => e.from !== nodeId && e.to !== nodeId));
+    const next = draftEdges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+    if (next.length === draftEdges.length) return;
+    setDraftEdges(next);
+    autoSaveEdges(next);
   }
 
   const canLink = useCallback(
@@ -272,11 +279,22 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   );
 
   function addEdge(from: string, to: string) {
-    setDraftEdges((prev) => (canLink(from, to) ? [...prev, { from, to }] : prev));
+    if (!canLink(from, to)) return;
+    const next = [...draftEdges, { from, to }];
+    setDraftEdges(next);
+    autoSaveEdges(next);
   }
 
   function removeEdge(edge: RouteEdge) {
-    setDraftEdges((prev) => prev.filter((e) => !(e.from === edge.from && e.to === edge.to)));
+    const next = draftEdges.filter((e) => !(e.from === edge.from && e.to === edge.to));
+    if (next.length === draftEdges.length) return;
+    setDraftEdges(next);
+    autoSaveEdges(next);
+  }
+
+  function autoSaveEdges(edges: RouteEdge[]) {
+    if (!editingId && !routeIsValid(edges)) return;
+    commitDraft(edges);
   }
 
   function updateDraftEdge(index: number, patch: Partial<RouteEdge>) {
@@ -291,19 +309,19 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const draftNodes = useMemo(() => routeNodes(draftEdges), [draftEdges]);
   const draftValid = routeIsValid(draftEdges);
 
-  function handleSave() {
-    if (!draftValid) return;
+  function commitDraft(edges: RouteEdge[]) {
     const name = draftName.trim() || 'Route';
+    const nodes = routeNodes(edges);
     if (editingId) {
       const previousHeld = routes.find((candidate) => candidate.id === editingId)?.heldCargo ?? {};
       const heldCargo = Object.fromEntries(Object.entries(previousHeld)
-        .filter(([nodeId]) => draftNodes.includes(nodeId))
+        .filter(([nodeId]) => nodes.includes(nodeId))
         .map(([nodeId, cargo]) => [nodeId, {
           raw: { ...(cargo.raw ?? {}) }, materials: { ...(cargo.materials ?? {}) },
         }]));
-      const fallbackNode = draftNodes[0];
+      const fallbackNode = nodes[0];
       for (const [nodeId, cargo] of Object.entries(previousHeld)) {
-        if (draftNodes.includes(nodeId)) continue;
+        if (nodes.includes(nodeId)) continue;
         const target = heldCargo[fallbackNode] ?? { raw: {}, materials: {} };
         for (const [type, amount] of Object.entries(cargo.raw ?? {})) {
           target.raw[type as Resource['type']] = (target.raw[type as Resource['type']] ?? 0) + (amount ?? 0);
@@ -314,19 +332,24 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
         heldCargo[fallbackNode] = target;
       }
       const route = {
-        id: editingId, name, edges: draftEdges, active: draftActive, automation: draftAutomation,
+        id: editingId, name, edges, active: draftActive, automation: draftAutomation,
         heldCargo,
       };
-      updateRoute(editingId, { name, edges: draftEdges, active: draftActive, automation: draftAutomation, heldCargo });
+      updateRoute(editingId, { name, edges, active: draftActive, automation: draftAutomation, heldCargo });
       if (user) saveLogisticsRoute(user.uid, route);
     } else {
       if (routes.length >= maxRoutes) return;
       const id = crypto.randomUUID();
-      const route = { id, name, edges: draftEdges, active: draftActive, automation: draftAutomation, heldCargo: {} };
+      const route = { id, name, edges, active: draftActive, automation: draftAutomation, heldCargo: {} };
       addRoute(route);
       if (user) saveLogisticsRoute(user.uid, route);
       setEditingId(id);
     }
+  }
+
+  function handleSave() {
+    if (!draftValid) return;
+    commitDraft(draftEdges);
   }
 
   const handleDispatch = useCallback((routeId: string) => {
@@ -448,6 +471,31 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     return map;
   }, [projected, fabricatorStates, fabricators]);
 
+  const routeSummaries = useMemo(() => {
+    void fabricatorStates; void stockpileMaterials; void logisticsA; void logisticsB;
+    void exoticMatter; void helium3; void fuelReserveExotic; void fuelReserveHelium3;
+    void driveA; void driveB; void previewWorldKey; void nodeEquipped;
+    return new Map(routes.map((route) => {
+      const preview = previewRoute(route.id);
+      const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
+      return [route.id, { preview, groups, valid: preview?.valid ?? routeIsValid(route.edges) }];
+    }));
+  }, [routes, previewRoute, extractors, fabricators, fabricatorStates, stockpileMaterials,
+    logisticsA, logisticsB, exoticMatter, helium3, fuelReserveExotic, fuelReserveHelium3,
+    driveA, driveB, previewWorldKey, nodeEquipped]);
+
+  const heldByNode = useMemo(() => {
+    const result: Record<string, { routeIds: string[]; raw: Partial<Record<Resource['type'], number>>; materials: MaterialCost }> = {};
+    for (const route of routes) for (const [nodeId, cargo] of Object.entries(route.heldCargo ?? {})) {
+      const entry = result[nodeId] ?? { routeIds: [], raw: {}, materials: {} };
+      entry.routeIds.push(route.id);
+      for (const [type, amount] of Object.entries(cargo.raw ?? {})) entry.raw[type as Resource['type']] = (entry.raw[type as Resource['type']] ?? 0) + (amount ?? 0);
+      for (const [id, amount] of Object.entries(cargo.materials ?? {})) entry.materials[id] = (entry.materials[id] ?? 0) + amount;
+      result[nodeId] = entry;
+    }
+    return result;
+  }, [routes]);
+
   const systemGroups = useMemo(() => {
     const map = new Map<string, Extractor[]>();
     for (const ext of allExtractors) {
@@ -500,20 +548,21 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
                 <div className="logistics-routes-list">
                   {routes.map((route) => {
-                    const preview = previewRoute(route.id);
-                    const cost = computeRouteCost(route.edges, extractors, fabricators);
-                    const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
+                    const summary = routeSummaries.get(route.id);
+                    const preview = summary?.preview ?? null;
+                    const cost = preview?.cost ?? computeRouteCost(route.edges, extractors, fabricators);
+                    const groups = summary?.groups ?? resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
                     const fabKeys = routeFabricatorKeys(groups);
                     const fabricatorCount = fabKeys.length;
                     const nodeCount = groups.size;
-                    const valid = routeIsValid(route.edges);
+                    const valid = summary?.valid ?? routeIsValid(route.edges);
                     const canAfford = exoticMatter >= cost.exotic && helium3 >= cost.helium;
                     const canDispatch = preview?.canRun === true || (
                       (preview?.reason === 'Detection ceiling would be exceeded'
                         || preview?.reason === 'Insufficient route fuel')
                       && valid && canAfford
                     );
-                    const raisesDetection = (preview?.detectionRisk ?? 0) >= 5;
+                    const raisesDetection = (preview?.detectionRisk ?? 0) > 0;
                     const stalledStatus = fabricatorNodeStatus(fabKeys, fabricatorStates, fabricators);
                     const stalled = stalledStatus === 'jammed' || stalledStatus === 'starved';
 
@@ -571,6 +620,9 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                             {Object.values(preview.expectedEdgeUse).reduce((sum, edge) => sum + edge.used, 0)} expected edge units ·{' '}
                             {preview.shortages.length} shortage{preview.shortages.length === 1 ? '' : 's'} · {preview.detectionRisk} risk
                             {preview.expectedRecipes.length > 0 && <span title={preview.expectedRecipes.join(', ')}> · recipes: {preview.expectedRecipes.slice(0, 2).join(', ')}{preview.expectedRecipes.length > 2 ? '…' : ''}</span>}
+                            {Object.entries(preview.expectedOutputs).slice(0, 1).map(([id, count]) => (
+                              <span key={id}> · {fmt(count * 3_600_000 / AUTOMATION_POLL_MS)} {materialName(id)} / hr at {fmt(cost.exotic * 3_600_000 / AUTOMATION_POLL_MS)} exotic / hr</span>
+                            ))}
                           </div>
                         )}
                       </>
@@ -671,6 +723,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           draftEdges={draftEdges}
                           nodeStatus={nodeStatus}
                           edgeFlows={editingId ? lastRuns[editingId]?.edgeFlows : undefined}
+                          heldNodeIds={new Set(Object.keys(heldByNode))}
                           islandNodes={draftIslands}
                           onAddEdge={addEdge}
                           onRemoveEdge={removeEdge}
@@ -745,11 +798,22 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           </select>
                         </label>
                         {draftAutomation.dispatchMode === 'fill' && (
-                          <label className="logistics-policy-field">
-                            Source fill %
-                            <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
-                              onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
-                          </label>
+                          <>
+                            <label className="logistics-policy-field">
+                              Fill aggregation
+                              <select value={draftAutomation.fillAggregate}
+                                onChange={(event) => setDraftAutomation((policy) => ({ ...policy, fillAggregate: event.target.value as RouteFillAggregate }))}>
+                                <option value="weighted">Demand weighted</option>
+                                <option value="any">Any source</option>
+                                <option value="all">All sources</option>
+                              </select>
+                            </label>
+                            <label className="logistics-policy-field">
+                              Source fill %
+                              <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
+                                onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                            </label>
+                          </>
                         )}
                         <label className="logistics-policy-field">
                           Detection ceiling
@@ -839,6 +903,12 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
           )}
           {/* ── Right panel ── */}
           <div className="logistics-resources-panel">
+            {lastHoveredNode && heldByNode[lastHoveredNode.nodeId] && (
+              <HeldCargoNotice
+                cargo={heldByNode[lastHoveredNode.nodeId]}
+                onFlush={() => heldByNode[lastHoveredNode.nodeId].routeIds.forEach((routeId) => flushHeldCargo(routeId, lastHoveredNode.nodeId))}
+              />
+            )}
             {lastHoveredNode && lastHoveredNode.nodeType === 'extractor' && (
               <NodeSidebar
                 node={lastHoveredNode}
@@ -1512,6 +1582,28 @@ function FabricatorSidebar({
 }
 
 // ── Node sidebar ──────────────────────────────────────────────────────────────
+
+function HeldCargoNotice({
+  cargo,
+  onFlush,
+}: {
+  cargo: { raw: Partial<Record<Resource['type'], number>>; materials: MaterialCost };
+  onFlush: () => void;
+}) {
+  const entries = [
+    ...Object.entries(cargo.raw).filter(([, amount]) => (amount ?? 0) > 0)
+      .map(([type, amount]) => `${fmt(amount ?? 0)} ${RESOURCE_LABELS[type as Resource['type']]}`),
+    ...Object.entries(cargo.materials).filter(([, amount]) => amount > 0)
+      .map(([id, amount]) => `${fmt(amount)} ${materialName(id)}`),
+  ];
+  return (
+    <div className="lm-held-cargo">
+      <div className="lm-held-cargo-title">Stranded route cargo</div>
+      <div>{entries.join(' · ')}</div>
+      <button type="button" onClick={onFlush}>Flush to ship</button>
+    </div>
+  );
+}
 
 function NodeSidebar({
   node,

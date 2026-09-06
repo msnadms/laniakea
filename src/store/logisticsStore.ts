@@ -12,16 +12,20 @@ import {
   useFabricatorStore,
   slotResourceDemand, slotMaterialDemand, slotStatus, processFabricator,
 } from './fabricatorStore';
-import type { MaterialBudget, SlotRunResult } from './fabricatorStore';
+import type { FeedResult, MaterialBudget, SlotRunResult } from './fabricatorStore';
 import { useStockpileStore } from './stockpileStore';
-import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, resourceAmount, EXTRACTOR_HOLD_CAPS } from './uiStore';
+import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR } from './uiStore';
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
+import { getSuperclusterCoords } from '../game/superclusters';
+import { OBS_UNIVERSE_RADIUS } from '../game/constants';
 
 const FABRICATOR_PREFIX = 'fabricator:';
+export const AUTOMATION_POLL_MS = 15_000;
 
 export const DEFAULT_AUTOMATION_POLICY: RouteAutomationPolicy = {
   dispatchMode: 'fill',
   sourceFillPercent: 50,
+  fillAggregate: 'weighted',
   detectionCeiling: 4,
   pauseOnJam: true,
 };
@@ -83,7 +87,10 @@ function hopCost(a: NodeGroup, b: NodeGroup): { exotic: number; helium: number }
   if (a.galaxySeed === b.galaxySeed && a.systemId === b.systemId) return { exotic: 0, helium: 0 };
   if (a.galaxySeed === b.galaxySeed) return galaxyTravelCost(Math.hypot(a.systemX - b.systemX, a.systemY - b.systemY));
   if (a.superclusSeed === b.superclusSeed) return superclusterTravelCost(Math.hypot(a.galaxyX - b.galaxyX, a.galaxyY - b.galaxyY));
-  return flatTravelCost(100);
+  const from = getSuperclusterCoords(a.superclusSeed);
+  const to = getSuperclusterCoords(b.superclusSeed);
+  const distance = Math.hypot(from[0] - to[0], from[1] - to[1], from[2] - to[2]);
+  return flatTravelCost(100 + Math.round(100 * Math.min(1, distance / (2 * OBS_UNIVERSE_RADIUS))));
 }
 
 export function successors(edges: RouteEdge[], nodeId: string): string[] {
@@ -159,14 +166,16 @@ export function routeNodes(edges: RouteEdge[]): string[] {
 export function routeIslandNodes(edges: RouteEdge[]): string[] {
   const nodes = routeNodes(edges);
   if (nodes.length === 0) return [];
+  const adjacent = new Map(nodes.map((node) => [node, [] as string[]]));
+  for (const edge of edges) {
+    adjacent.get(edge.from)?.push(edge.to);
+    adjacent.get(edge.to)?.push(edge.from);
+  }
   const seen = new Set([nodes[0]]);
   const queue = [nodes[0]];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    for (const edge of edges) {
-      const next = edge.from === current ? edge.to : edge.to === current ? edge.from : null;
-      if (next && !seen.has(next)) { seen.add(next); queue.push(next); }
-    }
+    for (const next of adjacent.get(current) ?? []) if (!seen.has(next)) { seen.add(next); queue.push(next); }
   }
   return nodes.filter((node) => !seen.has(node));
 }
@@ -192,11 +201,11 @@ function edgeCapacity(edge: RouteEdge, bandwidth: number): number {
   return Math.max(0, Math.min(bandwidth, Math.floor(edge.materialDraw ?? bandwidth)));
 }
 
-export const DETECTION_DENSITY_DIVISOR = 2;
-export const DETECTION_CROSSING_POINTS = 1;
+export const DETECTION_DENSITY_DIVISOR = 60;
+export const DETECTION_CROSSING_POINTS = 0.05;
 
 function localHopRisk(hops: number): number {
-  return Math.floor(hops * (hops - 1) / DETECTION_DENSITY_DIVISOR);
+  return hops * (hops - 1) / DETECTION_DENSITY_DIVISOR;
 }
 
 function nodeIsDampened(group: NodeGroup, equipped: Record<string, [string | null, string | null]>): boolean {
@@ -236,13 +245,14 @@ export function computeRouteCost(
   edges: RouteEdge[],
   extractors: Record<string, Extractor>,
   fabricators: Record<string, Fabricator> = {},
+  throughputUnits = 0,
 ): { exotic: number; helium: number } {
   const groups = resolveNodeGroups(routeNodes(edges), extractors, fabricators);
   if (groups.size === 0) return { exotic: 0, helium: 0 };
   const { driveA, driveB } = useUIStore.getState();
   const [exoticMultiplier, heliumMultiplier] = computeDriveMultiplier(driveA, driveB);
-  let exotic = Math.max(1, Math.round(50 * exoticMultiplier));
-  let helium = Math.max(1, Math.round(25 * heliumMultiplier));
+  let exotic = Math.max(1, Math.round((10 + throughputUnits * 0.02) * exoticMultiplier));
+  let helium = Math.max(1, Math.round((5 + throughputUnits * 0.01) * heliumMultiplier));
   for (const edge of [...edges].sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)))) {
     const from = groups.get(edge.from);
     const to = groups.get(edge.to);
@@ -290,100 +300,264 @@ export interface RoutePreview {
   islandNodes: string[];
   expectedBatches: number;
   expectedRecipes: string[];
+  expectedOutputs: MaterialCost;
   expectedEdgeUse: Record<string, { used: number; capacity: number }>;
   shortages: string[];
+  throughputUnits: number;
 }
 
-function simulateRoutePreview(
-  route: LogisticsRoute,
-  groups: Map<string, NodeGroup>,
-  extractors: Record<string, Extractor>,
-  fabricators: Record<string, Fabricator>,
-  fabricatorStates: Record<string, FabricatorState>,
-  stockpile: MaterialCost,
-  bandwidth: number,
-): {
+export interface RouteWorld {
+  peekExtractor(key: ExtractorKey): number;
+  collectExtractor(key: ExtractorKey, max: number): number;
+  fabricator(key: string): { fabricator?: Fabricator; state?: FabricatorState };
+  feedFabricator(key: string, raw: Cargo['raw'], materials: MaterialCost, budget: MaterialBudget,
+    canRouteByproduct: (id: string) => boolean, stockpile: MaterialCost): FeedResult;
+  depositRaw(type: Resource['type'], amount: number): number;
+  depositMaterial(id: string, amount: number): void;
+  readStockpile(): MaterialCost;
+  holdRoom(type: Resource['type']): number;
+}
+
+export interface TraversalResult {
+  order: string[];
+  collected: { key: ExtractorKey; amount: number }[];
+  endItems: FabricatorProductionItem[];
+  carried: MaterialCost;
+  materialsMoved: number;
+  bandwidth: number;
+  stalled: { fabricatorKey: string; status: SlotStatus }[];
+  edgeFlows: Record<string, EdgeFlowResult>;
+  slotResults: Record<string, SlotRunResult[]>;
+  deposited: Cargo;
+  heldCargo: Record<string, Cargo>;
   didWork: boolean;
   expectedBatches: number;
   expectedRecipes: string[];
-  expectedEdgeUse: Record<string, { used: number; capacity: number }>;
+  expectedOutputs: MaterialCost;
   shortages: string[];
   injectedStockpile: number;
-} {
-  const edges = route.edges.filter((edge) => groups.has(edge.from) && groups.has(edge.to));
-  const order = topoOrder([...groups.keys()], edges);
-  if (!order) return {
-    didWork: false, expectedBatches: 0, expectedRecipes: [], expectedEdgeUse: {}, shortages: [], injectedStockpile: 0,
-  };
+  throughputUnits: number;
+}
 
-  const rawDemand = new Map<string, Partial<Record<Resource['type'], number>>>();
+function cloneFabricatorState(state: FabricatorState | undefined): FabricatorState | undefined {
+  if (!state) return undefined;
+  return { slots: state.slots.map((slot) => ({
+    ...slot,
+    pendingResources: { ...slot.pendingResources },
+    pendingMaterials: { ...slot.pendingMaterials },
+    byproducts: { ...slot.byproducts },
+  })) };
+}
+
+class ShadowWorld implements RouteWorld {
+  private readonly extractors: Record<string, Extractor>;
+  private readonly fabricators: Record<string, Fabricator>;
+  private readonly available: Record<string, number>;
+  private readonly states: Record<string, FabricatorState>;
+  private readonly hold: Record<Resource['type'], number>;
+  private readonly cap: number;
+  private readonly stockpile: MaterialCost;
+
+  constructor(
+    extractors: Record<string, Extractor>,
+    fabricators: Record<string, Fabricator>,
+    fabricatorStates: Record<string, FabricatorState>,
+    stockpile: MaterialCost,
+    ui: ReturnType<typeof useUIStore.getState>,
+  ) {
+    this.extractors = extractors;
+    this.fabricators = fabricators;
+    this.available = Object.fromEntries(Object.entries(extractors).map(([key, extractor]) => [key, peekAccumulated(extractor)]));
+    this.states = Object.fromEntries(Object.entries(fabricatorStates).map(([key, state]) => [key, cloneFabricatorState(state)!]));
+    this.stockpile = { ...stockpile };
+    this.cap = computeStorageCap(ui.storageA);
+    this.hold = Object.fromEntries(RAW_TYPES.map((type) => [type, resourceAmount(ui, type)])) as Record<Resource['type'], number>;
+  }
+
+  peekExtractor(key: string) { return this.available[key] ?? 0; }
+  collectExtractor(key: string, max: number) {
+    const amount = Math.min(this.available[key] ?? 0, Math.max(0, max));
+    this.available[key] = Math.max(0, (this.available[key] ?? 0) - amount);
+    return amount;
+  }
+  fabricator(key: string) { return { fabricator: this.fabricators[key], state: this.states[key] }; }
+  feedFabricator(key: string, raw: Cargo['raw'], materials: MaterialCost, budget: MaterialBudget,
+    canRouteByproduct: (id: string) => boolean, stockpile: MaterialCost) {
+    const fabricator = this.fabricators[key];
+    const result = processFabricator(this.states[key]?.slots ?? [], fabricator?.tier, raw, materials, {
+      stockpile, stockpileBudget: budget, canRouteByproduct, fillMode: fabricator?.fillMode,
+    });
+    this.states[key] = { slots: result.slots };
+    for (const [id, amount] of Object.entries(result.consumedStockpile)) this.stockpile[id] = Math.max(0, (this.stockpile[id] ?? 0) - amount);
+    return result;
+  }
+  depositRaw(type: Resource['type'], amount: number) {
+    const accepted = Math.min(Math.max(0, amount), Math.max(0, this.cap - this.hold[type]));
+    this.hold[type] += accepted;
+    return accepted;
+  }
+  depositMaterial(id: string, amount: number) { this.stockpile[id] = (this.stockpile[id] ?? 0) + amount; }
+  readStockpile() { return { ...this.stockpile }; }
+  holdRoom(type: Resource['type']) { return Math.max(0, this.cap - this.hold[type]); }
+}
+
+class LiveWorld implements RouteWorld {
+  private readonly extractors: Record<string, Extractor>;
+  private readonly fabricators: Record<string, Fabricator>;
+  constructor(
+    extractors: Record<string, Extractor>,
+    fabricators: Record<string, Fabricator>,
+  ) {
+    this.extractors = extractors;
+    this.fabricators = fabricators;
+  }
+  peekExtractor(key: string) { return this.extractors[key] ? peekAccumulated(this.extractors[key]) : 0; }
+  collectExtractor(key: string, max: number) { return useExtractorStore.getState().collectExtractor(key, max); }
+  fabricator(key: string) {
+    const store = useFabricatorStore.getState();
+    return { fabricator: this.fabricators[key], state: store.fabricatorStates[key] };
+  }
+  feedFabricator(key: string, raw: Cargo['raw'], materials: MaterialCost, budget: MaterialBudget,
+    canRouteByproduct: (id: string) => boolean, stockpile: MaterialCost) {
+    return useFabricatorStore.getState().feedFabricator(key, raw, materials, budget, canRouteByproduct, stockpile);
+  }
+  depositRaw(type: Resource['type'], amount: number) { return useUIStore.getState().depositCargo(type, amount); }
+  depositMaterial(id: string, amount: number) { useStockpileStore.getState().addMaterial(id, amount); }
+  readStockpile() { return { ...useStockpileStore.getState().materials }; }
+  holdRoom(type: Resource['type']) {
+    const ui = useUIStore.getState();
+    return Math.max(0, computeStorageCap(ui.storageA) - resourceAmount(ui, type));
+  }
+}
+
+type Reachability = Map<string, Map<string, Set<string>>>;
+
+function buildDemandReachability(
+  edges: RouteEdge[],
+  rawDemand: Map<string, Cargo['raw']>,
+  materialDemand: Map<string, MaterialCost>,
+): Reachability {
+  const result: Reachability = new Map();
+  const build = (kind: 'raw' | 'material', id: string, targets: string[]) => {
+    const cargoKey = `${kind}:${id}`;
+    const byNode = new Map<string, Set<string>>();
+    const incomingByNode = new Map<string, RouteEdge[]>();
+    for (const edge of edges) {
+      const allowed = kind === 'raw' ? edgeAllowsRaw(edge, id as Resource['type']) : edgeAllowsMaterial(edge, id);
+      if (!allowed) continue;
+      const incoming = incomingByNode.get(edge.to) ?? [];
+      incoming.push(edge);
+      incomingByNode.set(edge.to, incoming);
+    }
+    for (const incoming of incomingByNode.values()) incoming.sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
+    for (const target of [...targets].sort()) {
+      const seen = new Set([target]);
+      const queue = [target];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const edge of incomingByNode.get(current) ?? []) if (!seen.has(edge.from)) { seen.add(edge.from); queue.push(edge.from); }
+      }
+      for (const node of seen) {
+        const reachable = byNode.get(node) ?? new Set<string>();
+        reachable.add(target);
+        byNode.set(node, reachable);
+      }
+    }
+    result.set(cargoKey, byNode);
+  };
+  for (const type of RAW_TYPES) build('raw', type, [...rawDemand].filter(([, demand]) => (demand[type] ?? 0) > 0).map(([target]) => target));
+  const materialIds = new Set([...materialDemand.values()].flatMap((demand) => Object.keys(demand)));
+  for (const id of [...materialIds].sort()) build('material', id, [...materialDemand].filter(([, demand]) => (demand[id] ?? 0) > 0).map(([target]) => target));
+  return result;
+}
+
+export function runRouteTraversal(
+  route: LogisticsRoute,
+  groups: Map<string, NodeGroup>,
+  edges: RouteEdge[],
+  world: RouteWorld,
+  bandwidth: number,
+): TraversalResult {
+  const order = topoOrder([...groups.keys()], edges) ?? [];
+  const rawDemand = new Map<string, Cargo['raw']>();
   const materialDemand = new Map<string, MaterialCost>();
-  const simulatedStates: Record<string, FabricatorState> = Object.fromEntries(
-    Object.entries(fabricatorStates).map(([key, state]) => [key, {
-      slots: state.slots.map((slot) => ({
-        ...slot,
-        pendingResources: { ...slot.pendingResources },
-        pendingMaterials: { ...slot.pendingMaterials },
-        byproducts: { ...slot.byproducts },
-      })),
-    }]),
-  );
   for (const [nodeId, group] of groups) {
-    const raw: Partial<Record<Resource['type'], number>> = {};
+    const raw: Cargo['raw'] = {};
     const materials: MaterialCost = {};
     for (const key of group.fabricatorKeys) {
-      const depth = bufferDepth(fabricators[key]?.tier);
-      for (const slot of simulatedStates[key]?.slots ?? []) {
+      const { fabricator, state } = world.fabricator(key);
+      const depth = bufferDepth(fabricator?.tier);
+      for (const slot of state?.slots ?? []) {
         const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
         if (!recipe) continue;
-        for (const [type, amount] of Object.entries(slotResourceDemand(slot, recipe, depth))) {
-          raw[type as Resource['type']] = (raw[type as Resource['type']] ?? 0) + (amount ?? 0);
-        }
-        for (const [id, amount] of Object.entries(slotMaterialDemand(slot, recipe, depth))) {
-          materials[id] = (materials[id] ?? 0) + amount;
-        }
+        for (const [type, amount] of Object.entries(slotResourceDemand(slot, recipe, depth))) raw[type as Resource['type']] = (raw[type as Resource['type']] ?? 0) + (amount ?? 0);
+        for (const [id, amount] of Object.entries(slotMaterialDemand(slot, recipe, depth))) materials[id] = (materials[id] ?? 0) + amount;
       }
     }
     rawDemand.set(nodeId, raw);
     materialDemand.set(nodeId, materials);
   }
-  const remainingCollectionDemand = new Map(
-    [...rawDemand].map(([target, demand]) => [target, { ...demand }]),
-  );
-  const reachableCollection = (nodeId: string, type: Resource['type']) => [...remainingCollectionDemand].reduce(
-    (sum, [target, demand]) => sum + (cargoReaches(edges, nodeId, target, { kind: 'raw', id: type }) ? demand[type] ?? 0 : 0), 0,
-  );
-  const reachableRawDemand = (nodeId: string, type: Resource['type']) => [...rawDemand].reduce(
-    (sum, [target, demand]) => sum + (cargoReaches(edges, nodeId, target, { kind: 'raw', id: type }) ? demand[type] ?? 0 : 0), 0,
-  );
-  const claimRaw = (nodeId: string, type: Resource['type'], amount: number) => {
+  const reachability = buildDemandReachability(edges, rawDemand, materialDemand);
+  const targetsFor = (kind: 'raw' | 'material', id: string, nodeId: string) => reachability.get(`${kind}:${id}`)?.get(nodeId) ?? new Set<string>();
+  const reachableDemand = (demands: Map<string, Cargo['raw'] | MaterialCost>, kind: 'raw' | 'material', nodeId: string, id: string) =>
+    [...targetsFor(kind, id, nodeId)].reduce((sum, target) => sum + ((demands.get(target) as Record<string, number> | undefined)?.[id] ?? 0), 0);
+  const remainingCollectionDemand = new Map([...rawDemand].map(([target, demand]) => [target, { ...demand }]));
+  const claimCollection = (nodeId: string, type: Resource['type'], amount: number) => {
     let left = amount;
-    for (const [target, demand] of [...remainingCollectionDemand].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const target of [...targetsFor('raw', type, nodeId)].sort()) {
       if (left <= 0) break;
-      if (!cargoReaches(edges, nodeId, target, { kind: 'raw', id: type })) continue;
+      const demand = remainingCollectionDemand.get(target)!;
       const take = Math.min(left, demand[type] ?? 0);
       demand[type] = Math.max(0, (demand[type] ?? 0) - take);
       left -= take;
     }
+    return amount - left;
   };
-  const reachableMaterial = (nodeId: string, id: string) => [...materialDemand].reduce(
-    (sum, [target, demand]) => sum + (cargoReaches(edges, nodeId, target, { kind: 'material', id }) ? demand[id] ?? 0 : 0), 0,
-  );
 
   const incoming = new Map<string, Cargo>();
   const heldCargo: Record<string, Cargo> = Object.fromEntries(Object.entries(route.heldCargo ?? {}).map(
     ([nodeId, cargo]) => [nodeId, { raw: { ...(cargo.raw ?? {}) }, materials: { ...(cargo.materials ?? {}) } }],
   ));
-  const remainingStockpile = { ...stockpile };
+  const remainingStockpile = world.readStockpile();
+  const reservedHold = Object.fromEntries(RAW_TYPES.map((type) => [type, 0])) as Record<Resource['type'], number>;
   const edgeFlows: Record<string, EdgeFlowResult> = {};
-  for (const edge of edges) edgeFlows[edgeKey(edge)] = {
-    from: edge.from, to: edge.to, capacity: edgeCapacity(edge, bandwidth), used: 0, raw: {}, materials: {}, rejected: {},
-  };
+  for (const edge of edges) edgeFlows[edgeKey(edge)] = { from: edge.from, to: edge.to, capacity: edgeCapacity(edge, bandwidth), used: 0, raw: {}, materials: {}, rejected: {} };
+  const outgoingByNode = new Map<string, RouteEdge[]>();
+  const incomingByNode = new Map<string, RouteEdge[]>();
+  for (const node of order) {
+    outgoingByNode.set(node, edges.filter((edge) => edge.from === node).sort((a, b) => edgeKey(a).localeCompare(edgeKey(b))));
+    incomingByNode.set(node, edges.filter((edge) => edge.to === node).sort((a, b) => edgeKey(a).localeCompare(edgeKey(b))));
+  }
+  const collected: TraversalResult['collected'] = [];
+  const endItems: FabricatorProductionItem[] = [];
+  const carried: MaterialCost = {};
+  const stalled: TraversalResult['stalled'] = [];
+  const slotResults: Record<string, SlotRunResult[]> = {};
+  const deposited = emptyCargo();
   const expectedRecipes = new Set<string>();
+  const expectedOutputs: MaterialCost = {};
   const shortages: string[] = [];
   let expectedBatches = 0;
   let injectedStockpile = 0;
   let didWork = false;
+
+  const deposit = (cargo: Cargo) => {
+    const rejected = emptyCargo();
+    let accepted = false;
+    for (const type of RAW_TYPES) {
+      const amount = cargo.raw[type] ?? 0;
+      if (amount <= 0) continue;
+      const stored = world.depositRaw(type, amount);
+      if (stored > 0) { accepted = true; deposited.raw[type] = (deposited.raw[type] ?? 0) + stored; }
+      if (amount > stored) rejected.raw[type] = amount - stored;
+    }
+    for (const [id, amount] of Object.entries(cargo.materials)) if (amount > 0) {
+      world.depositMaterial(id, amount);
+      deposited.materials[id] = (deposited.materials[id] ?? 0) + amount;
+      accepted = true;
+    }
+    return { rejected, accepted };
+  };
 
   for (const nodeId of order) {
     const group = groups.get(nodeId)!;
@@ -391,53 +565,45 @@ function simulateRoutePreview(
     const restoredHeld = heldCargo[nodeId];
     if (restoredHeld) {
       mergeCargo(cargo, restoredHeld);
-      for (const [type, amount] of Object.entries(restoredHeld.raw)) claimRaw(nodeId, type as Resource['type'], amount ?? 0);
+      for (const [type, amount] of Object.entries(restoredHeld.raw)) claimCollection(nodeId, type as Resource['type'], amount ?? 0);
+      delete heldCargo[nodeId];
     }
-    const outgoing = edges.filter((edge) => edge.from === nodeId)
-      .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
-    for (const extractor of group.extractors) {
-      const spare = Math.max(0, peekAccumulated(extractor) - Math.max(0, extractor.reserve ?? 0));
-      const amount = Math.min(spare, reachableCollection(nodeId, extractor.resourceType));
+    const beganWithHeldCargo = !!restoredHeld && cargoHasValues(restoredHeld);
+    const outgoing = outgoingByNode.get(nodeId) ?? [];
+
+    for (const extractor of [...group.extractors].sort((a, b) => a.key.localeCompare(b.key))) {
+      const type = extractor.resourceType;
+      const available = Math.max(0, world.peekExtractor(extractor.key) - Math.max(0, extractor.reserve ?? 0));
+      const demand = reachableDemand(remainingCollectionDemand, 'raw', nodeId, type);
+      const room = Math.max(0, world.holdRoom(type) - reservedHold[type]);
+      const canHold = outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold');
+      const amount = world.collectExtractor(extractor.key, Math.min(available, room + demand + (canHold ? available : 0)));
       if (amount <= 0) continue;
-      cargo.raw[extractor.resourceType] = (cargo.raw[extractor.resourceType] ?? 0) + amount;
-      claimRaw(nodeId, extractor.resourceType, amount);
+      cargo.raw[type] = (cargo.raw[type] ?? 0) + amount;
+      collected.push({ key: extractor.key, amount });
+      reservedHold[type] += Math.max(0, amount - claimCollection(nodeId, type, amount));
       didWork = true;
     }
 
-    for (const key of group.fabricatorKeys) {
-      const incomingEdges = edges.filter((edge) => edge.to === nodeId)
-        .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
-      const incomingCapacity = incomingEdges.reduce(
-        (sum, edge) => sum + Math.max(0, edgeFlows[edgeKey(edge)].capacity - edgeFlows[edgeKey(edge)].used), 0,
-      );
+    for (const key of [...group.fabricatorKeys].sort()) {
+      const incomingEdges = incomingByNode.get(nodeId) ?? [];
+      const incomingCapacity = incomingEdges.reduce((sum, edge) => sum + Math.max(0, edgeFlows[edgeKey(edge)].capacity - edgeFlows[edgeKey(edge)].used), 0);
       const injectable: MaterialCost = {};
       for (const [id, amount] of Object.entries(remainingStockpile)) {
-        const capacity = incomingEdges.reduce((sum, edge) => {
-          const flow = edgeFlows[edgeKey(edge)];
-          return sum + (edgeAllowsMaterial(edge, id) ? Math.max(0, flow.capacity - flow.used) : 0);
-        }, 0);
+        const capacity = incomingEdges.reduce((sum, edge) => sum + (edgeAllowsMaterial(edge, id) ? Math.max(0, edgeFlows[edgeKey(edge)].capacity - edgeFlows[edgeKey(edge)].used) : 0), 0);
         injectable[id] = Math.min(amount, capacity);
       }
-      const result = processFabricator(
-        simulatedStates[key]?.slots ?? [], fabricators[key]?.tier, cargo.raw, cargo.materials,
-        {
-          stockpile: injectable,
-          stockpileBudget: { remaining: incomingCapacity },
-          canRouteByproduct: (id) => outgoing.length === 0
-            || outgoing.some((edge) => edgeAllowsMaterial(edge, id) && edge.overflow !== 'hold'),
-          fillMode: fabricators[key]?.fillMode,
-        },
+      const result = world.feedFabricator(
+        key, cargo.raw, cargo.materials, { remaining: incomingCapacity },
+        (id) => outgoing.length === 0 || outgoing.some((edge) => edgeAllowsMaterial(edge, id) && edge.overflow !== 'hold'),
+        injectable,
       );
+      slotResults[key] = result.slotResults;
       if (result.changed) didWork = true;
-      simulatedStates[key] = { slots: result.slots };
-      for (const [type, amount] of Object.entries(result.consumed)) {
-        cargo.raw[type as Resource['type']] = Math.max(0, (cargo.raw[type as Resource['type']] ?? 0) - (amount ?? 0));
-      }
+      for (const [type, amount] of Object.entries(result.consumed)) cargo.raw[type as Resource['type']] = Math.max(0, (cargo.raw[type as Resource['type']] ?? 0) - (amount ?? 0));
       for (const [id, amount] of Object.entries(result.consumedCarried)) cargo.materials[id] = Math.max(0, (cargo.materials[id] ?? 0) - amount);
       for (const [id, amount] of Object.entries(result.consumedStockpile)) {
-        const candidates = incomingEdges.filter((edge) => edgeAllowsMaterial(edge, id)).map((edge) => ({
-          edge, flow: edgeFlows[edgeKey(edge)], demand: Number.POSITIVE_INFINITY, explicit: true,
-        }));
+        const candidates = incomingEdges.filter((edge) => edgeAllowsMaterial(edge, id)).map((edge) => ({ edge, flow: edgeFlows[edgeKey(edge)], demand: Number.POSITIVE_INFINITY, explicit: true }));
         for (const [candidate, count] of allocateUnits(amount, candidates, true)) {
           candidate.flow.used += count;
           candidate.flow.materials[id] = (candidate.flow.materials[id] ?? 0) + count;
@@ -445,44 +611,76 @@ function simulateRoutePreview(
           injectedStockpile += count;
         }
       }
-      for (const item of result.readyItems) if (item.category === 'material') {
-        cargo.materials[item.upgradeId] = (cargo.materials[item.upgradeId] ?? 0) + item.count;
+      for (const item of result.readyItems) {
+        expectedOutputs[item.upgradeId] = (expectedOutputs[item.upgradeId] ?? 0) + item.count;
+        if (item.category === 'material') {
+          cargo.materials[item.upgradeId] = (cargo.materials[item.upgradeId] ?? 0) + item.count;
+          carried[item.upgradeId] = (carried[item.upgradeId] ?? 0) + item.count;
+        } else endItems.push(item);
       }
       for (const slotResult of result.slotResults) {
         if (slotResult.batches > 0) {
           expectedBatches += slotResult.batches;
           const recipe = slotResult.targetUpgradeId ? getCraftable(slotResult.targetUpgradeId) : undefined;
           if (recipe) expectedRecipes.add(recipe.name);
-          didWork = true;
         }
         if (slotResult.status === 'starved') {
           const recipe = slotResult.targetUpgradeId ? getCraftable(slotResult.targetUpgradeId) : undefined;
-          if (recipe) shortages.push(`${fabricators[key]?.planetName ?? 'Fabricator'}: ${recipe.name}`);
+          const name = world.fabricator(key).fabricator?.planetName ?? 'Fabricator';
+          if (recipe) shortages.push(`${name}: ${recipe.name}`);
         }
       }
+      result.statuses.forEach((status) => { if (status === 'starved' || status === 'jammed') stalled.push({ fabricatorKey: key, status }); });
     }
 
-    if (outgoing.length === 0) continue;
+    if (outgoing.length === 0) {
+      const depositedAtSink = deposit(cargo);
+      if (beganWithHeldCargo && depositedAtSink.accepted) didWork = true;
+      if (cargoHasValues(depositedAtSink.rejected)) heldCargo[nodeId] = depositedAtSink.rejected;
+      continue;
+    }
     const shares = new Map(outgoing.map((edge) => [edgeKey(edge), emptyCargo()]));
     for (const type of RAW_TYPES) {
-      const amount = cargo.raw[type] ?? 0;
-      if (amount <= 0) continue;
+      const transferable = cargo.raw[type] ?? 0;
+      if (transferable <= 0) continue;
       const candidates = outgoing.filter((edge) => edgeAllowsRaw(edge, type)).map((edge) => ({
-        edge, flow: edgeFlows[edgeKey(edge)], demand: reachableRawDemand(edge.to, type), explicit: edge.allowedRaw !== undefined,
+        edge,
+        flow: edgeFlows[edgeKey(edge)],
+        demand: edge.overflow === 'hold' ? Number.POSITIVE_INFINITY : reachableDemand(rawDemand, 'raw', edge.to, type),
+        explicit: edge.overflow === 'hold' || (edge.allowedRaw !== undefined && edge.allowedRaw.includes(type)),
       }));
-      for (const [candidate, count] of allocateUnits(amount, candidates, false)) {
+      let routed = 0;
+      for (const [candidate, count] of allocateUnits(transferable, candidates, false)) {
         shares.get(edgeKey(candidate.edge))!.raw[type] = count;
+        candidate.flow.raw[type] = (candidate.flow.raw[type] ?? 0) + count;
+        routed += count;
       }
+      cargo.raw[type] = transferable - routed;
+      if (routed > 0) didWork = true;
     }
-    for (const [id, amount] of Object.entries(cargo.materials)) {
-      if (amount <= 0) continue;
+    for (const [id, transferable] of Object.entries(cargo.materials)) {
+      if (transferable <= 0) continue;
       const candidates = outgoing.filter((edge) => edgeAllowsMaterial(edge, id)).map((edge) => ({
-        edge, flow: edgeFlows[edgeKey(edge)], demand: reachableMaterial(edge.to, id), explicit: edge.allowedMaterials !== undefined,
+        edge, flow: edgeFlows[edgeKey(edge)], demand: reachableDemand(materialDemand, 'material', edge.to, id), explicit: edge.allowedMaterials !== undefined && edge.allowedMaterials.includes(id),
       }));
-      for (const [candidate, count] of allocateUnits(amount, candidates, true)) {
+      let routed = 0;
+      const allocated = new Map<string, number>();
+      for (const [candidate, count] of allocateUnits(transferable, candidates, true)) {
         shares.get(edgeKey(candidate.edge))!.materials[id] = count;
-        candidate.flow.used += count;
         candidate.flow.materials[id] = (candidate.flow.materials[id] ?? 0) + count;
+        candidate.flow.used += count;
+        allocated.set(edgeKey(candidate.edge), count);
+        routed += count;
+      }
+      cargo.materials[id] = transferable - routed;
+      if (routed > 0) didWork = true;
+      for (const edge of outgoing) {
+        const flow = edgeFlows[edgeKey(edge)];
+        if (!edgeAllowsMaterial(edge, id)) { flow.rejected[id] = (flow.rejected[id] ?? 0) + transferable; continue; }
+        const candidate = candidates.find((entry) => entry.edge === edge);
+        const wanted = Math.min(transferable, candidate?.explicit ? transferable : candidate?.demand ?? 0);
+        const short = Math.max(0, wanted - (allocated.get(edgeKey(edge)) ?? 0));
+        if (short > 0) flow.rejected[id] = (flow.rejected[id] ?? 0) + short;
       }
     }
     for (const edge of outgoing) {
@@ -490,104 +688,107 @@ function simulateRoutePreview(
       mergeCargo(target, shares.get(edgeKey(edge))!);
       incoming.set(edge.to, target);
     }
+    const held = emptyCargo();
+    const spill = emptyCargo();
+    for (const type of RAW_TYPES) {
+      const amount = cargo.raw[type] ?? 0;
+      if (amount <= 0) continue;
+      (outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold') ? held : spill).raw[type] = amount;
+    }
+    for (const [id, amount] of Object.entries(cargo.materials)) {
+      if (amount <= 0) continue;
+      (outgoing.some((edge) => edgeAllowsMaterial(edge, id) && edge.overflow === 'hold') ? held : spill).materials[id] = amount;
+    }
+    const depositResult = deposit(spill);
+    if (beganWithHeldCargo && depositResult.accepted) didWork = true;
+    mergeCargo(held, depositResult.rejected);
+    if (cargoHasValues(held)) heldCargo[nodeId] = held;
   }
 
+  const materialsMoved = Object.values(edgeFlows).reduce((sum, flow) => sum + flow.used, 0);
+  const throughputUnits = collected.reduce((sum, entry) => sum + entry.amount, 0) + injectedStockpile;
   return {
-    didWork, expectedBatches, expectedRecipes: [...expectedRecipes],
-    expectedEdgeUse: Object.fromEntries(Object.entries(edgeFlows).map(([key, flow]) => [key, { used: flow.used, capacity: flow.capacity }])),
-    shortages: [...new Set(shortages)], injectedStockpile,
+    order, collected, endItems, carried, materialsMoved, bandwidth, stalled, edgeFlows, slotResults,
+    deposited, heldCargo, didWork, expectedBatches, expectedRecipes: [...expectedRecipes], expectedOutputs,
+    shortages: [...new Set(shortages)], injectedStockpile, throughputUnits,
   };
 }
 
-function routePreview(route: LogisticsRoute): RoutePreview {
+interface PreviewCacheEntry {
+  route: LogisticsRoute;
+  extractors: Record<string, Extractor>;
+  fabricators: Record<string, Fabricator>;
+  fabricatorStates: Record<string, FabricatorState>;
+  stockpile: MaterialCost;
+  nodeEquipped: Record<string, [string | null, string | null]>;
+  uiKey: string;
+  groups: Map<string, NodeGroup>;
+  traversal: TraversalResult;
+}
+
+const previewCache = new Map<string, PreviewCacheEntry>();
+
+function previewTraversal(route: LogisticsRoute, force = false): { groups: Map<string, NodeGroup>; traversal: TraversalResult } {
   const extractors = useExtractorStore.getState().extractors;
+  const nodeEquipped = useExtractorStore.getState().nodeEquipped;
   const { fabricators, fabricatorStates } = useFabricatorStore.getState();
+  const stockpile = useStockpileStore.getState().materials;
+  const ui = useUIStore.getState();
+  const uiKey = [ui.storageA, ui.storageB, ui.logisticsA, ui.logisticsB, ...RAW_TYPES.map((type) => resourceAmount(ui, type))].join('|');
+  const cached = previewCache.get(route.id);
+  if (!force && cached?.route === route && cached.extractors === extractors
+    && cached.fabricators === fabricators && cached.fabricatorStates === fabricatorStates
+    && cached.stockpile === stockpile && cached.nodeEquipped === nodeEquipped && cached.uiKey === uiKey) {
+    return cached;
+  }
+  const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
+  const edges = route.edges.filter((edge) => groups.has(edge.from) && groups.has(edge.to));
+  const bandwidth = computeMaterialBandwidth(ui.logisticsA, ui.logisticsB);
+  const traversal = runRouteTraversal(
+    route, groups, edges,
+    new ShadowWorld(extractors, fabricators, fabricatorStates, stockpile, ui),
+    bandwidth,
+  );
+  const entry = { route, extractors, fabricators, fabricatorStates, stockpile, nodeEquipped, uiKey, groups, traversal };
+  previewCache.set(route.id, entry);
+  return entry;
+}
+
+function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePreview {
+  const extractors = useExtractorStore.getState().extractors;
+  const fabricators = useFabricatorStore.getState().fabricators;
   const nodes = routeNodes(route.edges);
-  const groups = resolveNodeGroups(nodes, extractors, fabricators);
-  const cost = computeRouteCost(route.edges, extractors, fabricators);
+  const { groups, traversal } = previewTraversal(route, force);
   const islands = routeIslandNodes(route.edges);
   const valid = routeIsValid(route.edges) && groups.size === nodes.length;
   const policy = resolveAutomationPolicy(route);
   const risk = routeDetectionRisk(route.edges, groups);
   const ui = useUIStore.getState();
+  const cost = computeRouteCost(route.edges, extractors, fabricators, traversal.throughputUnits);
   const affordable = ui.exoticMatter - cost.exotic >= ui.fuelReserveExotic
     && ui.helium3Reserves - cost.helium >= ui.fuelReserveHelium3;
-  const extractorKeys = routeExtractorKeys(groups);
-  const rawDemand = new Map<string, Partial<Record<Resource['type'], number>>>();
-  const previewMaterialDemand = new Map<string, MaterialCost>();
-  for (const [nodeId, group] of groups) {
-    const demand: Partial<Record<Resource['type'], number>> = {};
-    const materials: MaterialCost = {};
-    for (const key of group.fabricatorKeys) {
-      const depth = bufferDepth(fabricators[key]?.tier);
-      for (const slot of fabricatorStates[key]?.slots ?? []) {
-        const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
-        if (!recipe) continue;
-        for (const [type, amount] of Object.entries(slotResourceDemand(slot, recipe, depth))) {
-          demand[type as Resource['type']] = (demand[type as Resource['type']] ?? 0) + (amount ?? 0);
-        }
-        for (const [id, amount] of Object.entries(slotMaterialDemand(slot, recipe, depth))) {
-          materials[id] = (materials[id] ?? 0) + amount;
-        }
-      }
-    }
-    rawDemand.set(nodeId, demand);
-    previewMaterialDemand.set(nodeId, materials);
-  }
-  const rawWanted = (nodeId: string, type: Resource['type']) => [...rawDemand].reduce(
-    (sum, [target, demand]) => sum + (cargoReaches(route.edges, nodeId, target, { kind: 'raw', id: type }) ? demand[type] ?? 0 : 0), 0,
-  );
-  const storageCap = computeStorageCap(ui.storageA);
-  const held: Record<Resource['type'], number> = {
-    exotic: ui.exoticMatter, 'helium-3': ui.helium3Reserves, alloys: ui.alloys,
-    nutrients: ui.nutrients, metallicHydrogen: ui.metallicHydrogen, neutronStarMatter: ui.neutronStarMatter,
-  };
-  const anyCargo = extractorKeys.some((key) => {
-    const extractor = extractors[key];
-    if (!extractor) return false;
-    const outgoing = route.edges.filter((edge) => edge.from === extractorNodeId(extractor.galaxySeed, extractor.systemId));
-    if (peekAccumulated(extractor) <= Math.max(0, extractor.reserve ?? 0)) return false;
-    const canHold = outgoing.some((edge) => edgeAllowsRaw(edge, extractor.resourceType) && edge.overflow === 'hold');
-    return storageCap - held[extractor.resourceType] + rawWanted(extractorNodeId(extractor.galaxySeed, extractor.systemId), extractor.resourceType) > 0 || canHold;
-  });
-  const heldUseful = Object.entries(route.heldCargo ?? {}).some(([nodeId, cargo]) => {
-    const outgoing = route.edges.filter((edge) => edge.from === nodeId);
-    if (outgoing.length === 0) return Object.entries(cargo.raw ?? {}).some(
-      ([type, amount]) => (amount ?? 0) > 0 && held[type as Resource['type']] < storageCap,
-    )
-      || Object.values(cargo.materials ?? {}).some((amount) => amount > 0);
-    for (const [type, amount] of Object.entries(cargo.raw ?? {})) {
-      if ((amount ?? 0) <= 0) continue;
-      const rawType = type as Resource['type'];
-      const matching = outgoing.filter((edge) => edgeAllowsRaw(edge, rawType));
-      if (matching.length === 0 || matching.some((edge) => edge.overflow !== 'hold') || rawWanted(nodeId, rawType) > 0) return true;
-    }
-    for (const [id, amount] of Object.entries(cargo.materials ?? {})) {
-      if (amount <= 0) continue;
-      const matching = outgoing.filter((edge) => edgeAllowsMaterial(edge, id));
-      const wanted = [...previewMaterialDemand].some(([target, demand]) => cargoReaches(route.edges, nodeId, target, { kind: 'material', id }) && (demand[id] ?? 0) > 0);
-      if (matching.length === 0 || matching.some((edge) => edge.overflow !== 'hold') || wanted) return true;
-    }
-    return false;
-  });
-  const previewBandwidth = computeMaterialBandwidth(ui.logisticsA, ui.logisticsB);
-  const simulation = simulateRoutePreview(
-    route, groups, extractors, fabricators, fabricatorStates,
-    useStockpileStore.getState().materials, previewBandwidth,
-  );
   let reason = 'Ready';
+  const effectiveHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
+    ? ui.detectionHeat
+    : ui.detectionRating * DETECTION_HEAT_PER_BAR;
+  const hasConfiguredRecipe = routeFabricatorKeys(groups).some((key) =>
+    (useFabricatorStore.getState().fabricatorStates[key]?.slots ?? []).some((slot) => !!slot.targetUpgradeId));
   if (!valid) reason = islands.length > 0 ? 'Disconnected route islands' : 'Incomplete or cyclic route';
   else if (!affordable) reason = 'Insufficient route fuel';
-  else if (ui.detectionRating + Math.floor(risk / 5) > policy.detectionCeiling) reason = 'Detection ceiling would be exceeded';
-  else if (!anyCargo && !simulation.didWork && !heldUseful) reason = 'Waiting for useful cargo';
-  else if (policy.dispatchMode === 'batch' && simulation.expectedBatches === 0) reason = 'Waiting for a complete recipe batch';
+  else if (effectiveHeat + risk > policy.detectionCeiling * DETECTION_HEAT_PER_BAR) reason = 'Detection ceiling would be exceeded';
+  else if (!traversal.didWork) reason = 'Waiting for useful cargo';
+  else if (policy.dispatchMode === 'batch' && traversal.expectedBatches === 0 && hasConfiguredRecipe) reason = 'Waiting for a complete recipe batch';
   return {
-    valid, canRun: reason === 'Ready', reason, cost, detectionRisk: risk,
-    islandNodes: islands,
-    expectedBatches: simulation.expectedBatches,
-    expectedRecipes: simulation.expectedRecipes,
-    expectedEdgeUse: simulation.expectedEdgeUse,
-    shortages: simulation.shortages,
+    valid, canRun: reason === 'Ready', reason, cost, detectionRisk: risk, islandNodes: islands,
+    expectedBatches: traversal.expectedBatches,
+    expectedRecipes: traversal.expectedRecipes,
+    expectedOutputs: traversal.expectedOutputs,
+    expectedEdgeUse: Object.fromEntries(Object.entries(traversal.edgeFlows).map(([key, flow]) => [key, {
+      used: flow.used + Object.values(flow.raw).reduce((sum, amount) => sum + (amount ?? 0), 0),
+      capacity: flow.capacity,
+    }])),
+    shortages: traversal.shortages,
+    throughputUnits: traversal.throughputUnits,
   };
 }
 
@@ -653,6 +854,66 @@ export function allocateEdgeCargo(
   return { allocations, leftover: amount - moved };
 }
 
+function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | false {
+  const logistics = useLogisticsStore.getState();
+  if (useUIStore.getState().checkDetectionLethal()) return false;
+  const route = logistics.routes.find((candidate) => candidate.id === id);
+  if (!route) return false;
+  const preview = optimizedRoutePreview(route, true);
+  const currentUI = useUIStore.getState();
+  const manualPolicyOverride = !automatic && (
+    preview.reason === 'Detection ceiling would be exceeded'
+    || (preview.reason === 'Insufficient route fuel'
+      && currentUI.exoticMatter >= preview.cost.exotic
+      && currentUI.helium3Reserves >= preview.cost.helium)
+  );
+  if (!preview.canRun && !manualPolicyOverride) {
+    if (!automatic) currentUI.triggerHudFlash();
+    return false;
+  }
+
+  const extractors = useExtractorStore.getState().extractors;
+  const { fabricators } = useFabricatorStore.getState();
+  const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
+  const edges = route.edges.filter((edge) => groups.has(edge.from) && groups.has(edge.to));
+  const bandwidth = computeMaterialBandwidth(currentUI.logisticsA, currentUI.logisticsB);
+  const traversal = runRouteTraversal(route, groups, edges, new LiveWorld(extractors, fabricators), bandwidth);
+  if (!traversal.didWork) return false;
+
+  // The useful-work decision is made by the dry run. Charge exactly once, after
+  // the traversal succeeds, so a failed dispatch can never need a clamped refund.
+  useUIStore.getState().consumeResources(preview.cost.exotic, preview.cost.helium);
+  const deliveries = traversal.endItems.length > 0
+    ? useExtractorStore.getState().receiveFabricatorItems(traversal.endItems)
+    : [];
+  if (preview.detectionRisk > 0) useUIStore.getState().raiseDetectionHeat(preview.detectionRisk);
+  const result: DispatchResult = {
+    order: traversal.order,
+    collected: traversal.collected,
+    deliveries,
+    carried: traversal.carried,
+    materialsMoved: traversal.materialsMoved,
+    bandwidth,
+    stalled: traversal.stalled,
+    edgeFlows: traversal.edgeFlows,
+    slotResults: traversal.slotResults,
+    deposited: traversal.deposited,
+    detectionRisk: preview.detectionRisk,
+  };
+  useLogisticsStore.setState((state) => ({
+    lastRuns: { ...state.lastRuns, [id]: result },
+    routes: state.routes.map((candidate) => candidate.id === id ? { ...candidate, heldCargo: traversal.heldCargo } : candidate),
+  }));
+  previewCache.delete(id);
+  const jam = traversal.stalled.find((entry) => entry.status === 'jammed');
+  if (jam) {
+    const name = fabricators[jam.fabricatorKey]?.planetName ?? 'Fabricator';
+    useUIStore.getState().triggerHudNotify(`${name.toUpperCase()} JAMMED — BYPRODUCT HAS NO ROUTE`);
+    if (automatic && resolveAutomationPolicy(route).pauseOnJam) useLogisticsStore.getState().setRouteActive(id, false);
+  }
+  return result;
+}
+
 interface LogisticsState {
   routes: LogisticsRoute[];
   lastRuns: Record<string, DispatchResult>;
@@ -661,6 +922,7 @@ interface LogisticsState {
   updateRoute: (id: string, patch: Partial<LogisticsRoute>) => void;
   removeRoute: (id: string) => void;
   setRouteActive: (id: string, active: boolean) => void;
+  flushHeldCargo: (id: string, nodeId: string) => boolean;
   previewRoute: (id: string) => RoutePreview | null;
   dispatchRoute: (id: string, automatic?: boolean) => DispatchResult | false;
   runAutomation: () => DispatchResult[];
@@ -671,323 +933,77 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
   routes: [], lastRuns: {}, automationNotices: {},
   addRoute: (route) => set((state) => ({ routes: [...state.routes, route] })),
   updateRoute: (id, patch) => set((state) => ({ routes: state.routes.map((route) => route.id === id ? { ...route, ...patch } : route) })),
-  removeRoute: (id) => set((state) => ({ routes: state.routes.filter((route) => route.id !== id) })),
+  removeRoute: (id) => {
+    previewCache.delete(id);
+    set((state) => ({ routes: state.routes.filter((route) => route.id !== id) }));
+  },
   setRouteActive: (id, active) => set((state) => ({ routes: state.routes.map((route) => route.id === id ? { ...route, active } : route) })),
+  flushHeldCargo: (id, nodeId) => {
+    const route = get().routes.find((candidate) => candidate.id === id);
+    const cargo = route?.heldCargo?.[nodeId];
+    if (!route || !cargo) return false;
+    const rejected = emptyCargo();
+    let moved = false;
+    for (const [type, amount] of Object.entries(cargo.raw ?? {})) {
+      const accepted = useUIStore.getState().depositCargo(type as Resource['type'], amount ?? 0);
+      if (accepted > 0) moved = true;
+      if ((amount ?? 0) > accepted) rejected.raw[type as Resource['type']] = (amount ?? 0) - accepted;
+    }
+    for (const [materialId, amount] of Object.entries(cargo.materials ?? {})) if (amount > 0) {
+      useStockpileStore.getState().addMaterial(materialId, amount);
+      moved = true;
+    }
+    set((state) => ({ routes: state.routes.map((candidate) => {
+      if (candidate.id !== id) return candidate;
+      const heldCargo = { ...(candidate.heldCargo ?? {}) };
+      if (cargoHasValues(rejected)) heldCargo[nodeId] = rejected;
+      else delete heldCargo[nodeId];
+      return { ...candidate, heldCargo };
+    }) }));
+    previewCache.delete(id);
+    return moved;
+  },
   previewRoute: (id) => {
     const route = get().routes.find((candidate) => candidate.id === id);
-    return route ? routePreview(route) : null;
+    return route ? optimizedRoutePreview(route) : null;
   },
 
-  dispatchRoute: (id, automatic = false) => {
-    if (useUIStore.getState().checkDetectionLethal()) return false;
-    const route = get().routes.find((candidate) => candidate.id === id);
-    if (!route) return false;
-    const preview = routePreview(route);
-    const currentUI = useUIStore.getState();
-    const manualPolicyOverride = !automatic && (
-      preview.reason === 'Detection ceiling would be exceeded'
-      || (preview.reason === 'Insufficient route fuel'
-        && currentUI.exoticMatter >= preview.cost.exotic
-        && currentUI.helium3Reserves >= preview.cost.helium)
-    );
-    if (!preview.canRun && !manualPolicyOverride) {
-      if (!automatic) useUIStore.getState().triggerHudFlash();
-      return false;
-    }
-
-    const extractors = useExtractorStore.getState().extractors;
-    const { fabricators, fabricatorStates } = useFabricatorStore.getState();
-    const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
-    const edges = route.edges.filter((edge) => groups.has(edge.from) && groups.has(edge.to));
-    const order = topoOrder([...groups.keys()], edges);
-    if (!order || order.length < 2) return false;
-
-    const rawDemand = new Map<string, Partial<Record<Resource['type'], number>>>();
-    const materialDemand = new Map<string, MaterialCost>();
-    for (const [nodeId, group] of groups) {
-      const raw: Partial<Record<Resource['type'], number>> = {};
-      const materials: MaterialCost = {};
-      for (const key of group.fabricatorKeys) {
-        const depth = bufferDepth(fabricators[key]?.tier);
-        for (const slot of fabricatorStates[key]?.slots ?? []) {
-          const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
-          if (!recipe) continue;
-          for (const [type, amount] of Object.entries(slotResourceDemand(slot, recipe, depth))) raw[type as Resource['type']] = (raw[type as Resource['type']] ?? 0) + (amount ?? 0);
-          for (const [matId, amount] of Object.entries(slotMaterialDemand(slot, recipe, depth))) materials[matId] = (materials[matId] ?? 0) + amount;
-        }
-      }
-      rawDemand.set(nodeId, raw);
-      materialDemand.set(nodeId, materials);
-    }
-    const reachableRaw = (nodeId: string, type: Resource['type']) => [...rawDemand].reduce(
-      (sum, [target, demand]) => sum + (cargoReaches(edges, nodeId, target, { kind: 'raw', id: type }) ? demand[type] ?? 0 : 0), 0,
-    );
-    const reachableMaterial = (nodeId: string, materialId: string) => [...materialDemand].reduce(
-      (sum, [target, demand]) => sum + (cargoReaches(edges, nodeId, target, { kind: 'material', id: materialId }) ? demand[materialId] ?? 0 : 0), 0,
-    );
-    const remainingCollectionDemand = new Map(
-      [...rawDemand].map(([target, demand]) => [target, { ...demand }]),
-    );
-    const reachableCollectionDemand = (nodeId: string, type: Resource['type']) => [...remainingCollectionDemand].reduce(
-      (sum, [target, demand]) => sum + (cargoReaches(edges, nodeId, target, { kind: 'raw', id: type }) ? demand[type] ?? 0 : 0), 0,
-    );
-    const claimCollectionDemand = (nodeId: string, type: Resource['type'], amount: number) => {
-      let left = amount;
-      for (const [target, demand] of [...remainingCollectionDemand].sort(([a], [b]) => a.localeCompare(b))) {
-        if (left <= 0) break;
-        if (!cargoReaches(edges, nodeId, target, { kind: 'raw', id: type })) continue;
-        const take = Math.min(left, demand[type] ?? 0);
-        if (take > 0) demand[type] = (demand[type] ?? 0) - take;
-        left -= take;
-      }
-      return amount - left;
-    };
-
-    const ui = useUIStore.getState();
-    ui.consumeResources(preview.cost.exotic, preview.cost.helium);
-    const bandwidth = computeMaterialBandwidth(ui.logisticsA, ui.logisticsB);
-    const storageCap = computeStorageCap(ui.storageA);
-    const afterFuel = useUIStore.getState();
-    const heldRaw = Object.fromEntries(
-      RAW_TYPES.map((type) => [type, resourceAmount(afterFuel, type)]),
-    ) as Record<Resource['type'], number>;
-    const incoming = new Map<string, Cargo>();
-    // Only material held before the run may be injected. Overflow deposited by
-    // an upstream node cannot reappear at a later fabricator in this dispatch.
-    const stockpileInjection = { ...useStockpileStore.getState().materials };
-    const heldCargo: Record<string, Cargo> = Object.fromEntries(Object.entries(route.heldCargo ?? {}).map(
-      ([nodeId, cargo]) => [nodeId, { raw: { ...(cargo.raw ?? {}) }, materials: { ...(cargo.materials ?? {}) } }],
-    ));
-    const collected: { key: ExtractorKey; amount: number }[] = [];
-    const endItems: FabricatorProductionItem[] = [];
-    const carried: MaterialCost = {};
-    const stalled: { fabricatorKey: string; status: SlotStatus }[] = [];
-    const slotResults: Record<string, SlotRunResult[]> = {};
-    let didWork = false;
-    const deposited = emptyCargo();
-    const edgeFlows: Record<string, EdgeFlowResult> = {};
-    for (const edge of edges) edgeFlows[edgeKey(edge)] = { from: edge.from, to: edge.to, capacity: edgeCapacity(edge, bandwidth), used: 0, raw: {}, materials: {}, rejected: {} };
-
-    const deposit = (cargo: Cargo): { rejected: Cargo; accepted: boolean } => {
-      const rejected = emptyCargo();
-      let accepted = false;
-      mergeCargo(deposited, cargo);
-      for (const [type, amount] of Object.entries(cargo.raw)) {
-        if ((amount ?? 0) <= 0) continue;
-        const rawType = type as Resource['type'];
-        const stored = useUIStore.getState().depositCargo(rawType, amount ?? 0);
-        if (stored > 0) accepted = true;
-        const leftover = (amount ?? 0) - stored;
-        if (leftover > 0) rejected.raw[rawType] = leftover;
-      }
-      for (const [id, amount] of Object.entries(cargo.materials)) if (amount > 0) {
-        useStockpileStore.getState().addMaterial(id, amount);
-        accepted = true;
-      }
-      for (const type of RAW_TYPES) {
-        const rejectedAmount = rejected.raw[type] ?? 0;
-        if (rejectedAmount > 0) deposited.raw[type] = Math.max(0, (deposited.raw[type] ?? 0) - rejectedAmount);
-      }
-      return { rejected, accepted };
-    };
-
-    for (const nodeId of order) {
-      const group = groups.get(nodeId)!;
-      const cargo = incoming.get(nodeId) ?? emptyCargo();
-      if (heldCargo[nodeId]) {
-        const restoredHeld = heldCargo[nodeId];
-        mergeCargo(cargo, restoredHeld);
-        for (const [type, amount] of Object.entries(restoredHeld.raw)) {
-          claimCollectionDemand(nodeId, type as Resource['type'], amount ?? 0);
-        }
-        delete heldCargo[nodeId];
-      }
-      const beganWithHeldCargo = cargoHasValues(cargo) && !incoming.has(nodeId);
-      const outgoing = edges.filter((edge) => edge.from === nodeId).sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
-
-      for (const extractor of group.extractors) {
-        const type = extractor.resourceType;
-        const room = Math.max(0, storageCap - (heldRaw[type] ?? 0));
-        const demand = reachableCollectionDemand(nodeId, type);
-        const canHold = outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold');
-        const available = Math.max(0, peekAccumulated(extractor) - Math.max(0, extractor.reserve ?? 0));
-        const maxCollect = Math.min(available, room + demand + (canHold ? available : 0));
-        if (maxCollect <= 0) continue;
-        const amount = useExtractorStore.getState().collectExtractor(extractor.key, maxCollect);
-        if (amount <= 0) continue;
-        didWork = true;
-        cargo.raw[type] = (cargo.raw[type] ?? 0) + amount;
-        collected.push({ key: extractor.key, amount });
-        const claimed = claimCollectionDemand(nodeId, type, amount);
-        heldRaw[type] = (heldRaw[type] ?? 0) + Math.max(0, amount - claimed);
-      }
-
-      for (const key of group.fabricatorKeys) {
-        const incomingEdges = edges
-          .filter((edge) => edge.to === nodeId)
-          .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
-        const remainingIncomingCapacity = incomingEdges.reduce(
-          (sum, edge) => sum + Math.max(0, edgeFlows[edgeKey(edge)].capacity - edgeFlows[edgeKey(edge)].used),
-          0,
-        );
-        const injectableStockpile: MaterialCost = {};
-        for (const [materialId, amount] of Object.entries(stockpileInjection)) {
-          const materialCapacity = incomingEdges.reduce((sum, edge) => {
-            const flow = edgeFlows[edgeKey(edge)];
-            return sum + (edgeAllowsMaterial(edge, materialId) ? Math.max(0, flow.capacity - flow.used) : 0);
-          }, 0);
-          injectableStockpile[materialId] = Math.min(amount, materialCapacity);
-        }
-        const injectionBudget: MaterialBudget = { remaining: remainingIncomingCapacity };
-        const result = useFabricatorStore.getState().feedFabricator(
-          key, cargo.raw, cargo.materials, injectionBudget,
-          (id) => outgoing.length === 0 || outgoing.some((edge) => edgeAllowsMaterial(edge, id) && edge.overflow !== 'hold'),
-          injectableStockpile,
-        );
-        for (const [materialId, amount] of Object.entries(result.consumedStockpile)) {
-          const candidates = incomingEdges
-            .filter((edge) => edgeAllowsMaterial(edge, materialId))
-            .map((edge) => ({
-              edge,
-              flow: edgeFlows[edgeKey(edge)],
-              demand: Number.POSITIVE_INFINITY,
-              explicit: true,
-            }));
-          let allocated = 0;
-          for (const [candidate, count] of allocateUnits(amount, candidates, true)) {
-            candidate.flow.materials[materialId] = (candidate.flow.materials[materialId] ?? 0) + count;
-            candidate.flow.used += count;
-            allocated += count;
-          }
-          stockpileInjection[materialId] = Math.max(0, (stockpileInjection[materialId] ?? 0) - allocated);
-        }
-        slotResults[key] = result.slotResults;
-        if (result.changed) didWork = true;
-        for (const [type, amount] of Object.entries(result.consumed)) cargo.raw[type as Resource['type']] = Math.max(0, (cargo.raw[type as Resource['type']] ?? 0) - (amount ?? 0));
-        for (const [id, amount] of Object.entries(result.consumedCarried)) cargo.materials[id] = Math.max(0, (cargo.materials[id] ?? 0) - amount);
-        for (const item of result.readyItems) {
-          if (item.category === 'material') {
-            cargo.materials[item.upgradeId] = (cargo.materials[item.upgradeId] ?? 0) + item.count;
-            carried[item.upgradeId] = (carried[item.upgradeId] ?? 0) + item.count;
-          } else endItems.push(item);
-        }
-        result.statuses.forEach((status) => {
-          if (status === 'starved' || status === 'jammed') stalled.push({ fabricatorKey: key, status });
-        });
-      }
-
-      if (outgoing.length === 0) {
-        const depositResult = deposit(cargo);
-        if (beganWithHeldCargo && depositResult.accepted) didWork = true;
-        if (cargoHasValues(depositResult.rejected)) heldCargo[nodeId] = depositResult.rejected;
-        continue;
-      }
-      const shares = new Map(outgoing.map((edge) => [edgeKey(edge), emptyCargo()]));
-      for (const type of RAW_TYPES) {
-        const transferable = cargo.raw[type] ?? 0;
-        if (transferable <= 0) continue;
-        const candidates = outgoing.filter((edge) => edgeAllowsRaw(edge, type)).map((edge) => ({
-          edge, flow: edgeFlows[edgeKey(edge)], demand: reachableRaw(edge.to, type), explicit: edge.allowedRaw !== undefined && edge.allowedRaw.includes(type),
-        }));
-        let routed = 0;
-        for (const [candidate, count] of allocateUnits(transferable, candidates, false)) {
-          shares.get(edgeKey(candidate.edge))!.raw[type] = count;
-          candidate.flow.raw[type] = (candidate.flow.raw[type] ?? 0) + count;
-          routed += count;
-        }
-        cargo.raw[type] = transferable - routed;
-        if (routed > 0) didWork = true;
-      }
-      for (const [id, transferable] of Object.entries(cargo.materials)) {
-        if (transferable <= 0) continue;
-        const candidates = outgoing.filter((edge) => edgeAllowsMaterial(edge, id)).map((edge) => ({
-          edge, flow: edgeFlows[edgeKey(edge)], demand: reachableMaterial(edge.to, id), explicit: edge.allowedMaterials !== undefined && edge.allowedMaterials.includes(id),
-        }));
-        let routed = 0;
-        const allocated = new Map<string, number>();
-        for (const [candidate, count] of allocateUnits(transferable, candidates, true)) {
-          shares.get(edgeKey(candidate.edge))!.materials[id] = count;
-          candidate.flow.materials[id] = (candidate.flow.materials[id] ?? 0) + count;
-          candidate.flow.used += count;
-          allocated.set(edgeKey(candidate.edge), count);
-          routed += count;
-        }
-        cargo.materials[id] = transferable - routed;
-        if (routed > 0) didWork = true;
-        // An edge reports what it wanted but could not take, never cargo a sibling legitimately won.
-        for (const edge of outgoing) {
-          const flow = edgeFlows[edgeKey(edge)];
-          if (!edgeAllowsMaterial(edge, id)) {
-            flow.rejected[id] = (flow.rejected[id] ?? 0) + transferable;
-            continue;
-          }
-          const candidate = candidates.find((entry) => entry.edge === edge);
-          const wanted = Math.min(transferable, candidate?.explicit ? transferable : candidate?.demand ?? 0);
-          const short = Math.max(0, wanted - (allocated.get(edgeKey(edge)) ?? 0));
-          if (short > 0) flow.rejected[id] = (flow.rejected[id] ?? 0) + short;
-        }
-      }
-      for (const edge of outgoing) {
-        const target = incoming.get(edge.to) ?? emptyCargo();
-        mergeCargo(target, shares.get(edgeKey(edge))!);
-        incoming.set(edge.to, target);
-      }
-      const held = emptyCargo();
-      const spill = emptyCargo();
-      for (const type of RAW_TYPES) {
-        const amount = cargo.raw[type] ?? 0;
-        if (amount <= 0) continue;
-        if (outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold')) held.raw[type] = amount;
-        else spill.raw[type] = amount;
-      }
-      for (const [materialId, amount] of Object.entries(cargo.materials)) {
-        if (amount <= 0) continue;
-        if (outgoing.some((edge) => edgeAllowsMaterial(edge, materialId) && edge.overflow === 'hold')) held.materials[materialId] = amount;
-        else spill.materials[materialId] = amount;
-      }
-      const depositResult = deposit(spill);
-      if (beganWithHeldCargo && depositResult.accepted) didWork = true;
-      mergeCargo(held, depositResult.rejected);
-      if (cargoHasValues(held)) heldCargo[nodeId] = held;
-    }
-
-    if (!didWork) {
-      useUIStore.getState().addCargo('exotic', preview.cost.exotic);
-      useUIStore.getState().addCargo('helium-3', preview.cost.helium);
-      return false;
-    }
-    const deliveries = endItems.length > 0 ? useExtractorStore.getState().receiveFabricatorItems(endItems) : [];
-    const detectionIncrease = Math.floor(preview.detectionRisk / 5);
-    if (detectionIncrease > 0) ui.raiseDetectionBy(detectionIncrease);
-    const result: DispatchResult = {
-      order, collected, deliveries, carried,
-      materialsMoved: Object.values(edgeFlows).reduce((sum, flow) => sum + flow.used, 0),
-      bandwidth, stalled, edgeFlows, slotResults, deposited,
-      detectionRisk: preview.detectionRisk,
-    };
-    set((state) => ({
-      lastRuns: { ...state.lastRuns, [id]: result },
-      routes: state.routes.map((candidate) => candidate.id === id ? { ...candidate, heldCargo } : candidate),
-    }));
-    const jam = stalled.find((entry) => entry.status === 'jammed');
-    if (jam) {
-      const name = fabricators[jam.fabricatorKey]?.planetName ?? 'Fabricator';
-      ui.triggerHudNotify(`${name.toUpperCase()} JAMMED — BYPRODUCT HAS NO ROUTE`);
-      if (automatic && resolveAutomationPolicy(route).pauseOnJam) get().setRouteActive(id, false);
-    }
-    return result;
-  },
+  dispatchRoute: (id, automatic = false) => executeRouteDispatch(id, automatic),
 
   runAutomation: () => {
     const results: DispatchResult[] = [];
     for (const route of get().routes.filter((candidate) => candidate.active)) {
       const policy = resolveAutomationPolicy(route);
       const extractors = useExtractorStore.getState().extractors;
-      const groups = resolveNodeGroups(routeNodes(route.edges), extractors, useFabricatorStore.getState().fabricators);
+      const { fabricators, fabricatorStates } = useFabricatorStore.getState();
+      const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
       const sources = routeExtractorKeys(groups).map((key) => extractors[key]);
-      const fill = sources.length === 0 ? 100 : Math.max(...sources.map((source) => 100 * peekAccumulated(source) / Math.max(1, EXTRACTOR_HOLD_CAPS[useUIStore.getState().storageB])));
+      const fills = sources.map((source) => {
+        const { storageMultiplier } = getExtractorMultipliers(source.key, useExtractorStore.getState().nodeEquipped);
+        return 100 * peekAccumulated(source) / Math.max(1, EXTRACTOR_HOLD_CAPS[useUIStore.getState().storageB] * storageMultiplier);
+      });
+      const demandWeights = sources.map((source) => {
+        const from = extractorNodeId(source.galaxySeed, source.systemId);
+        let demand = 0;
+        for (const [nodeId, group] of groups) for (const key of group.fabricatorKeys) {
+          const depth = bufferDepth(fabricators[key]?.tier);
+          for (const slot of fabricatorStates[key]?.slots ?? []) {
+            const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
+            if (!recipe || !cargoReaches(route.edges, from, nodeId, { kind: 'raw', id: source.resourceType })) continue;
+            demand += slotResourceDemand(slot, recipe, depth)[source.resourceType] ?? 0;
+          }
+        }
+        return demand;
+      });
+      const weightTotal = demandWeights.reduce((sum, weight) => sum + weight, 0);
+      const fill = sources.length === 0 ? 100
+        : policy.fillAggregate === 'all' ? Math.min(...fills)
+          : policy.fillAggregate === 'any' ? Math.max(...fills)
+            : weightTotal > 0
+              ? fills.reduce((sum, value, index) => sum + value * demandWeights[index], 0) / weightTotal
+              : fills.reduce((sum, value) => sum + value, 0) / fills.length;
       if (fill < policy.sourceFillPercent) continue;
-      const preview = routePreview(route);
+      const preview = optimizedRoutePreview(route, true);
       if (!preview.canRun) {
         if (get().automationNotices[route.id] !== preview.reason && (preview.reason.includes('jam') || preview.reason.includes('fuel') || preview.reason.includes('Detection'))) {
           useUIStore.getState().triggerHudNotify(`${route.name.toUpperCase()} HOLDING — ${preview.reason.toUpperCase()}`);
@@ -1005,6 +1021,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
   },
 
   restoreRoutes: (routes) => {
+    previewCache.clear();
     const extractors = useExtractorStore.getState().extractors;
     const fabricators = useFabricatorStore.getState().fabricators;
     set({ routes: routes.map((route) => {
@@ -1065,6 +1082,7 @@ function migrateAutomationPolicy(automation: RouteAutomationPolicy | undefined):
   return {
     dispatchMode: legacy.dispatchMode ?? (legacy.requireRecipeReady ? 'batch' : 'fill'),
     sourceFillPercent: legacy.sourceFillPercent ?? DEFAULT_AUTOMATION_POLICY.sourceFillPercent,
+    fillAggregate: legacy.fillAggregate ?? 'any',
     detectionCeiling: legacy.detectionCeiling ?? DEFAULT_AUTOMATION_POLICY.detectionCeiling,
     pauseOnJam: legacy.pauseOnJam ?? DEFAULT_AUTOMATION_POLICY.pauseOnJam,
   };
@@ -1084,18 +1102,20 @@ export function fabricatorNodeStatus(
   fabricators: Record<string, Fabricator>,
 ): SlotStatus {
   const recent = useFabricatorStore.getState().lastRun;
-  const rank: SlotStatus[] = ['jammed', 'flowing', 'ready', 'starved', 'idle'];
-  let best: SlotStatus = 'idle';
+  const tieBreak: SlotStatus[] = ['flowing', 'ready', 'starved', 'jammed', 'idle'];
+  const counts = new Map<SlotStatus, number>();
   for (const key of fabricatorKeys) {
     const depth = bufferDepth(fabricators[key]?.tier);
     for (let index = 0; index < (fabricatorStates[key]?.slots ?? []).length; index++) {
       const slot = fabricatorStates[key].slots[index];
       const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
       const status = recent[key]?.[index]?.status ?? slotStatus(slot, recipe, depth);
-      if (rank.indexOf(status) < rank.indexOf(best)) best = status;
+      counts.set(status, (counts.get(status) ?? 0) + 1);
     }
   }
-  return best;
+  const candidates = tieBreak.filter((status) => status !== 'idle' && (counts.get(status) ?? 0) > 0);
+  if (candidates.length === 0) return 'idle';
+  return candidates.reduce((best, status) => (counts.get(status) ?? 0) > (counts.get(best) ?? 0) ? status : best);
 }
 
 export { fabricatorNodeId, extractorNodeId };

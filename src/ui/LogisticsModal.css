@@ -1949,3 +1949,24 @@
 .lm-slot-menu .lm-section-body {
   background: transparent;
 }
+.lm-held-cargo {
+  margin: 10px;
+  padding: 8px;
+  border: 1px solid rgba(255, 178, 61, 0.45);
+  color: rgba(255, 215, 150, 0.9);
+  font: 10px/1.5 monospace;
+}
+
+.lm-held-cargo-title {
+  color: #ffb23d;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.lm-held-cargo button {
+  margin-top: 6px;
+  border: 1px solid rgba(255, 178, 61, 0.5);
+  background: rgba(255, 178, 61, 0.1);
+  color: #ffd796;
+  cursor: pointer;
+}

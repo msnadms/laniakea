@@ -103,7 +103,7 @@ const STAR_TYPES: StarTypeEntry[] = [
     abundance: 'Very Rare',
     lore: 'The collapsed remnant of a massive star following a core-collapse supernova. When a star exceeding 8 solar masses exhausts its nuclear fuel, the core implodes in milliseconds — the outer layers rebound in a catastrophic explosion, leaving behind an object roughly 20 kilometers in diameter that contains more mass than the Sun.\n\nNeutron star matter is compressed beyond atomic limits: electrons are forced into protons, producing a dense fluid of neutrons packed so tightly that a single teaspoon would mass approximately one billion tonnes. Their surfaces spin hundreds of times per second; focused electromagnetic radiation escapes the magnetic poles as sweeping pulsar beams detectable across the galaxy.\n\nThe inner orbital zones of neutron star systems are subject to intense radiation flux and gravitational gradients that preclude standard extraction operations. Surveys have confirmed that neutron star matter deposits form in these zones through exotic nucleosynthesis processes unique to post-supernova environments. Accessing them requires logistics systems hardened for high-gravity, high-radiation conditions — only the most advanced extraction networks can operate safely within their reach.',
     notes: [
-      'Diameter ~20 km — smaller than most cities',
+      'Diameter ~20 km - smaller than most cities',
       'Surface gravity 200 billion times Earth standard',
       'Magnetic field 10⁸-10¹⁵ Tesla; pulsar rotation up to 716 Hz',
       'Sole known source of neutron star matter deposits',

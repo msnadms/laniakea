@@ -67,6 +67,7 @@ export function StationMap({
   draftEdges,
   nodeStatus,
   edgeFlows,
+  heldNodeIds,
   islandNodes = [],
   onAddEdge,
   onRemoveEdge,
@@ -80,6 +81,7 @@ export function StationMap({
   draftEdges: RouteEdge[];
   nodeStatus?: Record<string, SlotStatus>;
   edgeFlows?: Record<string, EdgeFlowResult>;
+  heldNodeIds?: Set<string>;
   islandNodes?: string[];
   onAddEdge: (from: string, to: string) => void;
   onRemoveEdge: (edge: RouteEdge) => void;
@@ -383,6 +385,12 @@ export function StationMap({
                 strokeDasharray={status === 'flowing' ? undefined : '3 2'}
                 style={{ pointerEvents: 'none' }}
               />
+            )}
+            {heldNodeIds?.has(p.nodeId) && (
+              <g style={{ pointerEvents: 'none' }}>
+                <circle cx={p.svgX + NODE_R - 1} cy={p.svgY - NODE_R + 1} r="3.5" fill="#ffb23d" stroke="#241400" strokeWidth="0.8" />
+                <text x={p.svgX + NODE_R - 1} y={p.svgY - NODE_R + 2.3} textAnchor="middle" fill="#241400" fontSize="4.5" fontWeight="bold">!</text>
+              </g>
             )}
             <circle
               cx={p.svgX} cy={p.svgY} r={NODE_R}

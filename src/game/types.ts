@@ -155,10 +155,12 @@ export interface RouteEdge {
 }
 
 export type RouteDispatchMode = 'fill' | 'batch';
+export type RouteFillAggregate = 'any' | 'all' | 'weighted';
 
 export interface RouteAutomationPolicy {
   dispatchMode: RouteDispatchMode;
   sourceFillPercent: number;
+  fillAggregate: RouteFillAggregate;
   detectionCeiling: number;
   pauseOnJam: boolean;
 }

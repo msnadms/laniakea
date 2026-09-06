@@ -1,11 +1,9 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { useLogisticsStore } from '../store/logisticsStore';
+import { AUTOMATION_POLL_MS, useLogisticsStore } from '../store/logisticsStore';
 import { useFabricatorStore } from '../store/fabricatorStore';
 import { persistFabricatorRun } from '../store/persistRun';
 import { saveLogisticsRoute } from '../firebase/logisticsRoutes';
-
-const AUTOMATION_POLL_MS = 15_000;
 
 export function useLogisticsAutomation() {
   useEffect(() => {

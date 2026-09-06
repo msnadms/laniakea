@@ -12,6 +12,7 @@ export interface UserSettings {
   infiniteExplore: boolean;
   exoticMatter: number;
   detectionRating: number;
+  detectionHeat: number;
   lastDetectionChangeAt: number;
   lastPurgeAt: number;
   railgunAmmo: number;
@@ -46,6 +47,7 @@ export const defaultSettings: UserSettings = {
   infiniteExplore: false,
   exoticMatter: 75,
   detectionRating: 0,
+  detectionHeat: 0,
   lastDetectionChangeAt: 0,
   lastPurgeAt: 0,
   railgunAmmo: 20,
@@ -88,7 +90,14 @@ export async function initUserDoc(user: User): Promise<UserSettings> {
   }
 
   const data = snap.data();
-  return { ...defaultSettings, ...data.settings } as UserSettings;
+  const saved = data.settings ?? {};
+  return {
+    ...defaultSettings,
+    ...saved,
+    // Pre-heat saves persisted only whole bars. Preserve that value instead
+    // of letting the new default zero mask the migration.
+    detectionHeat: saved.detectionHeat ?? saved.detectionRating ?? 0,
+  } as UserSettings;
 }
 
 export async function saveUserSettings(uid: string, settings: UserSettings): Promise<void> {

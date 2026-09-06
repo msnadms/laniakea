@@ -5,8 +5,8 @@ import type { Extractor, Fabricator, FabricatorProductionSlot, LogisticsRoute } 
 import type { NodeGroup } from './logisticsStore';
 import { extractorNodeId, fabricatorNodeId, makeEmptyFabricatorSlot } from '../game/types';
 import { processFabricator, useFabricatorStore } from './fabricatorStore';
-import { DETECTION_CROSSING_POINTS, allocateEdgeCargo, cargoReaches, routeDetectionRisk, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
-import { computeStorageCap } from './uiStore';
+import { DETECTION_CROSSING_POINTS, allocateEdgeCargo, cargoReaches, computeRouteCost, routeDetectionRisk, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
+import { computeStorageCap, decayDetectionHeat, DETECTION_HEAT_DECAY_PER_MS } from './uiStore';
 import { generatePlanets, generateSystemLayout } from '../game/planetGen';
 import { useExtractorStore } from './extractorStore';
 import { useStockpileStore } from './stockpileStore';
@@ -281,10 +281,175 @@ describe('rare source generation', () => {
 
 describe('route dispatch integration', () => {
   afterEach(() => {
+    vi.useRealTimers();
     useFabricatorStore.setState({ fabricators: {}, fabricatorStates: {}, lastRun: {} });
     useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {} });
     useLogisticsStore.setState({ routes: [], lastRuns: {}, automationNotices: {} });
     useStockpileStore.getState().restoreStockpile({}, {});
+    useUIStore.setState({ detectionRating: 0, detectionHeat: 0, destroyed: false, lastDetectionChangeAt: 0 });
+  });
+
+  it('accumulates and continuously decays fractional detection heat', () => {
+    const start = 1_000_000;
+    useUIStore.setState({ detectionRating: 0, detectionHeat: 0, lastDetectionChangeAt: start });
+    useUIStore.getState().raiseDetectionHeat(0.34);
+    useUIStore.getState().raiseDetectionHeat(0.34);
+    useUIStore.getState().raiseDetectionHeat(0.34);
+    expect(useUIStore.getState().detectionHeat).toBeCloseTo(1.02);
+    expect(useUIStore.getState().detectionRating).toBe(1);
+
+    const decayed = decayDetectionHeat(1.02, start, start + 30_000);
+    expect(decayed.detectionHeat).toBeCloseTo(1.02 - 30_000 * DETECTION_HEAT_DECAY_PER_MS);
+    expect(decayed.lastDetectionChangeAt).toBe(start + 30_000);
+  });
+
+  it('carries fractional route heat across several dispatches until a bar lands', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+    const fabricators = Object.fromEntries(Array.from({ length: 5 }, (_, index) => {
+      const id = index + 1;
+      const fab: Fabricator = {
+        key: `heat-fab-${id}`, tier: 1, galaxySeed: 84, systemId: id,
+        systemName: `Heat ${id}`, planetName: `Heat ${id}`, builtAt: 1,
+        systemX: id, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+      };
+      return [fab.key, fab];
+    }));
+    useFabricatorStore.setState({
+      fabricators,
+      fabricatorStates: Object.fromEntries(Object.keys(fabricators).map((key) => [key, { slots: [] }])),
+      lastRun: {},
+    });
+    const nodes = Array.from({ length: 5 }, (_, index) => fabricatorNodeId(84, index + 1));
+    const edges = nodes.slice(1).map((to, index) => ({
+      from: nodes[index], to, allowedMaterials: ['graphene_lattice'],
+    }));
+    useUIStore.setState({
+      exoticMatter: 10_000, helium3Reserves: 10_000,
+      detectionHeat: 0, detectionRating: 0, lastDetectionChangeAt: Date.now(),
+    });
+    useLogisticsStore.setState({ routes: [{ id: 'heat', name: 'Heat', edges }], lastRuns: {}, automationNotices: {} });
+
+    for (let dispatch = 0; dispatch < 5; dispatch++) {
+      useLogisticsStore.getState().updateRoute('heat', {
+        heldCargo: { [nodes[0]]: { raw: {}, materials: { graphene_lattice: 1 } } },
+      });
+      expect(useLogisticsStore.getState().dispatchRoute('heat')).not.toBe(false);
+    }
+    expect(useUIStore.getState().detectionHeat).toBeCloseTo(1);
+    expect(useUIStore.getState().detectionRating).toBe(1);
+  });
+
+  it('purge clears the underlying detection heat', () => {
+    useUIStore.setState({
+      detectionHeat: 3.75, detectionRating: 3, lastDetectionChangeAt: Date.now(), lastPurgeAt: 0,
+      exoticMatter: 10_000, helium3Reserves: 10_000, destroyed: false,
+    });
+    expect(useUIStore.getState().purgeDetection()).toBe(true);
+    expect(useUIStore.getState().detectionHeat).toBe(0);
+    expect(useUIStore.getState().detectionRating).toBe(0);
+  });
+
+  it('railgun suppression removes heat rather than only the displayed bars', () => {
+    const now = Date.now();
+    useUIStore.setState({
+      detectionHeat: 2.5, detectionRating: 2, lastDetectionChangeAt: now,
+      lastFireAt: now - 60_000, railgunAmmo: 20, destroyed: false,
+    });
+    useUIStore.getState().tickRailgunSuppression();
+    expect(useUIStore.getState().detectionHeat).toBeGreaterThan(0);
+    expect(useUIStore.getState().detectionHeat).toBeLessThan(1);
+    expect(useUIStore.getState().detectionRating).toBe(0);
+  });
+
+  it('previews and dispatches hold-bound cargo in batch mode', () => {
+    const now = Date.now();
+    const extractor: Extractor = {
+      key: 'hold-only-source', galaxySeed: 81, systemId: 1, systemName: 'Source', planetName: 'Mine',
+      resourceType: 'alloys', rate: 1, placedAt: now - 50_000, lastCollectedAt: now - 50_000,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    const sink: Fabricator = {
+      key: 'hold-only-sink', tier: 1, galaxySeed: 81, systemId: 2, systemName: 'Sink', planetName: 'Depot',
+      builtAt: 1, systemX: 1, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
+    useFabricatorStore.setState({ fabricators: { [sink.key]: sink }, fabricatorStates: { [sink.key]: { slots: [] } }, lastRun: {} });
+    useUIStore.setState({ exoticMatter: 10_000, helium3Reserves: 10_000, alloys: 0, storageA: 0 });
+    const edge = { from: extractorNodeId(81, 1), to: fabricatorNodeId(81, 2), overflow: 'hold' as const };
+    useLogisticsStore.setState({ routes: [{
+      id: 'hold-only', name: 'Hold only', edges: [edge],
+      automation: { dispatchMode: 'batch', sourceFillPercent: 50, fillAggregate: 'weighted', detectionCeiling: 4, pauseOnJam: true },
+    }], lastRuns: {}, automationNotices: {} });
+
+    const preview = useLogisticsStore.getState().previewRoute('hold-only');
+    expect(preview?.canRun).toBe(true);
+    expect(preview?.expectedEdgeUse[`${edge.from}->${edge.to}`].used).toBeGreaterThan(0);
+    expect(preview!.cost.exotic).toBeGreaterThan(computeRouteCost([edge], useExtractorStore.getState().extractors, useFabricatorStore.getState().fabricators).exotic);
+    expect(useLogisticsStore.getState().dispatchRoute('hold-only')).not.toBe(false);
+  });
+
+  it('does not let a full irrelevant source trigger demand-weighted automation', () => {
+    const now = Date.now();
+    const source = (key: string, systemId: number, type: Extractor['resourceType'], age: number): Extractor => ({
+      key, galaxySeed: 82, systemId, systemName: key, planetName: key,
+      resourceType: type, rate: 1, placedAt: now - age, lastCollectedAt: now - age,
+      systemX: systemId, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    });
+    const relevant = source('relevant', 1, 'alloys', 10_000);
+    const irrelevant = source('irrelevant', 2, 'exotic', 300_000);
+    const fab: Fabricator = {
+      key: 'weighted-fab', tier: 1, galaxySeed: 82, systemId: 3, systemName: 'Factory', planetName: 'Forge',
+      builtAt: 1, systemX: 3, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    useExtractorStore.setState({ extractors: { relevant, irrelevant }, ownedUpgrades: [], nodeEquipped: {} });
+    useFabricatorStore.setState({
+      fabricators: { [fab.key]: fab },
+      fabricatorStates: { [fab.key]: { slots: [slot('graphene_lattice')] } },
+      lastRun: {},
+    });
+    useUIStore.setState({ exoticMatter: 10_000, helium3Reserves: 10_000, alloys: 0, nutrients: 0, storageA: 0 });
+    const edges = [
+      { from: extractorNodeId(82, 1), to: fabricatorNodeId(82, 3) },
+      { from: extractorNodeId(82, 2), to: fabricatorNodeId(82, 3) },
+    ];
+    useLogisticsStore.setState({ routes: [{
+      id: 'weighted', name: 'Weighted', active: true, edges,
+      automation: { dispatchMode: 'fill', sourceFillPercent: 50, fillAggregate: 'weighted', detectionCeiling: 4, pauseOnJam: true },
+    }], lastRuns: {}, automationNotices: {} });
+    expect(useLogisticsStore.getState().runAutomation()).toEqual([]);
+
+    useLogisticsStore.getState().updateRoute('weighted', { automation: {
+      dispatchMode: 'fill', sourceFillPercent: 50, fillAggregate: 'any', detectionCeiling: 4, pauseOnJam: true,
+    } });
+    expect(useLogisticsStore.getState().runAutomation()).toHaveLength(1);
+  });
+
+  it('does not charge fuel when a capped hold rejects all stranded cargo', () => {
+    const now = Date.now();
+    const extractor: Extractor = {
+      key: 'idle-source', galaxySeed: 83, systemId: 1, systemName: 'Idle', planetName: 'Idle',
+      resourceType: 'alloys', rate: 1, placedAt: now, lastCollectedAt: now,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    const sink: Fabricator = {
+      key: 'idle-sink', tier: 1, galaxySeed: 83, systemId: 2, systemName: 'Sink', planetName: 'Sink',
+      builtAt: 1, systemX: 1, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
+    useFabricatorStore.setState({ fabricators: { [sink.key]: sink }, fabricatorStates: { [sink.key]: { slots: [] } }, lastRun: {} });
+    const cap = computeStorageCap(0);
+    useUIStore.setState({ exoticMatter: cap, helium3Reserves: cap, alloys: cap, storageA: 0 });
+    const sinkNode = fabricatorNodeId(83, 2);
+    useLogisticsStore.setState({ routes: [{
+      id: 'rejected', name: 'Rejected',
+      edges: [{ from: extractorNodeId(83, 1), to: sinkNode }],
+      heldCargo: { [sinkNode]: { raw: { alloys: 20 }, materials: {} } },
+    }], lastRuns: {}, automationNotices: {} });
+    const before = { exotic: useUIStore.getState().exoticMatter, helium: useUIStore.getState().helium3Reserves };
+    expect(useLogisticsStore.getState().dispatchRoute('rejected')).toBe(false);
+    expect(useUIStore.getState().exoticMatter).toBe(before.exotic);
+    expect(useUIStore.getState().helium3Reserves).toBe(before.helium);
   });
 
   it('finishes an ordered multi-site chain and does not charge an unchanged rerun', () => {
@@ -471,15 +636,18 @@ describe('route dispatch integration', () => {
       return { groups, edges };
     };
 
-    // m(m-1)/2 in one supercluster: three hops stay quiet, six become lethal.
-    expect(routeDetectionRisk(chain(2, 1).edges, chain(2, 1).groups)).toBe(1);
-    expect(routeDetectionRisk(chain(3, 1).edges, chain(3, 1).groups)).toBe(3);
-    expect(routeDetectionRisk(chain(6, 1).edges, chain(6, 1).groups)).toBe(15);
+    // Continuous heat keeps every local hop visible without the old bar cliff.
+    expect(routeDetectionRisk(chain(2, 1).edges, chain(2, 1).groups)).toBeCloseTo(2 / 60);
+    expect(routeDetectionRisk(chain(3, 1).edges, chain(3, 1).groups)).toBeCloseTo(6 / 60);
+    expect(routeDetectionRisk(chain(6, 1).edges, chain(6, 1).groups)).toBeCloseTo(30 / 60);
+    expect(routeDetectionRisk(chain(4, 1).edges, chain(4, 1).groups)).toBeCloseTo(
+      2 * routeDetectionRisk(chain(3, 1).edges, chain(3, 1).groups),
+    );
 
     const spread = chain(3, 1);
     for (const [id, group] of chain(3, 2).groups) spread.groups.set(id, group);
     spread.edges.push(...chain(3, 2).edges, { from: 's1n3', to: 's2n0' });
-    expect(routeDetectionRisk(spread.edges, spread.groups)).toBe(3 + 3 + DETECTION_CROSSING_POINTS);
+    expect(routeDetectionRisk(spread.edges, spread.groups)).toBeCloseTo(0.1 + 0.1 + DETECTION_CROSSING_POINTS);
   });
 
   it('lets a signal dampener mask the hops incident to its station', () => {
@@ -503,7 +671,7 @@ describe('route dispatch integration', () => {
     const edges = [{ from: source, to: mid }, { from: mid, to: sink }];
 
     useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
-    expect(routeDetectionRisk(edges, groups)).toBe(1);
+    expect(routeDetectionRisk(edges, groups)).toBeCloseTo(2 / 60);
 
     useExtractorStore.setState({ nodeEquipped: { [extractor.key]: ['signal_dampener', null] } });
     expect(routeDetectionRisk(edges, groups)).toBe(0);
@@ -548,7 +716,7 @@ describe('route dispatch integration', () => {
       materialDraw: 4, overflow: 'hold',
     }]);
     expect(restored.automation).toEqual({
-      dispatchMode: 'batch', sourceFillPercent: 80, detectionCeiling: 2, pauseOnJam: false,
+      dispatchMode: 'batch', sourceFillPercent: 80, fillAggregate: 'any', detectionCeiling: 2, pauseOnJam: false,
     });
     expect(useUIStore.getState().fuelReserveExotic).toBe(100);
     expect(useUIStore.getState().fuelReserveHelium3).toBe(50);

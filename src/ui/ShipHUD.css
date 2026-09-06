@@ -74,10 +74,13 @@
 .detection-bar {
   flex: 1;
   height: 8px;
+  overflow: hidden;
   background: rgba(187, 0, 0, 0.12);
 }
 
-.detection-bar-filled {
+.detection-bar-progress {
+  display: block;
+  height: 100%;
   background: #cc1100;
   box-shadow: 0 0 5px rgba(204, 17, 0, 0.8);
 }
@@ -87,7 +90,7 @@
   50%      { opacity: 0.35; box-shadow: 0 0 16px rgba(255, 20, 20, 1); }
 }
 
-.detection-bars--critical .detection-bar-filled {
+.detection-bars--critical .detection-bar-progress {
   animation: detection-pulse 1.1s ease-in-out infinite;
 }
 
@@ -342,15 +345,6 @@
 .hud-action-btn:disabled {
   opacity: 0.35;
   cursor: default;
-}
-
-.hud-action-btn--fire {
-  color: #ffb060;
-  border-color: rgba(255, 150, 60, 0.5);
-}
-
-.hud-action-btn--fire:hover {
-  background: rgba(255, 150, 60, 0.18);
 }
 
 .hud-shield {

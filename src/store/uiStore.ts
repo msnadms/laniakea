@@ -8,18 +8,19 @@ import { beginDeathSequence } from './resetGame';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
-export const DETECTION_DECAY_INTERVAL_MS = 15 * 60 * 1000;
+export const DETECTION_HEAT_PER_BAR = 1;
+export const DETECTION_HEAT_DECAY_PER_MS = DETECTION_HEAT_PER_BAR / (2 * 60 * 1000);
 export const PURGE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
-function decayDetection(rating: number, lastChangeAt: number, now: number, perStep = 1): { detectionRating: number; lastDetectionChangeAt: number } {
-  if (rating <= 0) return { detectionRating: rating, lastDetectionChangeAt: lastChangeAt };
-  if (lastChangeAt <= 0) return { detectionRating: rating, lastDetectionChangeAt: now };
-  const steps = Math.floor((now - lastChangeAt) / DETECTION_DECAY_INTERVAL_MS);
-  if (steps <= 0) return { detectionRating: rating, lastDetectionChangeAt: lastChangeAt };
-  return {
-    detectionRating: Math.max(0, rating - steps * perStep),
-    lastDetectionChangeAt: lastChangeAt + steps * DETECTION_DECAY_INTERVAL_MS,
-  };
+export function detectionRatingFromHeat(heat: number): number {
+  return Math.min(5, Math.floor(Math.max(0, heat) / DETECTION_HEAT_PER_BAR));
+}
+
+export function decayDetectionHeat(heat: number, lastChangeAt: number, now: number): { detectionHeat: number; detectionRating: number; lastDetectionChangeAt: number } {
+  if (heat <= 0) return { detectionHeat: 0, detectionRating: 0, lastDetectionChangeAt: lastChangeAt };
+  if (lastChangeAt <= 0) return { detectionHeat: heat, detectionRating: detectionRatingFromHeat(heat), lastDetectionChangeAt: now };
+  const detectionHeat = Math.max(0, heat - Math.max(0, now - lastChangeAt) * DETECTION_HEAT_DECAY_PER_MS);
+  return { detectionHeat, detectionRating: detectionRatingFromHeat(detectionHeat), lastDetectionChangeAt: now };
 }
 
 // UPGRADE_POOL is the shared pool cap. Each path caps at UPGRADE_POOL-1. COSTS arrays need UPGRADE_POOL entries; stat/name arrays need UPGRADE_POOL.
@@ -107,6 +108,7 @@ interface UIState {
   toggleBootSequence: () => void;
   exoticMatter: number;
   detectionRating: number;
+  detectionHeat: number;
   lastDetectionChangeAt: number;
   lastPurgeAt: number;
   destroyed: boolean;
@@ -119,17 +121,18 @@ interface UIState {
   neutronStarMatter: number;
   raiseDetection: (chance: number) => void;
   raiseDetectionBy: (points: number) => void;
+  raiseDetectionHeat: (heat: number) => void;
   tickDetectionDecay: () => void;
   checkDetectionLethal: () => boolean;
   purgeDetection: () => boolean;
-  fireRailgun: () => void;
+  tickRailgunSuppression: () => void;
   reloadRailgun: () => void;
   addCargo: (type: Resource['type'], amount: number) => void;
   depositCargo: (type: Resource['type'], amount: number) => number;
   withdrawCargo: (amounts: Partial<Record<Resource['type'], number>>) => void;
   selectedPlanetKey: string | null;
   setSelectedPlanet: (key: string | null) => void;
-  setShipStats: (stats: { exoticMatter: number; detectionRating: number; railgunAmmo: number; helium3Reserves: number; lastDetectionChangeAt?: number; lastPurgeAt?: number }) => void;
+  setShipStats: (stats: { exoticMatter: number; detectionRating: number; detectionHeat?: number; railgunAmmo: number; helium3Reserves: number; lastDetectionChangeAt?: number; lastPurgeAt?: number }) => void;
   consumeExoticMatter: (amount: number) => void;
   consumeHelium3: (amount: number) => void;
   spendAlloys: (amount: number) => void;
@@ -215,11 +218,15 @@ export const useUIStore = create<UIState>((set, get) => ({
     get().raiseDetectionBy(1);
   },
   raiseDetectionBy: (points) => {
-    const steps = Math.floor(points);
-    if (steps <= 0) return;
+    if (points <= 0) return;
+    get().raiseDetectionHeat(points * DETECTION_HEAT_PER_BAR);
+  },
+  raiseDetectionHeat: (heat) => {
+    if (heat <= 0) return;
     get().tickDetectionDecay();
-    const wasBelowMax = get().detectionRating < 5;
-    set((s) => ({ detectionRating: Math.min(5, s.detectionRating + steps), lastDetectionChangeAt: Date.now() }));
+    const wasBelowMax = get().detectionHeat < 5 * DETECTION_HEAT_PER_BAR;
+    const detectionHeat = Math.min(5 * DETECTION_HEAT_PER_BAR, get().detectionHeat + heat);
+    set({ detectionHeat, detectionRating: detectionRatingFromHeat(detectionHeat), lastDetectionChangeAt: Date.now() });
     if (wasBelowMax && get().detectionRating === 5) {
       get().triggerHudNotify('SIGNAL LOCKED — ALCUBIERRE CANNON CHARGING');
     }
@@ -227,31 +234,52 @@ export const useUIStore = create<UIState>((set, get) => ({
   tickDetectionDecay: () => {
     const s = get();
     const now = Date.now();
-    const next = decayDetection(s.detectionRating, s.lastDetectionChangeAt, now, 1);
-    if (next.detectionRating !== s.detectionRating || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {
-      set({ detectionRating: next.detectionRating, lastDetectionChangeAt: next.lastDetectionChangeAt });
+    // Keep direct state restores and older tests/save paths compatible: if a
+    // caller set bars without heat, the explicitly supplied bar count wins.
+    const heat = detectionRatingFromHeat(s.detectionHeat) === s.detectionRating
+      ? s.detectionHeat
+      : s.detectionRating * DETECTION_HEAT_PER_BAR;
+    const next = decayDetectionHeat(heat, s.lastDetectionChangeAt, now);
+    if (next.detectionHeat !== s.detectionHeat || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {
+      set(next);
     }
   },
   checkDetectionLethal: () => {
     if (get().destroyed) return true;
+    if (get().detectionHeat >= 5 * DETECTION_HEAT_PER_BAR) {
+      beginDeathSequence();
+      return true;
+    }
     get().tickDetectionDecay();
     if (get().detectionRating < 5) return false;
     beginDeathSequence();
     return true;
   },
-  fireRailgun: () => {
+  tickRailgunSuppression: () => {
     if (get().destroyed) return;
     get().tickDetectionDecay();
     const s = get();
     const now = Date.now();
-    if (now - s.lastFireAt < FIRE_COOLDOWN_MS) return;
-    if (s.detectionRating <= 0) return;
-    if (s.railgunAmmo < FIRE_COST) { s.triggerHudFlash(); return; }
+    if (s.lastFireAt <= 0) { set({ lastFireAt: now }); return; }
+    if (s.detectionRating <= 0 || s.railgunAmmo < FIRE_COST) {
+      if (now - s.lastFireAt >= FIRE_COOLDOWN_MS) set({ lastFireAt: now });
+      return;
+    }
+    const elapsedShots = Math.floor((now - s.lastFireAt) / FIRE_COOLDOWN_MS);
+    if (elapsedShots <= 0) return;
+    const shots = Math.min(
+      elapsedShots,
+      Math.floor(s.railgunAmmo / FIRE_COST),
+      Math.ceil(s.detectionRating / DETENT_PER_SHOT),
+    );
+    if (shots <= 0) return;
+    const detectionHeat = Math.max(0, s.detectionHeat - shots * DETENT_PER_SHOT * DETECTION_HEAT_PER_BAR);
     set({
-      railgunAmmo: s.railgunAmmo - FIRE_COST,
-      detectionRating: Math.max(0, s.detectionRating - DETENT_PER_SHOT),
+      railgunAmmo: s.railgunAmmo - shots * FIRE_COST,
+      detectionHeat,
+      detectionRating: detectionRatingFromHeat(detectionHeat),
       lastDetectionChangeAt: now,
-      lastFireAt: now,
+      lastFireAt: s.lastFireAt + shots * FIRE_COOLDOWN_MS,
     });
   },
   reloadRailgun: () => {
@@ -277,6 +305,7 @@ export const useUIStore = create<UIState>((set, get) => ({
       exoticMatter: s.exoticMatter - cost.exotic,
       helium3Reserves: s.helium3Reserves - cost.helium,
       detectionRating: 0,
+      detectionHeat: 0,
       lastDetectionChangeAt: now,
       lastPurgeAt: now,
     });
@@ -312,13 +341,18 @@ export const useUIStore = create<UIState>((set, get) => ({
   setSelectedPlanet: (key) => set({ selectedPlanetKey: key }),
   exoticMatter: 250,
   detectionRating: 0,
+  detectionHeat: 0,
   lastDetectionChangeAt: 0,
   lastPurgeAt: 0,
   destroyed: false,
   railgunAmmo: 20,
   lastFireAt: 0,
   helium3Reserves: 200,
-  setShipStats: (stats) => set(stats),
+  setShipStats: (stats) => set({
+    ...stats,
+    detectionHeat: stats.detectionHeat ?? stats.detectionRating * DETECTION_HEAT_PER_BAR,
+    detectionRating: detectionRatingFromHeat(stats.detectionHeat ?? stats.detectionRating * DETECTION_HEAT_PER_BAR),
+  }),
   consumeExoticMatter: (amount) => set((s) => ({ exoticMatter: Math.max(0, s.exoticMatter - amount) })),
   consumeHelium3: (amount) => set((s) => ({ helium3Reserves: Math.max(0, s.helium3Reserves - amount) })),
   spendAlloys: (amount) => set((s) => ({ alloys: Math.max(0, s.alloys - amount) })),
@@ -458,7 +492,8 @@ export function applyUserSettings(settings: UserSettings): void {
     showBootSequence: settings.showBootSequence,
     infiniteExplore: settings.infiniteExplore,
     exoticMatter: Math.min(settings.exoticMatter, cap),
-    detectionRating: settings.detectionRating,
+    detectionRating: detectionRatingFromHeat(settings.detectionHeat ?? settings.detectionRating * DETECTION_HEAT_PER_BAR),
+    detectionHeat: settings.detectionHeat ?? settings.detectionRating * DETECTION_HEAT_PER_BAR,
     lastDetectionChangeAt: settings.lastDetectionChangeAt,
     lastPurgeAt: settings.lastPurgeAt,
     destroyed: false,

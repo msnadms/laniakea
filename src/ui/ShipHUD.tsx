@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useUIStore, computeStorageCap, computeWeaponCap, FIRE_COST } from '../store/uiStore';
+import { useUIStore, computeStorageCap, computeWeaponCap } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import { LogisticsModal } from './LogisticsModal';
@@ -42,7 +42,9 @@ const DetectionBars = memo(function DetectionBars({ value }: { value: number }) 
   return (
     <div className={`detection-bars${critical ? ' detection-bars--critical' : ''}`}>
       {Array.from({ length: 5 }, (_, i) => (
-        <div key={i} className={`detection-bar${i < value ? ' detection-bar-filled' : ''}`} />
+        <div key={i} className="detection-bar">
+          <span className="detection-bar-progress" style={{ width: `${Math.max(0, Math.min(1, value - i)) * 100}%` }} />
+        </div>
       ))}
     </div>
   );
@@ -198,7 +200,7 @@ const PlaceholderButton = memo(function PlaceholderButton() {
 
 export function ShipHUD() {
   const exoticMatter = useUIStore((s) => s.exoticMatter);
-  const detectionRating = useUIStore((s) => s.detectionRating);
+  const detectionHeat = useUIStore((s) => s.detectionHeat);
   const railgunAmmo = useUIStore((s) => s.railgunAmmo);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
   const alloys = useUIStore((s) => s.alloys);
@@ -217,7 +219,8 @@ export function ShipHUD() {
   const weaponCap = computeWeaponCap(weaponA, weaponB);
 
   useEffect(() => {
-    const id = setInterval(() => useUIStore.getState().tickDetectionDecay(), 10000);
+    useUIStore.getState().tickRailgunSuppression();
+    const id = setInterval(() => useUIStore.getState().tickRailgunSuppression(), 10000);
     return () => clearInterval(id);
   }, []);
 
@@ -288,13 +291,8 @@ export function ShipHUD() {
 
           <div className="hud-row">
             <span className="hud-label">DETECTION RATING</span>
-            <DetectionBars value={detectionRating} />
-            <span className="hud-value">{detectionRating} <span className="hud-value-dim">/ 5</span></span>
-            <button
-              className="hud-action-btn hud-action-btn--fire"
-              onClick={() => useUIStore.getState().fireRailgun()}
-              disabled={detectionRating <= 0 || railgunAmmo < FIRE_COST}
-            >Fire</button>
+            <DetectionBars value={detectionHeat} />
+            <span className="hud-value">{detectionHeat.toFixed(1)} <span className="hud-value-dim">/ 5</span></span>
           </div>
 
         </div>
