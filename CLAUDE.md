@@ -128,17 +128,38 @@ galaxies in a supercluster, flat fallback otherwise), so hub-and-spoke prices co
 `dispatchRoute` traverses in topological order carrying a per-node `Cargo` (`raw` + `materials`).
 At each node it collects from extractors, feeds fabricators, and **carries finished materials
 forward along out-edges** rather than dumping them to the ship — so one dispatch can run
-extractor → fab A → fab B and bring the end product home. Branches default to downstream-demand
-distribution and support raw/material filters, priority, weight, unit cap, overflow behavior,
-and source reserves. Each edge independently enforces `computeMaterialBandwidth`. Equal choices
-use stable lexical tie-breaking, so edge creation order cannot change results.
+extractor → fab A → fab B and bring the end product home. Branches always split by downstream
+demand and support raw/material filters, a `materialDraw` cap, and a `hold`/`stockpile` surplus
+choice. There are no edge priorities or weights: an explicit filter exempts an edge from demand
+capping, and everything else is demand-proportional. Each edge independently enforces
+`computeMaterialBandwidth`. Equal choices use stable lexical tie-breaking, so edge creation order
+cannot change results.
 
-Routes can be activated with source-fill, recipe-ready, detection-ceiling, jam, and quiet policies.
+Raw reserves live on the **extractor** (`Extractor.reserve`, "leave in ground"), not on edges, so
+one source cannot carry conflicting per-edge reserves. The fuel floor is one ship-wide pair
+(`uiStore.fuelReserveExotic` / `fuelReserveHelium3`) rather than per-route, since every route
+draws from the same tanks.
+
+Routes are activated under a `dispatchMode` (`fill` waits for `sourceFillPercent`, `batch` waits
+for a craftable batch) plus detection-ceiling and jam policies. `restoreRoutes` migrates older
+saves: `unitCap`→`materialDraw`, `overflow: 'next'`→`'stockpile'`, `requireRecipeReady`→`batch`,
+and the largest legacy `minimumShipReserve` seeds the global fuel floor; edge priority, weight,
+per-edge reserves, and the `quiet` flag are dropped.
 An automated route that cannot afford fuel or would breach its detection ceiling **holds** (staying active
 and retrying as detection decays); only `pauseOnJam` deactivates it, since a jam needs the player.
 Route risk is spent through `raiseDetectionBy` (detection points), not `raiseDetection` (a 0-1 probability).
 `useLogisticsAutomation` runs the same `dispatchRoute` path as manual operation and persists each
-completed run. Route-scoped detection risk combines undampened extractors and travel distance.
+completed run.
+
+**Detection risk** (`routeDetectionRisk`) models warp-drive signatures from dispatched drones, so it
+is **route-scoped per dispatch** and prices *traffic concentration*, never distance — distance is
+already paid in fuel by `hopCost`. Risk is `Σ over superclusters m(m-1)/DETECTION_DENSITY_DIVISOR`
+where `m` is the route's hops inside that supercluster, plus `DETECTION_CROSSING_POINTS` per
+supercluster-crossing edge. Working many hops through one region is what gets you found; a long jump
+to a fresh supercluster is nearly free, which is the point — the meter exists to push the player
+outward. `dispatchRoute` converts risk to bars with `Math.floor(risk / 5)`. A **Signal Dampener**
+masks the hops incident to its station (a node counts as dampened when it has extractors and all of
+them are dampened), rather than decrementing any per-extractor tally.
 
 ### Recipe data
 
@@ -201,7 +222,7 @@ The logistics modal is split into two files: `LogisticsMap.tsx` owns map project
 
 **`LogisticsModal.tsx`:**
 - Left panel lists saved `LogisticsRoute`s (capped by `logisticsA` tier) with dry-run readiness, expected edge demand, shortages, route-scoped risk, activation controls, and fabricator warnings.
-- Middle panel edits the weakly connected DAG plus each edge's filters, priority, weight, cap, overflow behavior, and source reserve. It also configures activation policy. Clicking a node docks `NodeSidebar` or `FabricatorSidebar`; fabricator slots show partial buffers, priority controls, last-run batches/shortages, byproducts, and status.
+- Middle panel edits the weakly connected DAG plus each edge's filters, material draw, and surplus behavior. It also configures activation policy; per-extractor reserves live in `NodeSidebar` and the shared fuel floor in the Reserves tab. Clicking a node docks `NodeSidebar` or `FabricatorSidebar`; fabricator slots show partial buffers, priority controls, last-run batches/shortages, byproducts, and status.
 - Right panel (440px) tabs between **Reserves**, **Materials**, and **Modules**. Every group is a collapsible `Section`; recipe tooltips describe inputs and instant-dispatch output rather than craft time.
 - `handleDispatch` snapshots pre-dispatch accumulated amounts, calls `dispatchRoute`, then builds a `DispatchAnim` (per-node reveal of cost/collection lines, 500ms per hop) purely for visual feedback — the actual resource transfer already happened synchronously in the store.
 - All mutations that affect Firebase-backed state (`ownedUpgrades`/`nodeEquipped`, fabricator states, routes, extractor `lastCollectedAt`) are mirrored to Firestore (`firebase/extractorUpgrades.ts`, `firebase/fabricators.ts`, `firebase/logisticsRoutes.ts`, `firebase/extractors.ts`) immediately after each local store update.

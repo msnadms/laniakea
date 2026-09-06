@@ -32,16 +32,16 @@ import {
   SLOT_STATUS_LABELS,
   bufferDepth,
 } from '../game/types';
-import { EXTRACTOR_UPGRADES, getCraftable } from '../data/upgrades';
+import { EXTRACTOR_UPGRADES, getCraftable, describeUpgradeEffect } from '../data/upgrades';
 import type { Craftable } from '../data/upgrades';
 import { CRAFTABLE_MATERIALS, STOCKED_MATERIALS, MATERIAL_TIERS, materialName } from '../data/materials';
 import { RARE_RESOURCES, RARE_ROLES } from '../data/rareResources';
 import { useStockpileStore } from '../store/stockpileStore';
 import { UpgradeModuleIcon } from './CargoIcons';
-import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, Resource } from '../game/types';
+import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, Resource } from '../game/types';
 import { maxFabricatorSlots, makeEmptyFabricatorSlot } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
-import { updateExtractorCollected } from '../firebase/extractors';
+import { updateExtractorCollected, updateExtractorReserve } from '../firebase/extractors';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { saveFabricatorState } from '../firebase/fabricators';
 import { saveStockpile } from '../firebase/stockpile';
@@ -122,6 +122,9 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const logisticsB = useUIStore((s) => s.logisticsB);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const helium3 = useUIStore((s) => s.helium3Reserves);
+  const fuelReserveExotic = useUIStore((s) => s.fuelReserveExotic);
+  const fuelReserveHelium3 = useUIStore((s) => s.fuelReserveHelium3);
+  const setFuelReserve = useUIStore((s) => s.setFuelReserve);
   const user = useAuthStore((s) => s.user);
 
   const driveA = useUIStore((s) => s.driveA);
@@ -181,6 +184,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const [pendingEquip, setPendingEquip] = useState<{ extractorKey: string; nodeName: string; resourceLabel: string; slot: 0 | 1 } | null>(null);
   const [dispatchAnim, setDispatchAnim] = useState<DispatchAnim | null>(null);
   const [hoveredCard, setHoveredCard] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [routePolicyOpen, setRoutePolicyOpen] = useState(false);
   const now = useNow();
 
   useEffect(() => {
@@ -643,119 +647,116 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     />
                   </div>
 
-                  {/* Station map */}
-                  <div className="logistics-map-section">
-                    <div className="logistics-col-label">
-                      Drag node to node to link · click a link to cut it · click a node for details
+                  <div className="logistics-editor-body">
+                    {/* Station map */}
+                    <div className="logistics-map-section">
+                      <div className="logistics-col-label">
+                        Drag node to node to link · click a link to cut it · click a node for details
+                      </div>
+                      <div className="station-map-container">
+                        <StationMap
+                          projected={projected}
+                          draftNodes={draftNodes}
+                          draftEdges={draftEdges}
+                          nodeStatus={nodeStatus}
+                          edgeFlows={editingId ? lastRuns[editingId]?.edgeFlows : undefined}
+                          islandNodes={draftIslands}
+                          onAddEdge={addEdge}
+                          onRemoveEdge={removeEdge}
+                          canLink={canLink}
+                          onNodeClick={setLastHoveredNodeId}
+                          onBackgroundClick={() => setLastHoveredNodeId(null)}
+                          animActiveNodeId={dispatchAnim && !dispatchAnim.done ? (dispatchAnim.orderedNodeIds[dispatchAnim.step] ?? null) : null}
+                        />
+                        {dispatchAnim && (
+                          <div className="dispatch-anim-overlay">
+                            <div className="dispatch-anim-head">
+                              <span className="dispatch-anim-title">
+                                {dispatchAnim.done ? 'Route Complete' : 'Drones En Route'}
+                              </span>
+                              <span className="dispatch-anim-step">
+                                {Math.min(dispatchAnim.step + 1, dispatchAnim.orderedNodeIds.length)}/{dispatchAnim.orderedNodeIds.length}
+                              </span>
+                            </div>
+                            <div className="dispatch-anim-lines">
+                              {dispatchAnim.lines
+                                .filter((l) => dispatchAnim.done || l.revealStep <= dispatchAnim.step)
+                                .map((l, i) => (
+                                  <div
+                                    key={i}
+                                    className={`dispatch-anim-line${l.isCost ? ' dispatch-anim-line--cost' : ' dispatch-anim-line--collect'}`}
+                                  >
+                                    <span className="dispatch-anim-sign">{l.isCost ? '−' : '+'}</span>
+                                    <span className="dispatch-anim-text">{l.text.replace(/^[-+]/, '')}</span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="station-map-container">
-                      <StationMap
-                        projected={projected}
-                        draftNodes={draftNodes}
-                        draftEdges={draftEdges}
-                        nodeStatus={nodeStatus}
-                        edgeFlows={editingId ? lastRuns[editingId]?.edgeFlows : undefined}
-                        islandNodes={draftIslands}
-                        onAddEdge={addEdge}
-                        onRemoveEdge={removeEdge}
-                        canLink={canLink}
-                        onNodeClick={setLastHoveredNodeId}
-                        onBackgroundClick={() => setLastHoveredNodeId(null)}
-                        animActiveNodeId={dispatchAnim && !dispatchAnim.done ? (dispatchAnim.orderedNodeIds[dispatchAnim.step] ?? null) : null}
+
+                    {draftIslands.length > 0 && (
+                      <div className="logistics-route-error">
+                        Disconnected island: {draftIslands.map(nodeName).join(', ')}. Link every node into one network.
+                      </div>
+                    )}
+
+                    {draftEdges.length > 0 && (
+                      <EdgePolicyPanel
+                        edges={draftEdges}
+                        bandwidth={bandwidth}
+                        nodeName={nodeName}
+                        onChange={updateDraftEdge}
                       />
-                      {dispatchAnim && (
-                        <div className="dispatch-anim-overlay">
-                          <div className="dispatch-anim-head">
-                            <span className="dispatch-anim-title">
-                              {dispatchAnim.done ? 'Route Complete' : 'Drones En Route'}
-                            </span>
-                            <span className="dispatch-anim-step">
-                              {Math.min(dispatchAnim.step + 1, dispatchAnim.orderedNodeIds.length)}/{dispatchAnim.orderedNodeIds.length}
-                            </span>
-                          </div>
-                          <div className="dispatch-anim-lines">
-                            {dispatchAnim.lines
-                              .filter((l) => dispatchAnim.done || l.revealStep <= dispatchAnim.step)
-                              .map((l, i) => (
-                                <div
-                                  key={i}
-                                  className={`dispatch-anim-line${l.isCost ? ' dispatch-anim-line--cost' : ' dispatch-anim-line--collect'}`}
-                                >
-                                  <span className="dispatch-anim-sign">{l.isCost ? '−' : '+'}</span>
-                                  <span className="dispatch-anim-text">{l.text.replace(/^[-+]/, '')}</span>
-                                </div>
-                              ))}
-                          </div>
+                    )}
+
+                    <div className={`logistics-policy-panel${routePolicyOpen ? ' logistics-policy-panel--open' : ''}`}>
+                      <button
+                        type="button"
+                        className="logistics-policy-summary"
+                        onClick={() => setRoutePolicyOpen((open) => !open)}
+                      >
+                        Route policies
+                      </button>
+                      {routePolicyOpen && (
+                      <div className="logistics-automation-panel">
+                        <label className="logistics-policy-field logistics-policy-check">
+                          <input type="checkbox" checked={draftActive} onChange={(event) => setDraftActive(event.target.checked)} />
+                          Activate after save
+                        </label>
+                        <label className="logistics-policy-field">
+                          Dispatch when
+                          <select value={draftAutomation.dispatchMode}
+                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, dispatchMode: event.target.value as RouteDispatchMode }))}>
+                            <option value="fill">Sources reach fill %</option>
+                            <option value="batch">A full batch can be crafted</option>
+                          </select>
+                        </label>
+                        {draftAutomation.dispatchMode === 'fill' && (
+                          <label className="logistics-policy-field">
+                            Source fill %
+                            <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
+                              onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
+                          </label>
+                        )}
+                        <label className="logistics-policy-field">
+                          Detection ceiling
+                          <input type="number" min="0" max="5" value={draftAutomation.detectionCeiling}
+                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(5, Number(event.target.value))) }))} />
+                        </label>
+                        <label className="logistics-policy-field logistics-policy-check">
+                          <input type="checkbox" checked={draftAutomation.pauseOnJam}
+                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, pauseOnJam: event.target.checked }))} />
+                          Pause on jam
+                        </label>
+                        <div className="logistics-policy-note">
+                          Fuel floors are shared by every route — set them under Reserves.
                         </div>
+                      </div>
                       )}
                     </div>
                   </div>
-
-                  {draftIslands.length > 0 && (
-                    <div className="logistics-route-error">
-                      Disconnected island: {draftIslands.map(nodeName).join(', ')}. Link every node into one network.
-                    </div>
-                  )}
-
-                  {draftEdges.length > 0 && (
-                    <EdgePolicyPanel
-                      edges={draftEdges}
-                      bandwidth={bandwidth}
-                      nodeName={nodeName}
-                      onChange={updateDraftEdge}
-                    />
-                  )}
-
-                  <details className="logistics-policy-panel">
-                    <summary className="logistics-policy-summary">Route policies</summary>
-                    <div className="logistics-automation-panel">
-                      <label className="logistics-policy-field logistics-policy-check">
-                        <input type="checkbox" checked={draftActive} onChange={(event) => setDraftActive(event.target.checked)} />
-                        Activate after save
-                      </label>
-                      <label className="logistics-policy-field">
-                        Source fill %
-                        <input type="number" min="1" max="100" value={draftAutomation.sourceFillPercent}
-                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, sourceFillPercent: Math.max(1, Math.min(100, Number(event.target.value))) }))} />
-                      </label>
-                      <label className="logistics-policy-field">
-                        Detection ceiling
-                        <input type="number" min="0" max="5" value={draftAutomation.detectionCeiling}
-                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(5, Number(event.target.value))) }))} />
-                      </label>
-                      <label className="logistics-policy-field logistics-policy-check">
-                        <input type="checkbox" checked={draftAutomation.requireRecipeReady}
-                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, requireRecipeReady: event.target.checked }))} />
-                        Require ready recipe
-                      </label>
-                      <label className="logistics-policy-field logistics-policy-check">
-                        <input type="checkbox" checked={draftAutomation.pauseOnJam}
-                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, pauseOnJam: event.target.checked }))} />
-                        Pause on jam
-                      </label>
-                      <label className="logistics-policy-field logistics-policy-check">
-                        <input type="checkbox" checked={draftAutomation.quiet}
-                          onChange={(event) => setDraftAutomation((policy) => ({ ...policy, quiet: event.target.checked }))} />
-                        Quiet route
-                      </label>
-                      <label className="logistics-policy-field">
-                        Keep exotic reserve
-                        <input type="number" min="0" value={draftAutomation.minimumShipReserve.exotic}
-                          onChange={(event) => setDraftAutomation((policy) => ({
-                            ...policy,
-                            minimumShipReserve: { ...policy.minimumShipReserve, exotic: Math.max(0, Number(event.target.value)) },
-                          }))} />
-                      </label>
-                      <label className="logistics-policy-field">
-                        Keep He-3 reserve
-                        <input type="number" min="0" value={draftAutomation.minimumShipReserve.helium3}
-                          onChange={(event) => setDraftAutomation((policy) => ({
-                            ...policy,
-                            minimumShipReserve: { ...policy.minimumShipReserve, helium3: Math.max(0, Number(event.target.value)) },
-                          }))} />
-                      </label>
-                    </div>
-                  </details>
 
                   {/* Footer: cost + order + save */}
                   <div className="logistics-editor-footer">
@@ -905,6 +906,19 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     <span className="logistics-resource-amount">{fmt(helium3)}</span>
                   </div>
                 </div>
+                <div className="logistics-fuel-floor">
+                  <div className="logistics-fuel-floor-head">Fuel floor · all routes</div>
+                  <label className="logistics-policy-field">
+                    Keep exotic
+                    <input type="number" min="0" value={fuelReserveExotic}
+                      onChange={(event) => setFuelReserve(Number(event.target.value), fuelReserveHelium3)} />
+                  </label>
+                  <label className="logistics-policy-field">
+                    Keep He-3
+                    <input type="number" min="0" value={fuelReserveHelium3}
+                      onChange={(event) => setFuelReserve(fuelReserveExotic, Number(event.target.value))} />
+                  </label>
+                </div>
                 <div className="logistics-resources-list">
                   {allExtractors.length === 0 ? (
                     <div className="logistics-resources-empty">No stations</div>
@@ -955,44 +969,40 @@ function EdgePolicyPanel({
   nodeName: (nodeId: string) => string;
   onChange: (index: number, patch: Partial<RouteEdge>) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const toggle = <T extends string,>(current: T[] | undefined, all: T[], value: T): T[] => {
     const selected = new Set(current ?? all);
     if (selected.has(value)) selected.delete(value); else selected.add(value);
     return all.filter((item) => selected.has(item));
   };
   return (
-    <details className="logistics-policy-panel logistics-edge-policies">
-      <summary className="logistics-policy-summary">
+    <div className={`logistics-policy-panel logistics-edge-policies${open ? ' logistics-policy-panel--open' : ''}`}>
+      <button type="button" className="logistics-policy-summary" onClick={() => setOpen((prev) => !prev)}>
         <span>Edge policies</span>
         <span className="logistics-policy-summary-meta">{edges.length} edge{edges.length === 1 ? '' : 's'} · last-run flow on map</span>
-      </summary>
+      </button>
+      {open && (
       <div className="logistics-edge-policies-content">
         {edges.map((edge, index) => (
           <details key={edgeKey(edge)} className="logistics-edge-policy">
             <summary>{nodeName(edge.from)} → {nodeName(edge.to)}</summary>
             <div className="logistics-policy-grid">
-              <label className="logistics-policy-field">Priority
-                <input type="number" min="0" value={edge.priority ?? 0}
-                  onChange={(event) => onChange(index, { priority: Math.max(0, Number(event.target.value)) })} />
-              </label>
-              <label className="logistics-policy-field">Weight
-                <input type="number" min="1" value={edge.weight ?? 1}
-                  onChange={(event) => onChange(index, { weight: Math.max(1, Number(event.target.value)) })} />
-              </label>
-              <label className="logistics-policy-field">Material cap
-                <input type="number" min="0" max={bandwidth} value={edge.unitCap ?? bandwidth}
+              <label className="logistics-policy-field">Material draw
+                <input type="number" min="0" max={bandwidth} value={edge.materialDraw ?? bandwidth}
                   onChange={(event) => {
                     const capped = Math.max(0, Math.min(bandwidth, Number(event.target.value)));
-                    onChange(index, { unitCap: capped >= bandwidth ? undefined : capped });
+                    onChange(index, { materialDraw: capped >= bandwidth ? undefined : capped });
                   }} />
               </label>
-              <label className="logistics-policy-field">Overflow
+              <label className="logistics-policy-field">Surplus
                 <select value={edge.overflow ?? 'stockpile'} onChange={(event) => onChange(index, { overflow: event.target.value as RouteEdge['overflow'] })}>
-                  <option value="next">Next eligible edge</option>
-                  <option value="hold">Hold locally</option>
-                  <option value="stockpile">Ship stockpile</option>
+                  <option value="stockpile">Send to ship</option>
+                  <option value="hold">Hold here</option>
                 </select>
               </label>
+            </div>
+            <div className="logistics-policy-note">
+              Material draw limits units per dispatch, including how much stockpile a fabricator downstream may pull.
             </div>
             <div className="logistics-filter-head">Raw cargo <button onClick={() => onChange(index, { allowedRaw: undefined })}>Demand default</button></div>
             <div className="logistics-filter-grid">
@@ -1001,12 +1011,6 @@ function EdgePolicyPanel({
                   <input type="checkbox" checked={edge.allowedRaw?.includes(type) ?? true}
                     onChange={() => onChange(index, { allowedRaw: toggle(edge.allowedRaw, ROUTABLE_RAW, type) })} />
                   <span>{RESOURCE_LABELS[type]}</span>
-                  <input className="logistics-reserve-input" type="number" min="0" title="Minimum reserve at source"
-                    value={edge.minimumReserve?.raw?.[type] ?? 0}
-                    onChange={(event) => onChange(index, { minimumReserve: {
-                      ...edge.minimumReserve,
-                      raw: { ...(edge.minimumReserve?.raw ?? {}), [type]: Math.max(0, Number(event.target.value)) },
-                    } })} />
                 </label>
               ))}
             </div>
@@ -1037,7 +1041,8 @@ function EdgePolicyPanel({
           </details>
         ))}
       </div>
-    </details>
+      )}
+    </div>
   );
 }
 
@@ -1130,7 +1135,7 @@ function SlotPickerMenu({
         <Section title="Extractor Modules">
           {EXTRACTOR_UPGRADES.map((u) => {
             const recipe = getCraftable(u.id);
-            return recipe ? renderRow(recipe, `${u.effect.multiplier}x to ${u.effect.upgType}`) : null;
+            return recipe ? renderRow(recipe, describeUpgradeEffect(u.effect)) : null;
           })}
         </Section>
         {state.advanced && RARE_ROLES.map((role) => (
@@ -1379,6 +1384,9 @@ function NodeSidebar({
   const resources = node.resources ?? [];
   const totalRate = resources.reduce((s, r) => s + r.rate, 0);
   const [slotTooltip, setSlotTooltip] = useState<{ upg: typeof EXTRACTOR_UPGRADES[number]; x: number; y: number } | null>(null);
+  const extractors = useExtractorStore((s) => s.extractors);
+  const setExtractorReserve = useExtractorStore((s) => s.setExtractorReserve);
+  const uid = useAuthStore((s) => s.user?.uid);
 
   return (
     <div className="lm-submodal">
@@ -1401,6 +1409,19 @@ function NodeSidebar({
                 <span className="lm-submodal-res-rate"> +{fmt(r.rate)}/hr</span>
               </span>
             </div>
+            <label className="lm-submodal-reserve">
+              <span>Leave in ground</span>
+              <input
+                type="number"
+                min="0"
+                value={extractors[extractorKey]?.reserve ?? 0}
+                onChange={(event) => {
+                  const reserve = Math.max(0, Math.floor(Number(event.target.value)));
+                  setExtractorReserve(extractorKey, reserve);
+                  if (uid) updateExtractorReserve(uid, extractorKey, reserve);
+                }}
+              />
+            </label>
             <div className="lm-submodal-slots">
               {([0, 1] as const).map((slotIdx) => {
                 const equipped = slots[slotIdx];
@@ -1434,7 +1455,7 @@ function NodeSidebar({
       {slotTooltip && createPortal(
         <div className="lm-slot-tooltip" style={{ left: slotTooltip.x, top: slotTooltip.y }}>
           <div className="lm-slot-tooltip-name">{slotTooltip.upg.name}</div>
-          <div className="lm-slot-tooltip-desc">{slotTooltip.upg.effect.multiplier}x to {slotTooltip.upg.effect.upgType}</div>
+          <div className="lm-slot-tooltip-desc">{describeUpgradeEffect(slotTooltip.upg.effect)}</div>
           <div className="lm-slot-tooltip-hint">Click to unequip</div>
         </div>,
         document.body,

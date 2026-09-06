@@ -50,6 +50,7 @@ interface ExtractorState {
   placeExtractor: (extractor: Extractor) => void;
   collectExtractor: (key: string, maxAmount?: number) => number;
   removeExtractor: (key: string) => void;
+  setExtractorReserve: (key: string, reserve: number) => void;
   restoreExtractors: (list: Extractor[]) => void;
   ownedUpgrades: string[];
   nodeEquipped: Record<string, [string | null, string | null]>;  // keyed by ExtractorKey
@@ -97,6 +98,12 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
       const { [key]: _, ...rest } = s.extractors;
       return { extractors: rest };
     }),
+
+  setExtractorReserve: (key, reserve) => {
+    set((s) => s.extractors[key]
+      ? { extractors: { ...s.extractors, [key]: { ...s.extractors[key], reserve: Math.max(0, Math.floor(reserve)) } } }
+      : s);
+  },
 
   restoreExtractors: (list) => {
     const map: Record<string, Extractor> = {};

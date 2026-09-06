@@ -138,6 +138,8 @@ export interface Extractor {
   galaxyX: number;
   galaxyY: number;
   superclusSeed: number;
+  /** Units left in the ground on every collection, honored by every route. */
+  reserve?: number;
 }
 
 export interface RouteEdge {
@@ -147,23 +149,18 @@ export interface RouteEdge {
   allowedRaw?: Resource['type'][];
   /** Undefined means all crafted materials are allowed. */
   allowedMaterials?: string[];
-  priority?: number;
-  weight?: number;
-  unitCap?: number;
-  overflow?: 'next' | 'hold' | 'stockpile';
-  minimumReserve?: {
-    raw?: Partial<Record<Resource['type'], number>>;
-    materials?: MaterialCost;
-  };
+  /** Caps material units per dispatch, including how much stockpile a fabricator may draw. */
+  materialDraw?: number;
+  overflow?: 'hold' | 'stockpile';
 }
 
+export type RouteDispatchMode = 'fill' | 'batch';
+
 export interface RouteAutomationPolicy {
+  dispatchMode: RouteDispatchMode;
   sourceFillPercent: number;
-  requireRecipeReady: boolean;
   detectionCeiling: number;
   pauseOnJam: boolean;
-  quiet: boolean;
-  minimumShipReserve: { exotic: number; helium3: number };
 }
 
 export interface LogisticsRoute {

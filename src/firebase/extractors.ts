@@ -19,6 +19,7 @@ export async function saveExtractor(uid: string, extractor: Extractor): Promise<
       galaxyX: extractor.galaxyX,
       galaxyY: extractor.galaxyY,
       superclusSeed: extractor.superclusSeed,
+      reserve: extractor.reserve ?? 0,
     }, { merge: true });
   } catch (err) {
     console.error('saveExtractor failed:', err);
@@ -31,6 +32,15 @@ export async function updateExtractorCollected(uid: string, key: string, lastCol
     await setDoc(ref, { lastCollectedAt }, { merge: true });
   } catch (err) {
     console.error('updateExtractorCollected failed:', err);
+  }
+}
+
+export async function updateExtractorReserve(uid: string, key: string, reserve: number): Promise<void> {
+  const ref = doc(db, 'users', uid, 'extractors', key);
+  try {
+    await setDoc(ref, { reserve }, { merge: true });
+  } catch (err) {
+    console.error('updateExtractorReserve failed:', err);
   }
 }
 
@@ -64,6 +74,7 @@ export async function loadAllExtractors(uid: string): Promise<Extractor[]> {
       galaxyX: data.galaxyX ?? 0,
       galaxyY: data.galaxyY ?? 0,
       superclusSeed: data.superclusSeed ?? 0,
+      reserve: data.reserve ?? 0,
       systemName: data.systemName ?? '',
       key: d.id,
     } as Extractor;

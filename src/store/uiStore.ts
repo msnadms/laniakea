@@ -156,6 +156,10 @@ interface UIState {
   weaponB: number;
   logisticsA: number;
   logisticsB: number;
+  fuelReserveExotic: number;
+  fuelReserveHelium3: number;
+  setFuelReserve: (exotic: number, helium3: number) => void;
+  adoptLegacyFuelReserve: (reserve: { exotic: number; helium3: number }) => void;
   showUpgradePanel: boolean;
   toggleUpgradePanel: () => void;
   resetUpgrades: () => void;
@@ -339,6 +343,16 @@ export const useUIStore = create<UIState>((set, get) => ({
   weaponB: 0,
   logisticsA: 0,
   logisticsB: 0,
+  fuelReserveExotic: 0,
+  fuelReserveHelium3: 0,
+  setFuelReserve: (exotic, helium3) => set({
+    fuelReserveExotic: Math.max(0, Math.floor(exotic)),
+    fuelReserveHelium3: Math.max(0, Math.floor(helium3)),
+  }),
+  adoptLegacyFuelReserve: (reserve) => set((s) => ({
+    fuelReserveExotic: s.fuelReserveExotic || Math.max(0, Math.floor(reserve.exotic)),
+    fuelReserveHelium3: s.fuelReserveHelium3 || Math.max(0, Math.floor(reserve.helium3)),
+  })),
   showUpgradePanel: false,
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
   resetUpgrades: () => set((s) => ({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
@@ -450,5 +464,7 @@ export function applyUserSettings(settings: UserSettings): void {
     weaponB: settings.weaponB,
     logisticsA: settings.logisticsA,
     logisticsB: settings.logisticsB,
+    fuelReserveExotic: settings.fuelReserveExotic ?? 0,
+    fuelReserveHelium3: settings.fuelReserveHelium3 ?? 0,
   });
 }

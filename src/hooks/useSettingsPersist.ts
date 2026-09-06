@@ -56,6 +56,8 @@ export function useSettingsPersist() {
           weaponB: s.weaponB,
           logisticsA: s.logisticsA,
           logisticsB: s.logisticsB,
+          fuelReserveExotic: s.fuelReserveExotic,
+          fuelReserveHelium3: s.fuelReserveHelium3,
           lastView: s.view,
           lastSuperclusterSeed: g.supercluster.seed,
           lastGalaxySeed: g.galaxy.seed,

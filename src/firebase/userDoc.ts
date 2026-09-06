@@ -29,6 +29,8 @@ export interface UserSettings {
   weaponB: number;
   logisticsA: number;
   logisticsB: number;
+  fuelReserveExotic: number;
+  fuelReserveHelium3: number;
   lastView: 'system' | 'galaxy' | 'supercluster';
   lastSuperclusterSeed: number;
   lastGalaxySeed: number;
@@ -61,6 +63,8 @@ export const defaultSettings: UserSettings = {
   weaponB: 0,
   logisticsA: 0,
   logisticsB: 0,
+  fuelReserveExotic: 0,
+  fuelReserveHelium3: 0,
   lastView: 'system',
   lastSuperclusterSeed: LANIAKEA_SEED,
   lastGalaxySeed: MILKY_WAY_SEED,

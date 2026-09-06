@@ -492,12 +492,21 @@
 
 /* ── Station map ──────────────────────────────────────────────── */
 
-.logistics-map-section {
+.logistics-editor-body {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  min-height: 0;
   overflow: hidden;
-  min-height: 160px;
+}
+
+.logistics-map-section {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 110px;
 }
 
 .logistics-col-label {
@@ -789,6 +798,23 @@
   padding: 5px 14px;
 }
 
+.logistics-fuel-floor {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.logistics-fuel-floor-head {
+  grid-column: 1 / -1;
+  color: rgba(100, 205, 230, 0.75);
+  font: 8px monospace;
+  text-transform: uppercase;
+}
+
 .logistics-resources-list {
   flex: 1;
   overflow-y: auto;
@@ -956,6 +982,26 @@
 .lm-submodal-extractor + .lm-submodal-extractor {
   padding-top: 10px;
   border-top: 1px solid rgba(0, 100, 150, 0.2);
+}
+
+.lm-submodal-reserve {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0 6px;
+  color: rgba(140, 200, 220, 0.65);
+  font: 8px monospace;
+  text-transform: uppercase;
+}
+
+.lm-submodal-reserve input {
+  width: 58px;
+  background: rgba(0, 35, 55, 0.9);
+  border: 1px solid rgba(0, 150, 190, 0.35);
+  color: #a8e8f5;
+  font: 9px monospace;
+  padding: 3px;
 }
 
 .lm-submodal-resource-row {

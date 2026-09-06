@@ -21,13 +21,15 @@ const FABRICATOR_PREFIX = 'fabricator:';
 const RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter'];
 
 export const DEFAULT_AUTOMATION_POLICY: RouteAutomationPolicy = {
+  dispatchMode: 'fill',
   sourceFillPercent: 50,
-  requireRecipeReady: false,
   detectionCeiling: 4,
   pauseOnJam: true,
-  quiet: false,
-  minimumShipReserve: { exotic: 0, helium3: 0 },
 };
+
+export function resolveAutomationPolicy(route: LogisticsRoute): RouteAutomationPolicy {
+  return { ...DEFAULT_AUTOMATION_POLICY, ...(route.automation ?? {}) };
+}
 
 export interface NodeGroup {
   nodeId: string;
@@ -188,28 +190,39 @@ function edgeAllowsMaterial(edge: RouteEdge, id: string): boolean {
 }
 
 function edgeCapacity(edge: RouteEdge, bandwidth: number): number {
-  return Math.max(0, Math.min(bandwidth, Math.floor(edge.unitCap ?? bandwidth)));
+  return Math.max(0, Math.min(bandwidth, Math.floor(edge.materialDraw ?? bandwidth)));
+}
+
+export const DETECTION_DENSITY_DIVISOR = 2;
+export const DETECTION_CROSSING_POINTS = 1;
+
+function localHopRisk(hops: number): number {
+  return Math.floor(hops * (hops - 1) / DETECTION_DENSITY_DIVISOR);
+}
+
+function nodeIsDampened(group: NodeGroup, equipped: Record<string, [string | null, string | null]>): boolean {
+  return group.extractors.length > 0
+    && group.extractors.every((extractor) => getExtractorMultipliers(extractor.key, equipped).dampened);
 }
 
 export function routeDetectionRisk(
   edges: RouteEdge[],
   groups: Map<string, NodeGroup>,
-  quiet = false,
 ): number {
   const equipped = useExtractorStore.getState().nodeEquipped;
-  let points = 0;
-  for (const group of groups.values()) {
-    points += group.extractors.filter((extractor) => !getExtractorMultipliers(extractor.key, equipped).dampened).length;
-  }
+  const dampened = new Map([...groups].map(([nodeId, group]) => [nodeId, nodeIsDampened(group, equipped)]));
+  const localHops = new Map<number, number>();
+  let crossings = 0;
   for (const edge of edges) {
     const from = groups.get(edge.from);
     const to = groups.get(edge.to);
     if (!from || !to) continue;
-    if (from.superclusSeed !== to.superclusSeed) points += 3;
-    else if (from.galaxySeed !== to.galaxySeed) points += 2;
-    else if (from.systemId !== to.systemId) points += 1;
+    if (dampened.get(edge.from) || dampened.get(edge.to)) continue;
+    if (from.superclusSeed !== to.superclusSeed) crossings += DETECTION_CROSSING_POINTS;
+    else localHops.set(from.superclusSeed, (localHops.get(from.superclusSeed) ?? 0) + 1);
   }
-  return Math.max(0, Math.ceil(points * (quiet ? 0.5 : 1)));
+  const density = [...localHops.values()].reduce((sum, hops) => sum + localHopRisk(hops), 0);
+  return Math.max(0, density + crossings);
 }
 
 export function routeExtractorKeys(groups: Map<string, NodeGroup>): ExtractorKey[] {
@@ -382,9 +395,10 @@ function simulateRoutePreview(
       for (const [type, amount] of Object.entries(restoredHeld.raw)) claimRaw(nodeId, type as Resource['type'], amount ?? 0);
     }
     const outgoing = edges.filter((edge) => edge.from === nodeId)
-      .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || edgeKey(a).localeCompare(edgeKey(b)));
+      .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
     for (const extractor of group.extractors) {
-      const amount = Math.min(peekAccumulated(extractor), reachableCollection(nodeId, extractor.resourceType));
+      const spare = Math.max(0, peekAccumulated(extractor) - Math.max(0, extractor.reserve ?? 0));
+      const amount = Math.min(spare, reachableCollection(nodeId, extractor.resourceType));
       if (amount <= 0) continue;
       cargo.raw[extractor.resourceType] = (cargo.raw[extractor.resourceType] ?? 0) + amount;
       claimRaw(nodeId, extractor.resourceType, amount);
@@ -393,7 +407,7 @@ function simulateRoutePreview(
 
     for (const key of group.fabricatorKeys) {
       const incomingEdges = edges.filter((edge) => edge.to === nodeId)
-        .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || edgeKey(a).localeCompare(edgeKey(b)));
+        .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
       const incomingCapacity = incomingEdges.reduce(
         (sum, edge) => sum + Math.max(0, edgeFlows[edgeKey(edge)].capacity - edgeFlows[edgeKey(edge)].used), 0,
       );
@@ -493,18 +507,11 @@ function routePreview(route: LogisticsRoute): RoutePreview {
   const cost = computeRouteCost(route.edges, extractors, fabricators);
   const islands = routeIslandNodes(route.edges);
   const valid = routeIsValid(route.edges) && groups.size === nodes.length;
-  const policy = {
-    ...DEFAULT_AUTOMATION_POLICY,
-    ...(route.automation ?? {}),
-    minimumShipReserve: {
-      ...DEFAULT_AUTOMATION_POLICY.minimumShipReserve,
-      ...(route.automation?.minimumShipReserve ?? {}),
-    },
-  };
-  const risk = routeDetectionRisk(route.edges, groups, policy.quiet);
+  const policy = resolveAutomationPolicy(route);
+  const risk = routeDetectionRisk(route.edges, groups);
   const ui = useUIStore.getState();
-  const affordable = ui.exoticMatter - cost.exotic >= policy.minimumShipReserve.exotic
-    && ui.helium3Reserves - cost.helium >= policy.minimumShipReserve.helium3;
+  const affordable = ui.exoticMatter - cost.exotic >= ui.fuelReserveExotic
+    && ui.helium3Reserves - cost.helium >= ui.fuelReserveHelium3;
   const extractorKeys = routeExtractorKeys(groups);
   const rawDemand = new Map<string, Partial<Record<Resource['type'], number>>>();
   const previewMaterialDemand = new Map<string, MaterialCost>();
@@ -539,8 +546,7 @@ function routePreview(route: LogisticsRoute): RoutePreview {
     const extractor = extractors[key];
     if (!extractor) return false;
     const outgoing = route.edges.filter((edge) => edge.from === extractorNodeId(extractor.galaxySeed, extractor.systemId));
-    const reserve = Math.max(0, ...outgoing.map((edge) => edge.minimumReserve?.raw?.[extractor.resourceType] ?? 0));
-    if (peekAccumulated(extractor) <= reserve) return false;
+    if (peekAccumulated(extractor) <= Math.max(0, extractor.reserve ?? 0)) return false;
     const canHold = outgoing.some((edge) => edgeAllowsRaw(edge, extractor.resourceType) && edge.overflow === 'hold');
     return storageCap - held[extractor.resourceType] + rawWanted(extractorNodeId(extractor.galaxySeed, extractor.systemId), extractor.resourceType) > 0 || canHold;
   });
@@ -574,7 +580,7 @@ function routePreview(route: LogisticsRoute): RoutePreview {
   else if (!affordable) reason = 'Insufficient route fuel';
   else if (ui.detectionRating + Math.floor(risk / 5) > policy.detectionCeiling) reason = 'Detection ceiling would be exceeded';
   else if (!anyCargo && !simulation.didWork && !heldUseful) reason = 'Waiting for useful cargo';
-  else if (policy.requireRecipeReady && simulation.expectedBatches === 0) reason = 'Waiting for a complete recipe batch';
+  else if (policy.dispatchMode === 'batch' && simulation.expectedBatches === 0) reason = 'Waiting for a complete recipe batch';
   return {
     valid, canRun: reason === 'Ready', reason, cost, detectionRisk: risk,
     islandNodes: islands,
@@ -599,28 +605,20 @@ interface AllocationCandidate { edge: RouteEdge; flow: EdgeFlowResult; demand: n
 
 function allocateUnits(amount: number, candidates: AllocationCandidate[], material: boolean): Array<[AllocationCandidate, number]> {
   const allocations = new Map<AllocationCandidate, number>();
-  const priorities = [...new Set(candidates.map((candidate) => candidate.edge.priority ?? 0))].sort((a, b) => a - b);
   let left = Math.floor(amount);
-  for (const priority of priorities) {
-    const group = candidates.filter((candidate) => (candidate.edge.priority ?? 0) === priority);
-    while (left > 0) {
-      const eligible = group.filter((candidate) => {
-        const assigned = allocations.get(candidate) ?? 0;
-        const capacity = material ? candidate.flow.capacity - candidate.flow.used - assigned : Number.POSITIVE_INFINITY;
-        const demandRoom = candidate.explicit ? Number.POSITIVE_INFINITY : candidate.demand - assigned;
-        return capacity > 0 && demandRoom > 0;
-      });
-      if (eligible.length === 0) break;
-      eligible.sort((a, b) => {
-        const ar = (allocations.get(a) ?? 0) / Math.max(1, a.edge.weight ?? 1);
-        const br = (allocations.get(b) ?? 0) / Math.max(1, b.edge.weight ?? 1);
-        return ar - br || edgeKey(a.edge).localeCompare(edgeKey(b.edge));
-      });
-      const pick = eligible[0];
-      allocations.set(pick, (allocations.get(pick) ?? 0) + 1);
-      left--;
-    }
-    if (left > 0 && group.length > 0 && !group.some((candidate) => candidate.edge.overflow === 'next')) break;
+  while (left > 0) {
+    const eligible = candidates.filter((candidate) => {
+      const assigned = allocations.get(candidate) ?? 0;
+      const capacity = material ? candidate.flow.capacity - candidate.flow.used - assigned : Number.POSITIVE_INFINITY;
+      const demandRoom = candidate.explicit ? Number.POSITIVE_INFINITY : candidate.demand - assigned;
+      return capacity > 0 && demandRoom > 0;
+    });
+    if (eligible.length === 0) break;
+    eligible.sort((a, b) => (allocations.get(a) ?? 0) - (allocations.get(b) ?? 0)
+      || edgeKey(a.edge).localeCompare(edgeKey(b.edge)));
+    const pick = eligible[0];
+    allocations.set(pick, (allocations.get(pick) ?? 0) + 1);
+    left--;
   }
   return [...allocations.entries()];
 }
@@ -635,7 +633,7 @@ export function allocateEdgeCargo(
 ): { allocations: Record<string, number>; leftover: number } {
   const material = cargo.kind === 'material';
   const candidates = [...edges]
-    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || edgeKey(a).localeCompare(edgeKey(b)))
+    .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)))
     .filter((edge) => material ? edgeAllowsMaterial(edge, cargo.id) : edgeAllowsRaw(edge, cargo.id))
     .map((edge) => ({
       edge,
@@ -805,14 +803,14 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
         delete heldCargo[nodeId];
       }
       const beganWithHeldCargo = cargoHasValues(cargo) && !incoming.has(nodeId);
-      const outgoing = edges.filter((edge) => edge.from === nodeId).sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || edgeKey(a).localeCompare(edgeKey(b)));
+      const outgoing = edges.filter((edge) => edge.from === nodeId).sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
 
       for (const extractor of group.extractors) {
         const type = extractor.resourceType;
         const room = Math.max(0, storageCap - (heldRaw[type] ?? 0));
         const demand = reachableCollectionDemand(nodeId, type);
         const canHold = outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold');
-        const available = peekAccumulated(extractor);
+        const available = Math.max(0, peekAccumulated(extractor) - Math.max(0, extractor.reserve ?? 0));
         const maxCollect = Math.min(available, room + demand + (canHold ? available : 0));
         if (maxCollect <= 0) continue;
         const amount = useExtractorStore.getState().collectExtractor(extractor.key, maxCollect);
@@ -827,7 +825,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       for (const key of group.fabricatorKeys) {
         const incomingEdges = edges
           .filter((edge) => edge.to === nodeId)
-          .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || edgeKey(a).localeCompare(edgeKey(b)));
+          .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)));
         const remainingIncomingCapacity = incomingEdges.reduce(
           (sum, edge) => sum + Math.max(0, edgeFlows[edgeKey(edge)].capacity - edgeFlows[edgeKey(edge)].used),
           0,
@@ -885,14 +883,9 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
         continue;
       }
       const shares = new Map(outgoing.map((edge) => [edgeKey(edge), emptyCargo()]));
-      const reservedRaw: Partial<Record<Resource['type'], number>> = {};
-      const reservedMaterials: MaterialCost = {};
       for (const type of RAW_TYPES) {
-        const amount = cargo.raw[type] ?? 0;
-        if (amount <= 0) continue;
-        const reserve = Math.max(0, ...outgoing.map((edge) => edge.minimumReserve?.raw?.[type] ?? 0));
-        reservedRaw[type] = Math.min(amount, reserve);
-        const transferable = Math.max(0, amount - reserve);
+        const transferable = cargo.raw[type] ?? 0;
+        if (transferable <= 0) continue;
         const candidates = outgoing.filter((edge) => edgeAllowsRaw(edge, type)).map((edge) => ({
           edge, flow: edgeFlows[edgeKey(edge)], demand: reachableRaw(edge.to, type), explicit: edge.allowedRaw !== undefined && edge.allowedRaw.includes(type),
         }));
@@ -902,14 +895,11 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
           candidate.flow.raw[type] = (candidate.flow.raw[type] ?? 0) + count;
           routed += count;
         }
-        cargo.raw[type] = amount - routed;
+        cargo.raw[type] = transferable - routed;
         if (routed > 0) didWork = true;
       }
-      for (const [id, amount] of Object.entries(cargo.materials)) {
-        if (amount <= 0) continue;
-        const reserve = Math.max(0, ...outgoing.map((edge) => edge.minimumReserve?.materials?.[id] ?? 0));
-        reservedMaterials[id] = Math.min(amount, reserve);
-        const transferable = Math.max(0, amount - reserve);
+      for (const [id, transferable] of Object.entries(cargo.materials)) {
+        if (transferable <= 0) continue;
         const candidates = outgoing.filter((edge) => edgeAllowsMaterial(edge, id)).map((edge) => ({
           edge, flow: edgeFlows[edgeKey(edge)], demand: reachableMaterial(edge.to, id), explicit: edge.allowedMaterials !== undefined && edge.allowedMaterials.includes(id),
         }));
@@ -922,7 +912,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
           allocated.set(edgeKey(candidate.edge), count);
           routed += count;
         }
-        cargo.materials[id] = amount - routed;
+        cargo.materials[id] = transferable - routed;
         if (routed > 0) didWork = true;
         // An edge reports what it wanted but could not take, never cargo a sibling legitimately won.
         for (const edge of outgoing) {
@@ -947,17 +937,13 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       for (const type of RAW_TYPES) {
         const amount = cargo.raw[type] ?? 0;
         if (amount <= 0) continue;
-        const overflowHold = outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold');
-        const keep = overflowHold ? amount : Math.min(amount, reservedRaw[type] ?? 0);
-        if (keep > 0) held.raw[type] = keep;
-        if (amount - keep > 0) spill.raw[type] = amount - keep;
+        if (outgoing.some((edge) => edgeAllowsRaw(edge, type) && edge.overflow === 'hold')) held.raw[type] = amount;
+        else spill.raw[type] = amount;
       }
       for (const [materialId, amount] of Object.entries(cargo.materials)) {
         if (amount <= 0) continue;
-        const overflowHold = outgoing.some((edge) => edgeAllowsMaterial(edge, materialId) && edge.overflow === 'hold');
-        const keep = overflowHold ? amount : Math.min(amount, reservedMaterials[materialId] ?? 0);
-        if (keep > 0) held.materials[materialId] = keep;
-        if (amount - keep > 0) spill.materials[materialId] = amount - keep;
+        if (outgoing.some((edge) => edgeAllowsMaterial(edge, materialId) && edge.overflow === 'hold')) held.materials[materialId] = amount;
+        else spill.materials[materialId] = amount;
       }
       const depositResult = deposit(spill);
       if (beganWithHeldCargo && depositResult.accepted) didWork = true;
@@ -987,7 +973,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     if (jam) {
       const name = fabricators[jam.fabricatorKey]?.planetName ?? 'Fabricator';
       ui.triggerHudNotify(`${name.toUpperCase()} JAMMED — BYPRODUCT HAS NO ROUTE`);
-      if (automatic && (route.automation?.pauseOnJam ?? true)) get().setRouteActive(id, false);
+      if (automatic && resolveAutomationPolicy(route).pauseOnJam) get().setRouteActive(id, false);
     }
     return result;
   },
@@ -995,14 +981,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
   runAutomation: () => {
     const results: DispatchResult[] = [];
     for (const route of get().routes.filter((candidate) => candidate.active)) {
-      const policy = {
-        ...DEFAULT_AUTOMATION_POLICY,
-        ...(route.automation ?? {}),
-        minimumShipReserve: {
-          ...DEFAULT_AUTOMATION_POLICY.minimumShipReserve,
-          ...(route.automation?.minimumShipReserve ?? {}),
-        },
-      };
+      const policy = resolveAutomationPolicy(route);
       const extractors = useExtractorStore.getState().extractors;
       const groups = resolveNodeGroups(routeNodes(route.edges), extractors, useFabricatorStore.getState().fabricators);
       const sources = routeExtractorKeys(groups).map((key) => extractors[key]);
@@ -1048,20 +1027,56 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       return {
         ...persistedRoute,
         active: route.active ?? false,
-        automation: {
-          ...DEFAULT_AUTOMATION_POLICY,
-          ...(route.automation ?? {}),
-          minimumShipReserve: {
-            ...DEFAULT_AUTOMATION_POLICY.minimumShipReserve,
-            ...(route.automation?.minimumShipReserve ?? {}),
-          },
-        },
-        edges: edges.map((edge) => ({ ...edge, priority: edge.priority ?? 0, weight: edge.weight ?? 1, overflow: edge.overflow ?? 'stockpile' })),
+        automation: migrateAutomationPolicy(route.automation),
+        edges: edges.map(migrateEdge),
         heldCargo: route.heldCargo ?? {},
       };
     }), lastRuns: {}, automationNotices: {} });
+    useUIStore.getState().adoptLegacyFuelReserve(legacyFuelReserve(routes));
   },
 }));
+
+interface LegacyRouteEdge extends RouteEdge {
+  priority?: number;
+  weight?: number;
+  unitCap?: number;
+  minimumReserve?: { raw?: Partial<Record<Resource['type'], number>>; materials?: MaterialCost };
+}
+
+interface LegacyAutomationPolicy extends Partial<RouteAutomationPolicy> {
+  requireRecipeReady?: boolean;
+  quiet?: boolean;
+  minimumShipReserve?: { exotic?: number; helium3?: number };
+}
+
+function migrateEdge(edge: RouteEdge): RouteEdge {
+  const {
+    priority: _priority, weight: _weight, unitCap, minimumReserve: _minimumReserve, ...kept
+  } = edge as LegacyRouteEdge;
+  return {
+    ...kept,
+    materialDraw: kept.materialDraw ?? unitCap,
+    overflow: kept.overflow === 'hold' ? 'hold' : 'stockpile',
+  };
+}
+
+function migrateAutomationPolicy(automation: RouteAutomationPolicy | undefined): RouteAutomationPolicy {
+  const legacy = (automation ?? {}) as LegacyAutomationPolicy;
+  return {
+    dispatchMode: legacy.dispatchMode ?? (legacy.requireRecipeReady ? 'batch' : 'fill'),
+    sourceFillPercent: legacy.sourceFillPercent ?? DEFAULT_AUTOMATION_POLICY.sourceFillPercent,
+    detectionCeiling: legacy.detectionCeiling ?? DEFAULT_AUTOMATION_POLICY.detectionCeiling,
+    pauseOnJam: legacy.pauseOnJam ?? DEFAULT_AUTOMATION_POLICY.pauseOnJam,
+  };
+}
+
+function legacyFuelReserve(routes: LogisticsRoute[]): { exotic: number; helium3: number } {
+  const reserves = routes.map((route) => (route.automation as LegacyAutomationPolicy | undefined)?.minimumShipReserve);
+  return {
+    exotic: Math.max(0, ...reserves.map((reserve) => reserve?.exotic ?? 0)),
+    helium3: Math.max(0, ...reserves.map((reserve) => reserve?.helium3 ?? 0)),
+  };
+}
 
 export function fabricatorNodeStatus(
   fabricatorKeys: string[],

@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../firebase/firebase', () => ({ db: {}, auth: {}, googleProvider: {} }));
-import type { Extractor, Fabricator, FabricatorProductionSlot } from '../game/types';
+import type { Extractor, Fabricator, FabricatorProductionSlot, LogisticsRoute } from '../game/types';
+import type { NodeGroup } from './logisticsStore';
 import { extractorNodeId, fabricatorNodeId, makeEmptyFabricatorSlot } from '../game/types';
 import { processFabricator, useFabricatorStore } from './fabricatorStore';
-import { allocateEdgeCargo, cargoReaches, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
+import { DETECTION_CROSSING_POINTS, allocateEdgeCargo, cargoReaches, routeDetectionRisk, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
 import { computeStorageCap } from './uiStore';
 import { generatePlanets, generateSystemLayout } from '../game/planetGen';
 import { useExtractorStore } from './extractorStore';
@@ -200,24 +201,27 @@ describe('deterministic connected route graphs', () => {
 
   it('enforces filters and per-edge bandwidth', () => {
     const allocation = allocateEdgeCargo([
-      { from: 'a', to: 'b', allowedMaterials: ['graphene_lattice'], unitCap: 2 },
-      { from: 'a', to: 'c', allowedMaterials: [], unitCap: 10 },
+      { from: 'a', to: 'b', allowedMaterials: ['graphene_lattice'], materialDraw: 2 },
+      { from: 'a', to: 'c', allowedMaterials: [], materialDraw: 10 },
     ], 5, { kind: 'material', id: 'graphene_lattice' }, { b: 5, c: 5 }, 10);
     expect(allocation.allocations['a->b']).toBe(2);
     expect(allocation.allocations['a->c']).toBeUndefined();
     expect(allocation.leftover).toBe(3);
   });
 
-  it('uses weights deterministically between equal-priority edges', () => {
+  it('splits by downstream demand however its edges are stored', () => {
     const edges = [
-      { from: 'a', to: 'b', weight: 1, allowedRaw: ['alloys' as const] },
-      { from: 'a', to: 'c', weight: 2, allowedRaw: ['alloys' as const] },
+      { from: 'a', to: 'b', allowedRaw: ['alloys' as const] },
+      { from: 'a', to: 'c', allowedRaw: ['alloys' as const] },
     ];
-    const allocation = allocateEdgeCargo(edges, 6, { kind: 'raw', id: 'alloys' }, { b: 10, c: 10 }, 10);
-    const shuffled = allocateEdgeCargo([...edges].reverse(), 6, { kind: 'raw', id: 'alloys' }, { b: 10, c: 10 }, 10);
-    expect(allocation.allocations).toEqual({ 'a->b': 2, 'a->c': 4 });
-    expect(shuffled).toEqual(allocation);
-    expect(allocation.leftover).toBe(0);
+    const even = allocateEdgeCargo(edges, 6, { kind: 'raw', id: 'alloys' }, { b: 10, c: 10 }, 10);
+    expect(even.allocations).toEqual({ 'a->b': 3, 'a->c': 3 });
+    expect(allocateEdgeCargo([...edges].reverse(), 6, { kind: 'raw', id: 'alloys' }, { b: 10, c: 10 }, 10)).toEqual(even);
+
+    const unfiltered = [{ from: 'a', to: 'b' }, { from: 'a', to: 'c' }];
+    const lopsided = allocateEdgeCargo(unfiltered, 6, { kind: 'raw', id: 'alloys' }, { b: 2, c: 10 }, 10);
+    expect(lopsided.allocations).toEqual({ 'a->b': 2, 'a->c': 4 });
+    expect(lopsided.leftover).toBe(0);
   });
 
   it('orders a diamond identically however its edges are stored', () => {
@@ -377,7 +381,7 @@ describe('route dispatch integration', () => {
     useStockpileStore.getState().restoreStockpile({ graphene_lattice: 2, boron_ceramic: 1 }, {});
     useUIStore.setState({ exoticMatter: 10_000, helium3Reserves: 10_000, detectionRating: 0, logisticsA: 1, logisticsB: 0 });
     const edge = {
-      from: extractorNodeId(11, 1), to: fabricatorNodeId(11, 2), unitCap: 1,
+      from: extractorNodeId(11, 1), to: fabricatorNodeId(11, 2), materialDraw: 1,
     };
     useLogisticsStore.setState({ routes: [{ id: 'injection', name: 'Injection', edges: [edge] }], lastRuns: {}, automationNotices: {} });
 
@@ -438,6 +442,58 @@ describe('route dispatch integration', () => {
     expect(useUIStore.getState().detectionRating).toBe(5);
   });
 
+  it('prices traffic density per supercluster, not distance travelled', () => {
+    const node = (nodeId: string, superclusSeed: number, systemId: number): NodeGroup => ({
+      nodeId, extractors: [], fabricatorKeys: [], galaxySeed: superclusSeed * 10,
+      systemId, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed,
+    });
+    useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {} });
+
+    const chain = (count: number, superclusSeed: number) => {
+      const groups = new Map<string, NodeGroup>();
+      for (let i = 0; i <= count; i++) groups.set(`s${superclusSeed}n${i}`, node(`s${superclusSeed}n${i}`, superclusSeed, i));
+      const edges = Array.from({ length: count }, (_, i) => ({ from: `s${superclusSeed}n${i}`, to: `s${superclusSeed}n${i + 1}` }));
+      return { groups, edges };
+    };
+
+    // m(m-1)/2 in one supercluster: three hops stay quiet, six become lethal.
+    expect(routeDetectionRisk(chain(2, 1).edges, chain(2, 1).groups)).toBe(1);
+    expect(routeDetectionRisk(chain(3, 1).edges, chain(3, 1).groups)).toBe(3);
+    expect(routeDetectionRisk(chain(6, 1).edges, chain(6, 1).groups)).toBe(15);
+
+    const spread = chain(3, 1);
+    for (const [id, group] of chain(3, 2).groups) spread.groups.set(id, group);
+    spread.edges.push(...chain(3, 2).edges, { from: 's1n3', to: 's2n0' });
+    expect(routeDetectionRisk(spread.edges, spread.groups)).toBe(3 + 3 + DETECTION_CROSSING_POINTS);
+  });
+
+  it('lets a signal dampener mask the hops incident to its station', () => {
+    const extractor: Extractor = {
+      key: 'quiet-source', galaxySeed: 71, systemId: 1, systemName: 'Source', planetName: 'Mine',
+      resourceType: 'alloys', rate: 1, placedAt: 1, lastCollectedAt: 1,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 7,
+    };
+    const group = (nodeId: string, systemId: number, extractors: Extractor[]): NodeGroup => ({
+      nodeId, extractors, fabricatorKeys: [], galaxySeed: 71,
+      systemId, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 7,
+    });
+    const source = extractorNodeId(71, 1);
+    const mid = fabricatorNodeId(71, 2);
+    const sink = fabricatorNodeId(71, 3);
+    const groups = new Map<string, NodeGroup>([
+      [source, group(source, 1, [extractor])],
+      [mid, group(mid, 2, [])],
+      [sink, group(sink, 3, [])],
+    ]);
+    const edges = [{ from: source, to: mid }, { from: mid, to: sink }];
+
+    useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
+    expect(routeDetectionRisk(edges, groups)).toBe(1);
+
+    useExtractorStore.setState({ nodeEquipped: { [extractor.key]: ['signal_dampener', null] } });
+    expect(routeDetectionRisk(edges, groups)).toBe(0);
+  });
+
   it('round-trips edge policies, automation and held cargo through a restore', () => {
     const extractor: Extractor = {
       key: 'policy-source', galaxySeed: 31, systemId: 1, systemName: 'Source', planetName: 'Mine',
@@ -467,11 +523,20 @@ describe('route dispatch integration', () => {
         pauseOnJam: false, quiet: true, minimumShipReserve: { exotic: 100, helium3: 50 },
       },
       heldCargo: { [from]: { raw: { alloys: 12 }, materials: { graphene_lattice: 3 } } },
-    };
+    } as unknown as LogisticsRoute;
+    useUIStore.setState({ fuelReserveExotic: 0, fuelReserveHelium3: 0 });
     useLogisticsStore.getState().restoreRoutes([structuredClone(saved)]);
     const restored = useLogisticsStore.getState().routes[0];
-    expect(restored.edges).toEqual(saved.edges);
-    expect(restored.automation).toEqual(saved.automation);
+    expect(restored.edges).toEqual([{
+      from, to,
+      allowedRaw: ['alloys'], allowedMaterials: ['graphene_lattice'],
+      materialDraw: 4, overflow: 'hold',
+    }]);
+    expect(restored.automation).toEqual({
+      dispatchMode: 'batch', sourceFillPercent: 80, detectionCeiling: 2, pauseOnJam: false,
+    });
+    expect(useUIStore.getState().fuelReserveExotic).toBe(100);
+    expect(useUIStore.getState().fuelReserveHelium3).toBe(50);
     expect(restored.heldCargo).toEqual(saved.heldCargo);
     expect(restored.active).toBe(true);
   });
@@ -528,8 +593,7 @@ describe('route dispatch integration', () => {
       id: 'legacy', name: 'Legacy', edges: [], legacyNodeKeys: [extractor.key, fabricator.key],
     }]);
     expect(useLogisticsStore.getState().routes[0].edges).toEqual([{
-      from: extractorNodeId(13, 1), to: fabricatorNodeId(13, 2),
-      priority: 0, weight: 1, overflow: 'stockpile',
+      from: extractorNodeId(13, 1), to: fabricatorNodeId(13, 2), overflow: 'stockpile',
     }]);
     expect(useLogisticsStore.getState().routes[0].legacyNodeKeys).toBeUndefined();
   });
