@@ -14,6 +14,7 @@ export function useCamera(
   initialScale: number,
   onStageTap?: () => void,
   minScale: number = CAMERA_MIN_SCALE,
+  shouldPan?: (event: FederatedPointerEvent) => boolean,
 ) {
   const { app, isInitialised } = useApplication();
   const appRef = useRef(app);
@@ -21,6 +22,10 @@ export function useCamera(
     appRef.current = app;
   }, [app]);
   const camera = useRef({ x: 0, y: 0, scale: initialScale });
+  const shouldPanRef = useRef(shouldPan);
+  useEffect(() => {
+    shouldPanRef.current = shouldPan;
+  }, [shouldPan]);
   const [isReady, setIsReady] = useState(false);
   const isDragging = useRef(false);
   const hasDragged = useRef(false);
@@ -46,6 +51,7 @@ export function useCamera(
     stage.hitArea = pixi.screen;
 
     const onDown = (event: FederatedPointerEvent) => {
+      if (shouldPanRef.current && !shouldPanRef.current(event)) return;
       isDragging.current = true;
       hasDragged.current = false;
       dragStart.current = { x: event.globalX, y: event.globalY };

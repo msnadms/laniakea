@@ -161,6 +161,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           <div className="tutorial-section">
             <div className="tutorial-section-title">Supercluster View</div>
             <div className="tutorial-item">Zoom in and click on a galaxy to visit it and add it to your codex. Visit a new supercluster in the settings menu, or by refreshing.</div>
+            <div className="tutorial-item">Drag to pan and scroll to zoom. Hold shift and drag, or drag with the right mouse button, to turn the cosmic web and see its depth.</div>
           </div>
           <div className="tutorial-section">
             <div className="tutorial-section-title">Galaxy View</div>

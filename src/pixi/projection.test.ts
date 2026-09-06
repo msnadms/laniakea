@@ -1,14 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { generateSystemLayout } from '../game/planetGen';
 import { SOL_SYSTEM_LAYOUT } from '../game/hardcoded';
-import { GALAXY_DEPTH_SLABS, GALAXY_RADIUS, GALAXY_TILT } from '../game/constants';
+import {
+  GALAXY_DEPTH_SLABS,
+  GALAXY_RADIUS,
+  GALAXY_TILT,
+  SC_DEPTH_FADE,
+  SC_DEPTH_HALF,
+  SC_DEPTH_SIZE,
+  SC_ORBIT_INITIAL_TILT,
+  SC_ORBIT_MAX_TILT,
+  SC_WORLD_HALF,
+} from '../game/constants';
 import {
   addSystemPoints,
   createGalaxyCamera,
   galaxyDepthAlpha,
   galaxyDepthSlab,
+  clampOrbitTilt,
+  createSuperclusterCamera,
   createSystemCamera,
   getSystemExtent,
+  projectPlanePoint,
+  projectSuperclusterField,
+  superclusterDepthAlpha,
+  superclusterDepthScale,
   orbitPoint,
   projectOrbitPoint,
   projectSystemPoint,
@@ -187,5 +203,87 @@ describe('galaxy camera', () => {
   it('is deterministic for the same point and camera', () => {
     const point = { x: 12, y: -3, z: 88 };
     expect(projectSystemPoint(point, camera)).toEqual(projectSystemPoint(point, createGalaxyCamera()));
+  });
+});
+
+describe('supercluster camera', () => {
+  const camera = createSuperclusterCamera();
+
+  it('is orthographic, so a world pixel keeps a fixed light-year value', () => {
+    expect(camera.perspectiveStrength).toBe(0);
+    for (const depth of [-SC_WORLD_HALF, 0, SC_WORLD_HALF]) {
+      expect(projectSystemPoint({ x: 100, y: 0, z: depth }, camera).scale).toBe(1);
+    }
+  });
+
+  it('opens tilted off the plane', () => {
+    expect(camera.tilt).toBe(SC_ORBIT_INITIAL_TILT);
+    expect(camera.yaw).toBe(0);
+  });
+
+  it('reproduces the flat layout exactly when turned face-on', () => {
+    const faceOn = { ...camera, tilt: 0 };
+    const projected = projectPlanePoint(300, -120, 400, faceOn);
+    expect(projected.x).toBeCloseTo(300);
+    expect(projected.y).toBeCloseTo(-120);
+    expect(projected.depth).toBeCloseTo(400);
+  });
+
+  it('turns the plane about the height axis with yaw', () => {
+    const turned = projectPlanePoint(100, 0, 0, { ...camera, tilt: 0, yaw: Math.PI / 2 });
+    expect(turned.x).toBeCloseTo(0);
+    expect(turned.y).toBeCloseTo(100);
+  });
+
+  it('lifts height up-screen and forward in depth', () => {
+    const above = projectPlanePoint(0, 0, 200, camera);
+    const below = projectPlanePoint(0, 0, -200, camera);
+    expect(above.y).toBeLessThan(0);
+    expect(above.y).toBeCloseTo(-200 * Math.sin(SC_ORBIT_INITIAL_TILT));
+    expect(above.depth).toBeGreaterThan(below.depth);
+  });
+
+  it('clamps tilt short of edge-on in both directions', () => {
+    expect(clampOrbitTilt(0.3)).toBe(0.3);
+    expect(clampOrbitTilt(Math.PI)).toBe(SC_ORBIT_MAX_TILT);
+    expect(clampOrbitTilt(-Math.PI)).toBe(-SC_ORBIT_MAX_TILT);
+    expect(SC_ORBIT_MAX_TILT).toBeLessThan(Math.PI / 2);
+  });
+
+  it('hazes and shrinks dots toward the far side of the field', () => {
+    expect(superclusterDepthAlpha(SC_DEPTH_HALF)).toBeCloseTo(1);
+    expect(superclusterDepthAlpha(0)).toBeCloseTo(1 - SC_DEPTH_FADE / 2);
+    expect(superclusterDepthAlpha(-SC_DEPTH_HALF)).toBeCloseTo(1 - SC_DEPTH_FADE);
+    expect(superclusterDepthScale(SC_DEPTH_HALF)).toBeCloseTo(1 + SC_DEPTH_SIZE);
+    expect(superclusterDepthScale(0)).toBeCloseTo(1);
+    expect(superclusterDepthScale(-SC_DEPTH_HALF)).toBeCloseTo(1 - SC_DEPTH_SIZE);
+  });
+
+  it('projects a whole field exactly as it projects one point', () => {
+    const points = [
+      [0, 0, 0], [SC_WORLD_HALF, -SC_WORLD_HALF, 120], [-40, 900, -SC_WORLD_HALF], [17, 3, 250],
+    ];
+    const planeX = Float32Array.from(points.map((p) => p[0]));
+    const planeY = Float32Array.from(points.map((p) => p[1]));
+    const height = Float32Array.from(points.map((p) => p[2]));
+    const outX = new Float32Array(points.length);
+    const outY = new Float32Array(points.length);
+    const outAlpha = new Float32Array(points.length);
+    const outScale = new Float32Array(points.length);
+    const turned = { ...camera, yaw: 0.9, tilt: -0.4 };
+    projectSuperclusterField(planeX, planeY, height, updateProjectionBasis(turned), outX, outY, outAlpha, outScale);
+    for (let i = 0; i < points.length; i++) {
+      const expected = projectPlanePoint(points[i][0], points[i][1], points[i][2], turned);
+      expect(outX[i]).toBeCloseTo(expected.x, 2);
+      expect(outY[i]).toBeCloseTo(expected.y, 2);
+      expect(outAlpha[i]).toBeCloseTo(superclusterDepthAlpha(expected.depth), 5);
+      expect(outScale[i]).toBeCloseTo(superclusterDepthScale(expected.depth), 5);
+    }
+  });
+
+  it('never fades or shrinks past its limits, however deep the point', () => {
+    expect(superclusterDepthAlpha(SC_DEPTH_HALF * 10)).toBeCloseTo(1);
+    expect(superclusterDepthAlpha(-SC_DEPTH_HALF * 10)).toBeCloseTo(1 - SC_DEPTH_FADE);
+    expect(superclusterDepthScale(-SC_DEPTH_HALF * 10)).toBeGreaterThan(0);
   });
 });

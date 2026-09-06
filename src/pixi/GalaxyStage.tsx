@@ -31,7 +31,7 @@ import {
   createGalaxyCamera,
   galaxyDepthSlab,
   galaxySlabTint,
-  projectGalaxyPointWithBasis,
+  projectPlanePointWithBasis,
   updateProjectionBasis,
   GALAXY_LAYER_Z,
   type ProjectedPoint,
@@ -119,7 +119,7 @@ export function GalaxyWorld() {
     },
     getCurrentPos: () => {
       const current = useGameStore.getState().galaxy.systems.find(s => s.current);
-      return current && projectGalaxyPointWithBasis(current.x, current.y, current.z, galaxyProjection);
+      return current && projectPlanePointWithBasis(current.x, current.y, current.z, galaxyProjection);
     },
   });
 
@@ -146,7 +146,7 @@ export function GalaxyWorld() {
 
       if (worldRef.current) {
         isAnimatingRef.current = true;
-        const target = projectGalaxyPointWithBasis(sys.x, sys.y, sys.z, galaxyProjection);
+        const target = projectPlanePointWithBasis(sys.x, sys.y, sys.z, galaxyProjection);
         const anchorX = camera.current.x + target.x * camera.current.scale;
         const anchorY = camera.current.y + target.y * camera.current.scale;
         cancelZoomRef.current = animateZoomTo(
@@ -188,7 +188,7 @@ export function GalaxyWorld() {
       const cached = previousCache.get(system.id);
       const projected = cached && cached.x === system.x && cached.y === system.y && cached.z === system.z
         ? cached.projected
-        : projectGalaxyPointWithBasis(system.x, system.y, system.z, galaxyProjection);
+        : projectPlanePointWithBasis(system.x, system.y, system.z, galaxyProjection);
       nextCache.set(system.id, { x: system.x, y: system.y, z: system.z, projected });
       bands[galaxyDepthSlab(projected.depth)].push({ system, projected });
     }
@@ -231,7 +231,7 @@ export function GalaxyWorld() {
         const nebulaColor = colorList[Math.floor(rng() * colorList.length)];
         const alpha = (0.014 + rng() * 0.024) * Math.max(1 - stepFraction, 0.5) * taper;
 
-        projectGalaxyPointWithBasis(cloud.x + offsetX, cloud.y + offsetY, offsetHeight, galaxyProjection, projected);
+        projectPlanePointWithBasis(cloud.x + offsetX, cloud.y + offsetY, offsetHeight, galaxyProjection, projected);
         const batches = batchesForScale(
           slabBatches[galaxyDepthSlab(projected.depth)],
           cloud.opacityScale ?? 1,
@@ -264,7 +264,7 @@ export function GalaxyWorld() {
       const reach = Math.hypot(unitX, unitY);
       const fade = Math.pow(Math.min(1, Math.max(0, (1 - reach) / (1 - glow.plateau))), glow.falloff);
       const alpha = (0.012 + rng() * 0.018) * fade * glow.alphaScale * CORE_ALPHA_SCALE;
-      projectGalaxyPointWithBasis(offsetX, offsetY, offsetHeight, galaxyProjection, projected);
+      projectPlanePointWithBasis(offsetX, offsetY, offsetHeight, galaxyProjection, projected);
       const isBarredCenter = config.type === 'barred' && reach <= glow.plateau;
       batchFor(isBarredCenter ? coreCenterBatches : coreBatches, coreColor).push({
         x: projected.x,

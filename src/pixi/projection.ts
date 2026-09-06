@@ -5,6 +5,12 @@ import {
   GALAXY_RADIUS,
   GALAXY_TILT,
   GALAXY_DEPTH_SLABS,
+  SC_DEPTH_FADE,
+  SC_DEPTH_HALF,
+  SC_DEPTH_SIZE,
+  SC_ORBIT_INITIAL_TILT,
+  SC_ORBIT_INITIAL_YAW,
+  SC_ORBIT_MAX_TILT,
 } from '../game/constants';
 
 export interface Point3D {
@@ -199,34 +205,34 @@ export function createSystemCamera(layout: ProjectionLayout): Camera3D {
   };
 }
 
-const galaxyScratch: Point3D = { x: 0, y: 0, z: 0 };
+const planeScratch: Point3D = { x: 0, y: 0, z: 0 };
 
-// Generation works in plane coordinates, so a star's y is a plane axis and its
+// Generation works in plane coordinates, so a point's y is a plane axis and its
 // z is the height the projection expects to find in y.
-export function projectGalaxyPoint(
+export function projectPlanePoint(
   planeX: number,
   planeY: number,
   height: number,
   camera: Camera3D,
   out?: ProjectedPoint,
 ): ProjectedPoint {
-  galaxyScratch.x = planeX;
-  galaxyScratch.y = height;
-  galaxyScratch.z = planeY;
-  return projectSystemPoint(galaxyScratch, camera, out);
+  planeScratch.x = planeX;
+  planeScratch.y = height;
+  planeScratch.z = planeY;
+  return projectSystemPoint(planeScratch, camera, out);
 }
 
-export function projectGalaxyPointWithBasis(
+export function projectPlanePointWithBasis(
   planeX: number,
   planeY: number,
   height: number,
   basis: ProjectionBasis,
   out?: ProjectedPoint,
 ): ProjectedPoint {
-  galaxyScratch.x = planeX;
-  galaxyScratch.y = height;
-  galaxyScratch.z = planeY;
-  return projectSystemPointWithBasis(galaxyScratch, basis, out);
+  planeScratch.x = planeX;
+  planeScratch.y = height;
+  planeScratch.z = planeY;
+  return projectSystemPointWithBasis(planeScratch, basis, out);
 }
 
 const GALAXY_DEPTH_HALF = GALAXY_RADIUS * Math.sin(GALAXY_TILT);
@@ -274,4 +280,59 @@ export function createGalaxyCamera(): Camera3D {
 // tilt, so the settle eases the layer's vertical scale instead of re-projecting.
 export function galaxyTiltSquash(tiltOffset: number): number {
   return Math.cos(GALAXY_TILT - tiltOffset) / Math.cos(GALAXY_TILT);
+}
+
+export function createSuperclusterCamera(): Camera3D {
+  return {
+    yaw: SC_ORBIT_INITIAL_YAW,
+    tilt: SC_ORBIT_INITIAL_TILT,
+    focalLength: 1,
+    perspectiveStrength: 0,
+  };
+}
+
+export function clampOrbitTilt(tilt: number): number {
+  return Math.min(SC_ORBIT_MAX_TILT, Math.max(-SC_ORBIT_MAX_TILT, tilt));
+}
+
+function superclusterDepthT(depth: number): number {
+  return Math.min(1, Math.max(0, depth / (2 * SC_DEPTH_HALF) + 0.5));
+}
+
+export function superclusterDepthAlpha(depth: number): number {
+  return 1 - SC_DEPTH_FADE * (1 - superclusterDepthT(depth));
+}
+
+// Orthographic draws every dot at its true size, so this is a readability cue
+// rather than perspective.
+export function superclusterDepthScale(depth: number): number {
+  return 1 + SC_DEPTH_SIZE * (superclusterDepthT(depth) * 2 - 1);
+}
+
+// The supercluster camera is orthographic, so the whole dot field reduces to one
+// fused pass. Per-point calls through the scratch objects cost more than the
+// projection arithmetic itself at this many dots.
+export function projectSuperclusterField(
+  planeX: Float32Array,
+  planeY: Float32Array,
+  height: Float32Array,
+  basis: ProjectionBasis,
+  outX: Float32Array,
+  outY: Float32Array,
+  outAlpha: Float32Array,
+  outScale: Float32Array,
+): void {
+  const { cosYaw, sinYaw, cosTilt, sinTilt } = basis;
+  for (let i = 0; i < planeX.length; i++) {
+    const x = planeX[i];
+    const y = planeY[i];
+    const h = height[i];
+    const rotatedX = x * cosYaw - y * sinYaw;
+    const rotatedZ = x * sinYaw + y * cosYaw;
+    const depth = rotatedZ * sinTilt + h * cosTilt;
+    outX[i] = rotatedX;
+    outY[i] = rotatedZ * cosTilt - h * sinTilt;
+    outAlpha[i] = superclusterDepthAlpha(depth);
+    outScale[i] = superclusterDepthScale(depth);
+  }
 }
