@@ -1,5 +1,6 @@
 import { extend, useApplication } from '@pixi/react';
 import { Container, Graphics, Ticker, Sprite, BlurFilter } from 'pixi.js';
+import type { FederatedPointerEvent } from 'pixi.js';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
@@ -22,6 +23,8 @@ import {
   GALAXY_TILT,
   GALAXY_INTRO_TILT_OFFSET,
   GALAXY_INTRO_TILT_MS,
+  GALAXY_PICK_SCREEN_PX,
+  GALAXY_PICK_MAX_WORLD,
 } from '../game/constants';
 import { createDisplacementSetup } from './textures';
 import { createRng } from '../game/galaxyGen';
@@ -40,7 +43,7 @@ import { useCamera } from './useCamera';
 import { animateTiltSettle, animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
 import { ScaleBar } from './ScaleBar';
-import { buildAddressComponent } from '../game/types';
+import { buildAddressComponent, type StarSystem } from '../game/types';
 import { BackgroundStars } from './BackgroundStars';
 import { useCodexStore } from '../store/codexStore';
 import { useAuthStore } from '../store/authStore';
@@ -88,7 +91,7 @@ extend({ Container, Graphics, Sprite });
 
 
 export function GalaxyWorld() {
-  const { isInitialised } = useApplication();
+  const { app, isInitialised } = useApplication();
 
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
   const galaxyConfig = useGameStore((s) => s.galaxy.config);
@@ -107,9 +110,9 @@ export function GalaxyWorld() {
   const galaxyRootRef = useRef<Container>(null);
   const starProjectionCacheRef = useRef<Map<number, CachedStarProjection>>(new Map());
   const handleSelectSystemRef = useRef<(id: number | null) => void>(() => {});
-  const stableStageTap = useCallback(() => handleSelectSystemRef.current(null), []);
+  const starBandsRef = useRef<Array<Array<{ system: StarSystem; projected: ProjectedPoint }>>>([]);
 
-  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE, stableStageTap);
+  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE);
 
   const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, {
     onNavigateBack: () => {
@@ -193,8 +196,54 @@ export function GalaxyWorld() {
       bands[galaxyDepthSlab(projected.depth)].push({ system, projected });
     }
     starProjectionCacheRef.current = nextCache;
+    starBandsRef.current = bands;
     return bands;
   }, [galaxySystems, galaxyProjection]);
+
+  useEffect(() => {
+    if (!isInitialised || !isReady) return;
+    const stage = app.stage;
+
+    // Picked here rather than per star because a pixi click needs press and release on the same object.
+    const pickStar = (global: { x: number; y: number }): StarSystem | null => {
+      const root = galaxyRootRef.current;
+      if (!root) return null;
+      const local = root.toLocal(global);
+      const maxDist = Math.min(GALAXY_PICK_SCREEN_PX / camera.current.scale, GALAXY_PICK_MAX_WORLD);
+      let nearest: StarSystem | null = null;
+      let nearestDist = Infinity;
+      let nearestDepth = -Infinity;
+      for (const band of starBandsRef.current) {
+        for (const { system, projected } of band) {
+          const dist = Math.hypot(projected.x - local.x, projected.y - local.y);
+          if (dist > maxDist) continue;
+          if (dist > nearestDist || (dist === nearestDist && projected.depth <= nearestDepth)) continue;
+          nearestDist = dist;
+          nearestDepth = projected.depth;
+          nearest = system;
+        }
+      }
+      return nearest;
+    };
+
+    const onTap = (event: FederatedPointerEvent) => {
+      if (hasDragged.current || event.button > 0) return;
+      const nearest = pickStar(event.global);
+      handleSelectSystemRef.current(nearest ? nearest.id : null);
+    };
+
+    const onMove = (event: FederatedPointerEvent) => {
+      app.canvas.style.cursor = pickStar(event.global) ? 'pointer' : '';
+    };
+
+    stage.on('pointertap', onTap);
+    stage.on('pointermove', onMove);
+    return () => {
+      stage.off('pointertap', onTap);
+      stage.off('pointermove', onMove);
+      app.canvas.style.cursor = '';
+    };
+  }, [app, isInitialised, isReady, camera, hasDragged]);
 
   const radiusLy = useMemo(() => {
     const rng = createRng(galaxySeed);
@@ -333,7 +382,7 @@ export function GalaxyWorld() {
           {starBands.map((band, slab) => (
             <pixiContainer key={slab} sortableChildren zIndex={GALAXY_LAYER_Z.stars(slab)}>
               {band.map(({ system, projected }) => (
-                <StarNode key={system.id} system={system} projected={projected} onSelect={handleSelectSystem} />
+                <StarNode key={system.id} system={system} projected={projected} />
               ))}
             </pixiContainer>
           ))}

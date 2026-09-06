@@ -371,6 +371,10 @@ export const GALAXY_INTRO_TILT_OFFSET = 8 * Math.PI / 180;
 
 export const GALAXY_INTRO_TILT_MS = 700;
 
+export const GALAXY_PICK_SCREEN_PX = 15;
+
+export const GALAXY_PICK_MAX_WORLD = 25;
+
 // Pointer must move more than this many pixels before a press is treated as a
 // drag rather than a click.
 export const DRAG_THRESHOLD_PX = 4;

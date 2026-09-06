@@ -197,7 +197,7 @@ export function SolarSystem() {
   const orbitGfxRef = useRef<Graphics[]>([]);
   const extractorGfxRef = useRef<Map<string, Graphics>>(new Map());
   const fabricatorGfxRef = useRef<Map<string, Graphics>>(new Map());
-  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, undefined, SYSTEM_CAMERA_MIN_SCALE);
+  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
 
   useEffect(() => {
     showOrbitRingsRef.current = showOrbitRings;

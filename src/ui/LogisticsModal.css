@@ -1188,10 +1188,35 @@
 }
 
 .lm-fabricator-slot-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 9px;
   letter-spacing: 0.2em;
   color: rgba(60, 180, 80, 0.45);
   text-transform: uppercase;
+}
+
+.lm-slot-order-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border: 1px solid rgba(60, 200, 110, 0.45);
+  background: rgba(20, 70, 40, 0.5);
+  color: rgba(140, 240, 170, 0.85);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.lm-fabricator-order-note {
+  margin: 2px 0 5px;
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(90, 170, 130, 0.45);
 }
 
 .lm-slot-status {
@@ -1219,6 +1244,77 @@
   font-size: 9px;
   letter-spacing: 0.08em;
   color: rgba(120, 190, 160, 0.55);
+}
+
+.lm-fabricator-fill-mode {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.lm-fabricator-fill-label {
+  flex: 1;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: monospace;
+  color: rgba(90, 170, 130, 0.6);
+}
+
+.lm-fill-mode-btn {
+  background: transparent;
+  border: 1px solid rgba(60, 200, 120, 0.25);
+  color: rgba(90, 200, 140, 0.55);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: monospace;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.lm-fill-mode-btn:hover {
+  border-color: rgba(90, 240, 150, 0.6);
+  color: rgba(90, 240, 150, 0.8);
+}
+
+.lm-fill-mode-btn--active {
+  background: rgba(0, 40, 30, 0.5);
+  border-color: rgba(60, 200, 120, 0.6);
+  color: rgba(90, 240, 150, 0.9);
+}
+
+.lm-fabricator-hold-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 40, 30, 0.5);
+  border: 1px solid rgba(60, 200, 120, 0.35);
+  color: rgba(90, 240, 150, 0.85);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: monospace;
+  cursor: pointer;
+}
+
+.lm-fabricator-hold-toggle:hover {
+  border-color: rgba(90, 240, 150, 0.7);
+}
+
+.lm-fabricator-hold-toggle input {
+  accent-color: rgb(60, 200, 120);
+  cursor: pointer;
+}
+
+.lm-fabricator-load-note {
+  margin: 4px 0 2px;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: rgba(90, 170, 130, 0.6);
 }
 
 .lm-fabricator-unlock-btn {

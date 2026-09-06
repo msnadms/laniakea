@@ -98,6 +98,6 @@
 .logistics-material-menu-actions button { background: rgba(0, 65, 90, 0.45); border: 1px solid rgba(0, 150, 190, 0.3); color: rgba(150, 220, 238, 0.75); cursor: pointer; font: 8px monospace; padding: 3px 6px; text-transform: uppercase; }
 .logistics-material-menu-actions button:hover { border-color: rgba(0, 195, 230, 0.65); color: #d9f8ff; }
 .lm-slot-priority-controls { display: inline-flex; gap: 2px; }
-.lm-slot-priority-controls button { padding: 0 4px; background: transparent; border: 1px solid rgba(60, 180, 100, 0.35); color: rgba(100, 220, 140, 0.8); cursor: pointer; }
-.lm-slot-priority-controls button:disabled { opacity: 0.25; }
+.lm-slot-priority-controls button { display: inline-flex; align-items: center; justify-content: center; padding: 0 4px 2px; height: 14px; overflow: hidden; background: transparent; border: 1px solid rgba(60, 180, 100, 0.35); color: rgba(100, 220, 140, 0.8); line-height: 1; cursor: pointer; }
+.lm-slot-priority-controls button:disabled { opacity: 0.2; cursor: default; }
 .lm-slot-last-run { margin-top: 5px; color: rgba(140, 205, 180, 0.65); font: 8px/1.4 monospace; }

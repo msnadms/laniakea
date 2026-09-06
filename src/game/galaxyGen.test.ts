@@ -12,8 +12,8 @@ import { GALAXY_RADIUS, POPULATION_SCALE_HEIGHT } from './constants';
 // scale heights are tuned; silhouettes are allowed to change, drifting without
 // intent is not.
 const GOLD: [number, number, number, number][] = [
-  [1, 487, 2415068913, 2285436682],
-  [42, 560, 2629197245, 1035771150],
+  [1, 487, 3103340964, 2383409399],
+  [42, 560, 25863766, 3653968658],
   [1337, 596, 2122042907, 4168689878],
   [987654321, 677, 4128621345, 2663941110],
   [20250905, 685, 935156717, 2937779712],

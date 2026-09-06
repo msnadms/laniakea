@@ -53,6 +53,8 @@ Three star populations are generated:
 
 **Background starfield** is split into two `Graphics` objects (dim ≤0.7 brightness, bright >0.7) so their alpha can be pulsed independently on each tick.
 
+**Star picking** is resolved on the stage's `pointertap` in `GalaxyWorld`, not by a per-star `onClick`: PixiJS only fires a click when press and release resolve to the same object, and in the projected disk a one-pixel wobble between them lands on a neighbouring star's hit area and the click is dispatched on their common ancestor instead. The handler projects the pointer into `galaxyRoot` space and takes the nearest star within `min(GALAXY_PICK_SCREEN_PX / camera.scale, GALAXY_PICK_MAX_WORLD)`, breaking ties frontmost-first, and ignores taps that ended a pan (`hasDragged` from `useCamera`). The same scan runs on `pointermove` to set the canvas cursor, so the cursor and the click agree at every zoom; `StarNode` is `eventMode="none"` and carries no hit area, keeping every star out of Pixi's hit-test tree.
+
 **Star textures** (`src/pixi/textures.ts → createStarTexture`) are generated per star on a canvas: radial gradient core + 4 diffraction-spike ellipses composited with `destination-over`. Created inside `useMemo` in `StarNode` and destroyed on unmount — do not use module-level caches for PixiJS textures.
 
 ### `SolarSystem.tsx` — system view
@@ -101,6 +103,14 @@ fabricators include eight. Buffer depth remains 3 batches for tier 1 and 5 for t
 processes every feasible batch, and makes new material output and byproducts available to later
 slots during the same visit. It stops only when a complete pass makes no progress. Returned
 `SlotRunResult`s describe batches, inputs, products, byproduct movement, jams, and shortages.
+
+How much a slot may take per pass is the fabricator's `Fabricator.fillMode` (`SlotFillMode`), set
+in `FabricatorSidebar` and persisted with the fabricator. `priority` (the default, and what every
+old save loads as) lets each slot top up its whole `depth`-batch buffer before the next one draws.
+`shared` starts the per-pass quota at one batch and raises it only when a complete pass makes no
+progress, so priority still decides who goes first but only ever wins by a batch at a time and a
+scarce input spreads across the slots. The split belongs to the fabricator, not to `RouteEdge`: an
+edge terminates at a map node, which has no notion of slots and may host several fabricators.
 
 Statuses are `idle`, `ready`, `starved`, `jammed`, and `flowing` (the last dispatch produced
 output). A byproduct that cannot be consumed or routed fills its local buffer and jams its
@@ -248,8 +258,16 @@ The logistics modal is split into two files: `LogisticsMap.tsx` owns map project
 - Left panel lists saved `LogisticsRoute`s (capped by `logisticsA` tier) with dry-run readiness, expected edge demand, shortages, route-scoped risk, activation controls, and fabricator warnings.
 - Middle panel edits the weakly connected DAG plus each edge's filters, material draw, and surplus behavior. It also configures activation policy; per-extractor reserves live in `NodeSidebar` and the shared fuel floor in the Reserves tab. Clicking a node docks `NodeSidebar` or `FabricatorSidebar`; fabricator slots show partial buffers, priority controls, last-run batches/shortages, byproducts, and status.
 - Right panel (440px) tabs between **Reserves**, **Materials**, and **Modules**. Every group is a collapsible `Section`; recipe tooltips describe inputs and instant-dispatch output rather than craft time.
+- `FabricatorSidebar` also exposes a per-fabricator **Draw from Hold** toggle (`Fabricator.drawFromHold`,
+  set via `fabricatorStore.setDrawFromHold`). While it is on, the fabricator feeds itself from the ship's
+  own cargo (minus the ship-wide fuel floor) and stockpile materials, capped by `computeMaterialBandwidth`,
+  so it runs without being on a route. `runHoldFeeds` performs that pass for every enabled fabricator on
+  each `useLogisticsAutomation` tick, in sorted key order so a scarce hold is split the same way every run
+  (`loadFromHold` runs the same `processFabricator` code as dispatch and deposits output through
+  `receiveFabricatorItems`); flipping the toggle on also feeds once immediately.
+  `previewHoldFeed` drives the sidebar's "next draw" summary line.
 - `handleDispatch` snapshots pre-dispatch accumulated amounts, calls `dispatchRoute`, then builds a `DispatchAnim` (per-node reveal of cost/collection lines, 500ms per hop) purely for visual feedback — the actual resource transfer already happened synchronously in the store.
-- All mutations that affect Firebase-backed state (`ownedUpgrades`/`nodeEquipped`, fabricator states, routes, extractor `lastCollectedAt`) are mirrored to Firestore (`firebase/extractorUpgrades.ts`, `firebase/fabricators.ts`, `firebase/logisticsRoutes.ts`, `firebase/extractors.ts`) immediately after each local store update.
+- All mutations that affect Firebase-backed state (`ownedUpgrades`/`nodeEquipped`, fabricator states, routes, extractor `lastCollectedAt`) are mirrored to Firestore (`firebase/extractorUpgrades.ts`, `firebase/fabricators.ts`, `firebase/logisticsRoutes.ts`, `firebase/extractors.ts`) immediately after each local store update. The post-run fan-out shared by manual dispatch, hold feeding and automation lives in one place — `store/persistRun.ts → persistFabricatorRun(uid, { fabricatorKeys, extractorKeys })` — so a new feed path cannot forget one of the writes.
 
 ### Fabricator crafting
 

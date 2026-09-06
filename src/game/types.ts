@@ -206,6 +206,8 @@ export interface Fabricator {
   galaxyX: number;
   galaxyY: number;
   superclusSeed: number;
+  drawFromHold?: boolean;
+  fillMode?: SlotFillMode;
 }
 
 export function makeFabricatorKey(galaxySeed: number, systemId: number, planetName: string): FabricatorKey {
@@ -255,6 +257,13 @@ export function bufferDepth(tier: FabricatorTier | undefined): number {
 
 export type SlotStatus = 'idle' | 'ready' | 'starved' | 'jammed' | 'flowing';
 
+export type SlotFillMode = 'priority' | 'shared';
+
+export const SLOT_FILL_MODE_LABELS: Record<SlotFillMode, string> = {
+  priority: 'Priority',
+  shared: 'Shared',
+};
+
 export const SLOT_STATUS_LABELS: Record<SlotStatus, string> = {
   idle: 'Idle',
   ready: 'Ready',
@@ -295,6 +304,8 @@ export const RESOURCE_LABELS: Record<Resource['type'], string> = {
   metallicHydrogen: 'Metallic Hydrogen',
   neutronStarMatter: 'Neutron Star Matter'
 };
+
+export const RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter'];
 
 export type UpgradeType = 'rate' | 'storage' | 'detection';
 

@@ -19,8 +19,12 @@ import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import {
   useFabricatorStore,
   slotStatus,
+  previewHoldFeed,
+  holdFeedPools,
+  orderedSlotIndices,
 } from '../store/fabricatorStore';
-import type { SlotRunResult } from '../store/fabricatorStore';
+import type { SlotRunResult, FeedResult } from '../store/fabricatorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useUIStore, computeMaterialBandwidth } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import {
@@ -30,6 +34,7 @@ import {
   RARE_ROLE_LABELS,
   FABRICATOR_TIER_LABELS,
   SLOT_STATUS_LABELS,
+  SLOT_FILL_MODE_LABELS,
   bufferDepth,
 } from '../game/types';
 import { EXTRACTOR_UPGRADES, getCraftable, describeUpgradeEffect } from '../data/upgrades';
@@ -38,13 +43,14 @@ import { CRAFTABLE_MATERIALS, STOCKED_MATERIALS, MATERIAL_TIERS, materialName } 
 import { RARE_RESOURCES, RARE_ROLES } from '../data/rareResources';
 import { useStockpileStore } from '../store/stockpileStore';
 import { UpgradeModuleIcon } from './CargoIcons';
-import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, Resource } from '../game/types';
-import { maxFabricatorSlots, makeEmptyFabricatorSlot } from '../game/types';
+import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, Resource, SlotFillMode } from '../game/types';
+import { maxFabricatorSlots, makeEmptyFabricatorSlot, RAW_TYPES } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
-import { updateExtractorCollected, updateExtractorReserve } from '../firebase/extractors';
+import { updateExtractorReserve } from '../firebase/extractors';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
-import { saveFabricatorState } from '../firebase/fabricators';
+import { saveFabricatorState, saveFabricator } from '../firebase/fabricators';
 import { saveStockpile } from '../firebase/stockpile';
+import { persistFabricatorRun } from '../store/persistRun';
 import { fmt } from './strings';
 import { StationMap } from './LogisticsMap';
 import { getSystemKey, getSystemName, projectNodes } from './logisticsProject';
@@ -61,9 +67,6 @@ type DispatchAnim = {
   done: boolean;
 };
 
-const ROUTABLE_RAW: Resource['type'][] = [
-  'exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter',
-];
 
 const ROUTABLE_MATERIALS = [...new Set(STOCKED_MATERIALS.map((material) => material.id))];
 const DETAIL_POP_HEIGHT = 210;
@@ -117,7 +120,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const lastFabricatorRun = useFabricatorStore((s) => s.lastRun);
   const setSlotTarget = useFabricatorStore((s) => s.setSlotTarget);
   const unlockFabricatorSlot = useFabricatorStore((s) => s.unlockFabricatorSlot);
-  const setSlotPriority = useFabricatorStore((s) => s.setSlotPriority);
+  const moveSlotOrder = useFabricatorStore((s) => s.moveSlotOrder);
+  const loadFabricatorFromHold = useFabricatorStore((s) => s.loadFromHold);
+  const setDrawFromHold = useFabricatorStore((s) => s.setDrawFromHold);
+  const setFillMode = useFabricatorStore((s) => s.setFillMode);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
@@ -133,11 +139,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
   const bandwidth = computeMaterialBandwidth(logisticsA, logisticsB);
 
-  function saveUpgrades() {
+  const saveUpgrades = useCallback(() => {
     if (!user) return;
     const { ownedUpgrades: owned, nodeEquipped: equipped } = useExtractorStore.getState();
     saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped });
-  }
+  }, [user]);
 
   const handleSetSlotTarget = useCallback((key: string, slotIdx: number, upgradeId: string | null) => {
     setSlotTarget(key, slotIdx, upgradeId);
@@ -151,13 +157,13 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     }
   }, [setSlotTarget, user]);
 
-  const handleSetSlotPriority = useCallback((key: string, slotIdx: number, priority: number) => {
-    setSlotPriority(key, slotIdx, priority);
+  const handleMoveSlotOrder = useCallback((key: string, slotIdx: number, direction: -1 | 1) => {
+    moveSlotOrder(key, slotIdx, direction);
     if (user) {
       const state = useFabricatorStore.getState().fabricatorStates[key];
       if (state) saveFabricatorState(user.uid, key, state);
     }
-  }, [setSlotPriority, user]);
+  }, [moveSlotOrder, user]);
 
   const handleUnlockFabricatorSlot = useCallback((key: string) => {
     unlockFabricatorSlot(key);
@@ -166,6 +172,21 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       if (updated) saveFabricatorState(user.uid, key, updated);
     }
   }, [unlockFabricatorSlot, user]);
+
+  const handleSetDrawFromHold = useCallback((key: string, enabled: boolean) => {
+    setDrawFromHold(key, enabled);
+    const fabricator = useFabricatorStore.getState().fabricators[key];
+    if (user && fabricator) saveFabricator(user.uid, fabricator);
+    if (!enabled) return;
+    const result = loadFabricatorFromHold(key);
+    if (result?.changed && user) persistFabricatorRun(user.uid, { fabricatorKeys: [key] });
+  }, [setDrawFromHold, loadFabricatorFromHold, user]);
+
+  const handleSetFillMode = useCallback((key: string, mode: SlotFillMode) => {
+    setFillMode(key, mode);
+    const fabricator = useFabricatorStore.getState().fabricators[key];
+    if (user && fabricator) saveFabricator(user.uid, fabricator);
+  }, [setFillMode, user]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -322,24 +343,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     if (result !== false) {
       const { collected, deliveries, order, carried, materialsMoved } = result;
       if (user) {
-        if (collected.length > 0) {
-          const updatedExtractors = useExtractorStore.getState().extractors;
-          for (const { key } of collected) {
-            const ts = updatedExtractors[key]?.lastCollectedAt;
-            if (ts !== undefined) updateExtractorCollected(user.uid, key, ts);
-          }
-        }
-        const updatedFabricatorStates = useFabricatorStore.getState().fabricatorStates;
-        for (const fabricatorKey of fabricatorKeys) {
-          const cs = updatedFabricatorStates[fabricatorKey];
-          if (cs) saveFabricatorState(user.uid, fabricatorKey, cs);
-        }
-        const { ownedUpgrades: owned, nodeEquipped: equipped } = useExtractorStore.getState();
-        saveExtractorUpgrades(user.uid, { ownedUpgrades: owned, nodeEquipped: equipped });
-        if (fabricatorKeys.length > 0) {
-          const { materials, rares } = useStockpileStore.getState();
-          saveStockpile(user.uid, materials, rares);
-        }
+        persistFabricatorRun(user.uid, {
+          extractorKeys: collected.map(({ key }) => key),
+          fabricatorKeys,
+        });
       }
 
       const orderedNodeIds = order;
@@ -848,8 +855,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                 lastRun={lastFabricatorRun}
                 onClose={() => setLastHoveredNodeId(null)}
                 onSetTarget={handleSetSlotTarget}
-                onSetPriority={handleSetSlotPriority}
+                onMoveSlotOrder={handleMoveSlotOrder}
                 onUnlockSlot={handleUnlockFabricatorSlot}
+                onSetDrawFromHold={handleSetDrawFromHold}
+                onSetFillMode={handleSetFillMode}
               />
             )}
             <div className="logistics-resources-header lm-tab-header">
@@ -1006,10 +1015,10 @@ function EdgePolicyPanel({
             </div>
             <div className="logistics-filter-head">Raw cargo <button onClick={() => onChange(index, { allowedRaw: undefined })}>Demand default</button></div>
             <div className="logistics-filter-grid">
-              {ROUTABLE_RAW.map((type) => (
+              {RAW_TYPES.map((type) => (
                 <label key={type} className="logistics-filter-item">
                   <input type="checkbox" checked={edge.allowedRaw?.includes(type) ?? true}
-                    onChange={() => onChange(index, { allowedRaw: toggle(edge.allowedRaw, ROUTABLE_RAW, type) })} />
+                    onChange={() => onChange(index, { allowedRaw: toggle(edge.allowedRaw, RAW_TYPES, type) })} />
                   <span>{RESOURCE_LABELS[type]}</span>
                 </label>
               ))}
@@ -1161,7 +1170,7 @@ function SlotView({
   depth,
   isMenuOpen,
   onOpenMenu,
-  onSetPriority,
+  ordering,
   lastResult,
 }: {
   slot: FabricatorProductionSlot;
@@ -1171,7 +1180,7 @@ function SlotView({
   depth: number;
   isMenuOpen: boolean;
   onOpenMenu: (state: SlotMenuState) => void;
-  onSetPriority: (priority: number) => void;
+  ordering?: { order: number; total: number; moveEarlier?: () => void; moveLater?: () => void };
   lastResult?: SlotRunResult;
 }) {
   const stockpile = useStockpileStore((s) => s.materials);
@@ -1181,11 +1190,16 @@ function SlotView({
   return (
     <div className="lm-fabricator-slot-block">
       <div className="lm-fabricator-slot-head">
-        <span className="lm-fabricator-slot-label">Slot {slotIdx + 1}</span>
-        <span className="lm-slot-priority-controls">
-          <button disabled={slot.priority <= 0} onClick={() => onSetPriority(slot.priority - 1)} title="Higher priority">↑</button>
-          <button onClick={() => onSetPriority(slot.priority + 1)} title="Lower priority">↓</button>
+        <span className="lm-fabricator-slot-label">
+          {ordering && <span className="lm-slot-order-badge">{ordering.order}</span>}
+          Slot {slotIdx + 1}
         </span>
+        {(ordering?.moveEarlier || ordering?.moveLater) && (
+          <span className="lm-slot-priority-controls">
+            <button disabled={!ordering.moveEarlier} onClick={ordering.moveEarlier} title="Run earlier">↑</button>
+            <button disabled={!ordering.moveLater} onClick={ordering.moveLater} title="Run later">↓</button>
+          </span>
+        )}
         {recipe && (
           <span className={`lm-slot-status lm-slot-status--${status}`}>{SLOT_STATUS_LABELS[status]}</span>
         )}
@@ -1242,9 +1256,11 @@ function SlotView({
             );
           })}
           <div className="lm-fabricator-slot-meters">
-            <span className="lm-fabricator-meter">
-              Priority {slot.priority + 1}
-            </span>
+            {ordering && ordering.total > 1 && (
+              <span className="lm-fabricator-meter">
+                Runs {ordering.order} of {ordering.total}
+              </span>
+            )}
             <span className="lm-fabricator-meter">
               Processes on dispatch
             </span>
@@ -1284,6 +1300,76 @@ function SlotView({
   );
 }
 
+function describeHoldFeed(result: FeedResult): string {
+  const parts: string[] = [];
+  for (const [type, amount] of Object.entries(result.consumed)) {
+    if ((amount ?? 0) > 0) parts.push(`${fmt(amount ?? 0)} ${RESOURCE_LABELS[type as Resource['type']] ?? type}`);
+  }
+  for (const [id, amount] of Object.entries(result.consumedStockpile)) {
+    if (amount > 0) parts.push(`${amount} ${materialName(id)}`);
+  }
+  const batches = result.slotResults.reduce((sum, entry) => sum + entry.batches, 0);
+  const head = parts.length > 0 ? parts.join(', ') : 'buffers unchanged';
+  return batches > 0 ? `${head} · ${batches} batch${batches === 1 ? '' : 'es'}` : head;
+}
+
+function FabricatorSlotList({
+  fabricatorKey,
+  slots,
+  advanced,
+  depth,
+  openSlot,
+  onOpenMenu,
+  onMoveSlotOrder,
+  lastRun,
+}: {
+  fabricatorKey: string;
+  slots: FabricatorProductionSlot[];
+  advanced: boolean;
+  depth: number;
+  openSlot: SlotMenuState | null;
+  onOpenMenu: (state: SlotMenuState) => void;
+  onMoveSlotOrder: (key: string, slotIdx: number, direction: -1 | 1) => void;
+  lastRun?: Record<number, SlotRunResult>;
+}) {
+  const ordered = useMemo(() => orderedSlotIndices(slots).map((index) => ({ slot: slots[index], index })), [slots]);
+  const configured = ordered.filter(({ slot }) => slot.targetUpgradeId);
+  const empty = ordered.filter(({ slot }) => !slot.targetUpgradeId);
+
+  const renderSlot = ({ slot, index }: { slot: FabricatorProductionSlot; index: number }, order: number | null) => (
+    <SlotView
+      key={index}
+      slot={slot}
+      slotIdx={index}
+      fabricatorKey={fabricatorKey}
+      advanced={advanced}
+      depth={depth}
+      isMenuOpen={openSlot?.fabricatorKey === fabricatorKey && openSlot.slotIdx === index}
+      onOpenMenu={onOpenMenu}
+      ordering={order === null ? undefined : {
+        order,
+        total: configured.length,
+        moveEarlier: order > 1 ? () => onMoveSlotOrder(fabricatorKey, index, -1) : undefined,
+        moveLater: order < configured.length ? () => onMoveSlotOrder(fabricatorKey, index, 1) : undefined,
+      }}
+      lastResult={lastRun?.[index]}
+    />
+  );
+
+  return (
+    <>
+      {configured.length > 1 && (
+        <div className="lm-fabricator-order-note">Dispatch order · top runs first</div>
+      )}
+      {configured.map((entry, rank) => renderSlot(entry, rank + 1))}
+      {empty.length > 0 && configured.length > 0 && (
+        <div className="lm-fabricator-order-note">Unconfigured</div>
+      )}
+      {empty.map((entry) => renderSlot(entry, null))}
+    </>
+  );
+}
+
 function FabricatorSidebar({
   node,
   fabricators,
@@ -1291,8 +1377,10 @@ function FabricatorSidebar({
   lastRun,
   onClose,
   onSetTarget,
-  onSetPriority,
+  onMoveSlotOrder,
   onUnlockSlot,
+  onSetDrawFromHold,
+  onSetFillMode,
 }: {
   node: ProjectedMapNode;
   fabricators: Record<string, Fabricator>;
@@ -1300,10 +1388,37 @@ function FabricatorSidebar({
   lastRun: Record<string, SlotRunResult[]>;
   onClose: () => void;
   onSetTarget: (key: string, slotIdx: number, upgradeId: string | null) => void;
-  onSetPriority: (key: string, slotIdx: number, priority: number) => void;
+  onMoveSlotOrder: (key: string, slotIdx: number, direction: -1 | 1) => void;
   onUnlockSlot: (key: string) => void;
+  onSetDrawFromHold: (key: string, enabled: boolean) => void;
+  onSetFillMode: (key: string, mode: SlotFillMode) => void;
 }) {
   const [openSlot, setOpenSlot] = useState<SlotMenuState | null>(null);
+  const stockpile = useStockpileStore((s) => s.materials);
+  const holdSource = useUIStore(useShallow((s) => ({
+    exoticMatter: s.exoticMatter,
+    helium3Reserves: s.helium3Reserves,
+    alloys: s.alloys,
+    nutrients: s.nutrients,
+    metallicHydrogen: s.metallicHydrogen,
+    neutronStarMatter: s.neutronStarMatter,
+    fuelReserveExotic: s.fuelReserveExotic,
+    fuelReserveHelium3: s.fuelReserveHelium3,
+    logisticsA: s.logisticsA,
+    logisticsB: s.logisticsB,
+  })));
+  const holdKeySig = node.keys.filter((k) => fabricators[k]?.drawFromHold).join('|');
+  const holdPreviews = useMemo(() => {
+    const previews: Record<string, FeedResult> = {};
+    if (!holdKeySig) return previews;
+    const pools = holdFeedPools(holdSource, stockpile);
+    for (const key of holdKeySig.split('|')) {
+      previews[key] = previewHoldFeed(
+        fabricatorStates[key], fabricators[key]?.tier, pools, fabricators[key]?.fillMode,
+      );
+    }
+    return previews;
+  }, [holdKeySig, fabricators, fabricatorStates, stockpile, holdSource]);
 
   return (
     <div className="lm-submodal">
@@ -1326,20 +1441,46 @@ function FabricatorSidebar({
                 {FABRICATOR_TIER_LABELS[fabricator.tier]} · {depth}× buffers
               </div>
             )}
-            {cs.slots.map((slot, i) => (
-              <SlotView
-                key={i}
-                slot={slot}
-                slotIdx={i}
-                fabricatorKey={k}
-                advanced={(fabricator?.tier ?? 1) >= 2}
-                depth={depth}
-                isMenuOpen={openSlot?.fabricatorKey === k && openSlot.slotIdx === i}
-                onOpenMenu={setOpenSlot}
-                onSetPriority={(priority) => onSetPriority(k, i, priority)}
-                lastResult={lastRun[k]?.[i]}
+            <FabricatorSlotList
+              fabricatorKey={k}
+              slots={cs.slots}
+              advanced={(fabricator?.tier ?? 1) >= 2}
+              depth={depth}
+              openSlot={openSlot}
+              onOpenMenu={setOpenSlot}
+              onMoveSlotOrder={onMoveSlotOrder}
+              lastRun={lastRun[k]}
+            />
+            <div className="lm-fabricator-fill-mode">
+              <span className="lm-fabricator-fill-label">Input split</span>
+              {(['priority', 'shared'] as SlotFillMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  className={`lm-fill-mode-btn${(fabricator?.fillMode ?? 'priority') === mode ? ' lm-fill-mode-btn--active' : ''}`}
+                  onClick={() => onSetFillMode(k, mode)}
+                  title={mode === 'priority'
+                    ? 'Each slot fills its whole buffer before the next one draws'
+                    : 'Slots take one batch at a time in order, so scarce inputs spread across them'}
+                >
+                  {SLOT_FILL_MODE_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+            <label className="lm-fabricator-hold-toggle">
+              <input
+                type="checkbox"
+                checked={fabricator?.drawFromHold ?? false}
+                onChange={(event) => onSetDrawFromHold(k, event.target.checked)}
               />
-            ))}
+              Draw from Hold
+            </label>
+            <div className="lm-fabricator-load-note">
+              {fabricator?.drawFromHold
+                ? holdPreviews[k]?.changed
+                  ? `Next draw: ${describeHoldFeed(holdPreviews[k])}`
+                  : 'Hold has nothing these slots need'
+                : 'Slots run on route dispatch only'}
+            </div>
             {canUnlock && (
               <button
                 className="lm-fabricator-unlock-btn"

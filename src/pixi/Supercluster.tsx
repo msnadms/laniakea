@@ -1,5 +1,5 @@
 import { useApplication } from '@pixi/react';
-import { Container, Graphics, Rectangle, Ticker, BlurFilter, Particle, ParticleContainer } from 'pixi.js';
+import { Container, Graphics, Rectangle, Ticker, BlurFilter, Particle, ParticleContainer, ParticleShader } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
@@ -89,7 +89,7 @@ export function SuperclusterWorld() {
   const worldRef = useRef<Container>(null);
   const { orbitCamera, didOrbit } = useOrbit();
   const shouldPan = useCallback((event: FederatedPointerEvent) => !isOrbitGesture(event), []);
-  const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE, undefined, undefined, shouldPan);
+  const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE, undefined, shouldPan);
   const showAttractorLabelsRef = useRef(showAttractorLabels);
   useEffect(() => {
     showAttractorLabelsRef.current = showAttractorLabels;
@@ -165,6 +165,8 @@ export function SuperclusterWorld() {
 
     const particleContainer = new ParticleContainer({
       texture: dotTexture,
+      // Own shader: destroying dotTexture nulls the bind group of whichever shader holds it.
+      shader: new ParticleShader(),
       particles,
       dynamicProperties: { position: true, vertex: true, color: true, rotation: false, uvs: false },
     });

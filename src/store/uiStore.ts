@@ -36,6 +36,12 @@ export function resourceAmount(
   return state[type];
 }
 
+export function cargoField(type: Resource['type']): 'exoticMatter' | 'helium3Reserves' | Exclude<Resource['type'], 'exotic' | 'helium-3'> {
+  if (type === 'exotic') return 'exoticMatter';
+  if (type === 'helium-3') return 'helium3Reserves';
+  return type;
+}
+
 export function computeStorageCap(a: number): number {
   return STORAGE_BASE + STORAGE_A_BONUS[a];
 }
@@ -120,6 +126,7 @@ interface UIState {
   reloadRailgun: () => void;
   addCargo: (type: Resource['type'], amount: number) => void;
   depositCargo: (type: Resource['type'], amount: number) => number;
+  withdrawCargo: (amounts: Partial<Record<Resource['type'], number>>) => void;
   selectedPlanetKey: string | null;
   setSelectedPlanet: (key: string | null) => void;
   setShipStats: (stats: { exoticMatter: number; detectionRating: number; railgunAmmo: number; helium3Reserves: number; lastDetectionChangeAt?: number; lastPurgeAt?: number }) => void;
@@ -280,6 +287,14 @@ export const useUIStore = create<UIState>((set, get) => ({
     get().addCargo(type, amount);
     return Math.max(0, resourceAmount(get(), type) - before);
   },
+  withdrawCargo: (amounts) => set((s) => {
+    const patch: Partial<UIState> = {};
+    for (const [type, amount] of Object.entries(amounts)) {
+      const taken = Math.max(0, Math.min(resourceAmount(s, type as Resource['type']), amount ?? 0));
+      if (taken > 0) patch[cargoField(type as Resource['type'])] = resourceAmount(s, type as Resource['type']) - taken;
+    }
+    return patch;
+  }),
   addCargo: (type, amount) => {
     if (type === 'exotic') useQuestStore.getState().completeQuest('first_exotic');
     set((s) => {

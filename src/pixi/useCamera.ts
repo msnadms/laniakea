@@ -12,7 +12,6 @@ import { cancelIntroZoom } from './zoomAnim';
 export function useCamera(
   worldRef: React.RefObject<Container | null>,
   initialScale: number,
-  onStageTap?: () => void,
   minScale: number = CAMERA_MIN_SCALE,
   shouldPan?: (event: FederatedPointerEvent) => boolean,
 ) {
@@ -69,17 +68,12 @@ export function useCamera(
       worldRef.current.position.set(camera.current.x, camera.current.y);
     };
 
-    const onUp = (event: FederatedPointerEvent) => {
-      if (!hasDragged.current && event.target === stage) onStageTap?.();
-      isDragging.current = false;
-    };
-
-    const onUpOutside = () => { isDragging.current = false; };
+    const onUp = () => { isDragging.current = false; };
 
     stage.on('pointerdown', onDown);
     stage.on('pointermove', onMove);
     stage.on('pointerup', onUp);
-    stage.on('pointerupoutside', onUpOutside);
+    stage.on('pointerupoutside', onUp);
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -102,10 +96,10 @@ export function useCamera(
       stage.off('pointerdown', onDown);
       stage.off('pointermove', onMove);
       stage.off('pointerup', onUp);
-      stage.off('pointerupoutside', onUpOutside);
+      stage.off('pointerupoutside', onUp);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [app, isInitialised, onStageTap, minScale, worldRef]);
+  }, [app, isInitialised, minScale, worldRef]);
 
-  return { camera, isReady };
+  return { camera, isReady, hasDragged };
 }

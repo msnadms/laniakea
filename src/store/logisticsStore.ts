@@ -4,7 +4,7 @@ import type {
   FabricatorProductionItem, FabricatorState, MaterialCost, SlotStatus,
   RouteAutomationPolicy,
 } from '../game/types';
-import { extractorNodeId, fabricatorNodeId, bufferDepth } from '../game/types';
+import { extractorNodeId, fabricatorNodeId, bufferDepth, RAW_TYPES } from '../game/types';
 import { getCraftable } from '../data/upgrades';
 import type { FabricatorDelivery } from './extractorStore';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers } from './extractorStore';
@@ -18,7 +18,6 @@ import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialB
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 
 const FABRICATOR_PREFIX = 'fabricator:';
-const RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter'];
 
 export const DEFAULT_AUTOMATION_POLICY: RouteAutomationPolicy = {
   dispatchMode: 'fill',
@@ -426,6 +425,7 @@ function simulateRoutePreview(
           stockpileBudget: { remaining: incomingCapacity },
           canRouteByproduct: (id) => outgoing.length === 0
             || outgoing.some((edge) => edgeAllowsMaterial(edge, id) && edge.overflow !== 'hold'),
+          fillMode: fabricators[key]?.fillMode,
         },
       );
       if (result.changed) didWork = true;

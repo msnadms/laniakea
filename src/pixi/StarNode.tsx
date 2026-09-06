@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useCallback, useRef } from 'react';
-import { Circle, Graphics, Sprite, Texture } from 'pixi.js';
+import { Graphics, Sprite, Texture } from 'pixi.js';
 import type { StarSystem } from '../game/types';
 import { createStarTexture } from './textures';
 import { galaxyDepthAlpha, type ProjectedPoint } from './projection';
@@ -7,11 +7,9 @@ import { galaxyDepthAlpha, type ProjectedPoint } from './projection';
 export const StarNode = memo(function StarNode({
   system,
   projected,
-  onSelect,
 }: {
   system: StarSystem;
   projected: ProjectedPoint;
-  onSelect: (id: number | null) => void;
 }) {
   const isVisited = system.visited;
   const isCurrent = system.current;
@@ -31,9 +29,6 @@ export const StarNode = memo(function StarNode({
       texture.destroy(true);
     };
   }, [system.color, system.size]);
-
-  const hitArea = useRef(new Circle(0, 0, 0));
-  hitArea.current.radius = system.size + 10;
 
   const drawRing = useCallback(
     (gfx: Graphics) => {
@@ -55,20 +50,13 @@ export const StarNode = memo(function StarNode({
     [system.size, isVisited, isCurrent],
   );
 
-  const handleClick = useCallback(() => {
-    onSelect(system.id);
-  }, [system.id, onSelect]);
-
   return (
     <pixiContainer
       x={projected.x}
       y={projected.y}
       zIndex={projected.depth}
       alpha={galaxyDepthAlpha(projected.depth)}
-      eventMode="static"
-      cursor="pointer"
-      hitArea={hitArea.current}
-      onClick={handleClick}
+      eventMode="none"
     >
       <pixiSprite ref={glowSpriteRef} texture={Texture.EMPTY} anchor={0.5} scale={0.25 * projected.scale} />
       <pixiGraphics draw={drawRing} eventMode="none" />

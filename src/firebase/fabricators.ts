@@ -1,6 +1,6 @@
 import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Fabricator, FabricatorState, FabricatorProductionSlot, FabricatorTier, FabricatorProductionItem } from '../game/types';
+import type { Fabricator, FabricatorState, FabricatorProductionSlot, FabricatorTier, FabricatorProductionItem, SlotFillMode } from '../game/types';
 import { getCraftable } from '../data/upgrades';
 
 export async function saveFabricator(uid: string, fabricator: Fabricator): Promise<void> {
@@ -18,6 +18,8 @@ export async function saveFabricator(uid: string, fabricator: Fabricator): Promi
       galaxyX: fabricator.galaxyX,
       galaxyY: fabricator.galaxyY,
       superclusSeed: fabricator.superclusSeed,
+      drawFromHold: fabricator.drawFromHold ?? false,
+      fillMode: fabricator.fillMode ?? 'priority',
     }, { merge: true });
   } catch (err) {
     console.error('saveFabricator failed:', err);
@@ -152,6 +154,8 @@ export async function loadAllFabricators(uid: string): Promise<{
       galaxyX: (d2.galaxyX as number) ?? 0,
       galaxyY: (d2.galaxyY as number) ?? 0,
       superclusSeed: (d2.superclusSeed as number) ?? 0,
+      drawFromHold: (d2.drawFromHold as boolean) ?? false,
+      fillMode: (d2.fillMode as SlotFillMode) ?? 'priority',
     } satisfies Fabricator);
 
     // Old timed slots are accepted here. normalizeFabricatorState strips the

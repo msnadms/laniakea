@@ -1,13 +1,8 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useLogisticsStore } from '../store/logisticsStore';
-import { useExtractorStore } from '../store/extractorStore';
 import { useFabricatorStore } from '../store/fabricatorStore';
-import { useStockpileStore } from '../store/stockpileStore';
-import { updateExtractorCollected } from '../firebase/extractors';
-import { saveFabricatorState } from '../firebase/fabricators';
-import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
-import { saveStockpile } from '../firebase/stockpile';
+import { persistFabricatorRun } from '../store/persistRun';
 import { saveLogisticsRoute } from '../firebase/logisticsRoutes';
 
 const AUTOMATION_POLL_MS = 15_000;
@@ -31,19 +26,20 @@ export function useLogisticsAutomation() {
     const run = async () => {
       const { user, settingsLoaded } = useAuthStore.getState();
       if (!cancelled && user && settingsLoaded) {
+        const holdFed = useFabricatorStore.getState().runHoldFeeds();
         const results = useLogisticsStore.getState().runAutomation();
-        if (results.length > 0) {
-          const extractors = useExtractorStore.getState();
-          const fabricators = useFabricatorStore.getState();
-          const stockpile = useStockpileStore.getState();
-          const touchedExtractors = new Set(results.flatMap((result) => result.collected.map((entry) => entry.key)));
-          const touchedFabricators = new Set(results.flatMap((result) => Object.keys(result.slotResults)));
+        if (results.length > 0 || holdFed.length > 0) {
           await Promise.all([
-            ...[...touchedExtractors].map((key) => updateExtractorCollected(user.uid, key, extractors.extractors[key]?.lastCollectedAt ?? Date.now())),
-            ...[...touchedFabricators].map((key) => saveFabricatorState(user.uid, key, fabricators.fabricatorStates[key])),
-            saveExtractorUpgrades(user.uid, { ownedUpgrades: extractors.ownedUpgrades, nodeEquipped: extractors.nodeEquipped }),
-            saveStockpile(user.uid, stockpile.materials, stockpile.rares),
-            ...useLogisticsStore.getState().routes.map((route) => saveLogisticsRoute(user.uid, route)),
+            persistFabricatorRun(user.uid, {
+              extractorKeys: new Set(results.flatMap((result) => result.collected.map((entry) => entry.key))),
+              fabricatorKeys: new Set([
+                ...holdFed,
+                ...results.flatMap((result) => Object.keys(result.slotResults)),
+              ]),
+            }),
+            ...(results.length > 0
+              ? useLogisticsStore.getState().routes.map((route) => saveLogisticsRoute(user.uid, route))
+              : []),
           ]);
         }
       }

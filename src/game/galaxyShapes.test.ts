@@ -30,4 +30,22 @@ describe('barred spiral nebula', () => {
     expect(first.spread / regularBarredArmSpread(config, first.t)).toBeGreaterThan(2);
     expect(settled.spread).toBeCloseTo(regularBarredArmSpread(config, settled.t));
   });
+
+  it('always creates exactly two opposite arms', () => {
+    const config = new GalaxyConfig(() => 0.5, { type: 'barred', numArms: 4 });
+    config.galaxyEllipse = 1;
+    config.orientation = 0;
+
+    const barCloudCount = Math.round(NEBULA_STEPS * 0.6);
+    const clouds = nebulaClouds(() => 0.5, config);
+    const step = Math.floor(NEBULA_STEPS / 2);
+    const angles = Array.from({ length: config.numArms }, (_, arm) => {
+      const cloud = clouds[barCloudCount + arm * NEBULA_STEPS + step];
+      return (Math.atan2(cloud.y, cloud.x) + Math.PI * 2) % (Math.PI * 2);
+    });
+
+    expect(config.numArms).toBe(2);
+    expect(clouds).toHaveLength(barCloudCount + 2 * NEBULA_STEPS);
+    expect((angles[1] - angles[0] + Math.PI * 2) % (Math.PI * 2)).toBeCloseTo(Math.PI);
+  });
 });

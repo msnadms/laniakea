@@ -135,7 +135,7 @@ function spiralBaseAngle(config: GalaxyConfig, arm: number) {
 }
 
 function barredBaseAngle(config: GalaxyConfig, arm: number) {
-  return config.barAngle + (arm % 2) * Math.PI + Math.floor(arm / 2) * (Math.PI / config.numArms);
+  return config.barAngle + arm * Math.PI;
 }
 
 function barStar(rng: Rng, config: GalaxyConfig): StarPlacement {

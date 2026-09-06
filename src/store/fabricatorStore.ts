@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type {
   Fabricator, FabricatorState, FabricatorProductionSlot, FabricatorProductionItem,
-  MaterialCost, FabricatorTier, CraftCategory, Resource, SlotStatus,
+  MaterialCost, FabricatorTier, CraftCategory, Resource, SlotStatus, SlotFillMode,
 } from '../game/types';
 import {
   COST_KEY_TO_RESOURCE, makeEmptyFabricatorSlot, bufferDepth,
@@ -12,7 +12,14 @@ import { getCraftable } from '../data/upgrades';
 import type { Craftable } from '../data/upgrades';
 import { useQuestStore } from './questStore';
 import { useStockpileStore } from './stockpileStore';
-import { useUIStore } from './uiStore';
+import { useUIStore, computeMaterialBandwidth, resourceAmount } from './uiStore';
+import { useExtractorStore } from './extractorStore';
+
+export function orderedSlotIndices(slots: FabricatorProductionSlot[]): number[] {
+  return slots.map((slot, index) => ({ index, priority: slot.priority }))
+    .sort((a, b) => a.priority - b.priority || a.index - b.index)
+    .map((entry) => entry.index);
+}
 
 export function fabricatorCanCraft(tier: FabricatorTier | undefined, category: CraftCategory): boolean {
   return category !== 'rare' || (tier ?? 1) >= 2;
@@ -49,6 +56,7 @@ export interface ProcessFabricatorOptions {
   stockpile?: MaterialCost;
   stockpileBudget?: MaterialBudget;
   canRouteByproduct?: (materialId: string) => boolean;
+  fillMode?: SlotFillMode;
 }
 
 function resourceEntries(recipe: Craftable): Array<[Resource['type'], number]> {
@@ -87,9 +95,7 @@ export function normalizeFabricatorState(
   const wanted = Math.max(slots.length, includedFabricatorSlots(tier));
   for (let i = slots.length; i < wanted; i++) slots.push({ ...makeEmptyFabricatorSlot(), priority: i });
   const kept = slots.slice(0, maxFabricatorSlots(tier));
-  const order = kept.map((slot, index) => ({ index, priority: slot.priority }))
-    .sort((a, b) => a.priority - b.priority || a.index - b.index);
-  order.forEach((entry, priority) => { kept[entry.index].priority = priority; });
+  orderedSlotIndices(kept).forEach((index, priority) => { kept[index].priority = priority; });
   return { slots: kept };
 }
 
@@ -183,20 +189,19 @@ export function processFabricator(
     return byproductHasExit.get(id)!;
   };
 
-  const ordered = slots.map((slot, index) => ({ slot, index }))
-    .sort((a, b) => a.slot.priority - b.slot.priority || a.index - b.index);
+  const ordered = orderedSlotIndices(slots).map((index) => ({ slot: slots[index], index }));
 
+  let quota = (options.fillMode ?? 'priority') === 'shared' ? 1 : depth;
   let passes = 0;
-  let progressed = true;
-  while (progressed && passes++ < 100_000) {
-    progressed = false;
+  while (passes++ < 100_000) {
+    let progressed = false;
     for (const { slot, index } of ordered) {
       const result = slotResults[index];
       const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
       if (!recipe || !fabricatorCanCraft(tier, recipe.category)) continue;
 
       for (const [type, perBatch] of resourceEntries(recipe)) {
-        const need = Math.max(0, perBatch * depth - (slot.pendingResources[type] ?? 0));
+        const need = Math.max(0, perBatch * quota - (slot.pendingResources[type] ?? 0));
         const take = Math.min(need, remainingRaw[type] ?? 0);
         if (take <= 0) continue;
         slot.pendingResources[type] = (slot.pendingResources[type] ?? 0) + take;
@@ -207,7 +212,7 @@ export function processFabricator(
       }
 
       for (const [id, perBatch] of materialEntries(recipe)) {
-        let need = Math.max(0, perBatch * depth - (slot.pendingMaterials[id] ?? 0));
+        let need = Math.max(0, perBatch * quota - (slot.pendingMaterials[id] ?? 0));
         const take = (pool: MaterialCost, limit: number) => {
           const moved = Math.min(need, pool[id] ?? 0, limit);
           if (moved <= 0) return 0;
@@ -252,6 +257,10 @@ export function processFabricator(
         }
         progressed = true;
       }
+    }
+    if (!progressed) {
+      if (quota >= depth) break;
+      quota++;
     }
   }
 
@@ -355,6 +364,56 @@ export function slotMaterialDemand(slot: FabricatorProductionSlot, recipe: Craft
   return demand;
 }
 
+const HOLD_RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter'];
+
+export interface HoldFeedSource {
+  exoticMatter: number;
+  helium3Reserves: number;
+  alloys: number;
+  nutrients: number;
+  metallicHydrogen: number;
+  neutronStarMatter: number;
+  fuelReserveExotic: number;
+  fuelReserveHelium3: number;
+  logisticsA: number;
+  logisticsB: number;
+}
+
+export interface HoldFeedPools {
+  raw: Partial<Record<Resource['type'], number>>;
+  stockpile: MaterialCost;
+  bandwidth: number;
+}
+
+export function holdFeedPools(source: HoldFeedSource, materials: MaterialCost): HoldFeedPools {
+  const raw: Partial<Record<Resource['type'], number>> = {};
+  for (const type of HOLD_RAW_TYPES) {
+    const reserved = type === 'exotic' ? source.fuelReserveExotic
+      : type === 'helium-3' ? source.fuelReserveHelium3 : 0;
+    const available = Math.max(0, resourceAmount(source, type) - reserved);
+    if (available > 0) raw[type] = available;
+  }
+  return {
+    raw,
+    stockpile: { ...materials },
+    bandwidth: computeMaterialBandwidth(source.logisticsA, source.logisticsB),
+  };
+}
+
+export function previewHoldFeed(
+  state: FabricatorState | undefined,
+  tier: FabricatorTier | undefined,
+  pools: HoldFeedPools,
+  fillMode?: SlotFillMode,
+): FeedResult {
+  const normalized = normalizeFabricatorState(state, tier);
+  return processFabricator(normalized.slots, tier, pools.raw, {}, {
+    stockpile: pools.stockpile,
+    stockpileBudget: { remaining: pools.bandwidth },
+    fillMode,
+  });
+}
+
 interface FabricatorStoreState {
   fabricators: Record<string, Fabricator>;
   fabricatorStates: Record<string, FabricatorState>;
@@ -365,6 +424,7 @@ interface FabricatorStoreState {
   restoreFabricators: (list: Fabricator[]) => void;
   setSlotTarget: (key: string, slotIdx: number, upgradeId: string | null) => void;
   setSlotPriority: (key: string, slotIdx: number, priority: number) => void;
+  moveSlotOrder: (key: string, slotIdx: number, direction: -1 | 1) => void;
   unlockFabricatorSlot: (key: string) => boolean;
   feedFabricator: (
     key: string,
@@ -374,6 +434,10 @@ interface FabricatorStoreState {
     canRouteByproduct?: (materialId: string) => boolean,
     stockpileSource?: MaterialCost,
   ) => FeedResult;
+  setDrawFromHold: (key: string, enabled: boolean) => void;
+  setFillMode: (key: string, mode: SlotFillMode) => void;
+  loadFromHold: (key: string) => FeedResult | null;
+  runHoldFeeds: () => string[];
   restoreFabricatorStates: (states: Record<string, FabricatorState>) => void;
 }
 
@@ -445,16 +509,24 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
 
     setSlotPriority: (key, slotIdx, priority) => set((state) => {
       const fabricatorState = normalizeFabricatorState(state.fabricatorStates[key], state.fabricators[key]?.tier);
-      const orderedIndices = fabricatorState.slots.map((slot, index) => ({ index, priority: slot.priority }))
-        .sort((a, b) => a.priority - b.priority || a.index - b.index)
-        .map((entry) => entry.index)
-        .filter((index) => index !== slotIdx);
+      const orderedIndices = orderedSlotIndices(fabricatorState.slots).filter((index) => index !== slotIdx);
       orderedIndices.splice(Math.max(0, Math.min(orderedIndices.length, Math.floor(priority))), 0, slotIdx);
       const rankByIndex = new Map(orderedIndices.map((index, rank) => [index, rank]));
       return { fabricatorStates: { ...state.fabricatorStates, [key]: {
         slots: fabricatorState.slots.map((slot, index) => ({ ...slot, priority: rankByIndex.get(index) ?? index })),
       } } };
     }),
+
+    moveSlotOrder: (key, slotIdx, direction) => {
+      const state = get();
+      const slots = normalizeFabricatorState(state.fabricatorStates[key], state.fabricators[key]?.tier).slots;
+      const ordered = orderedSlotIndices(slots);
+      const configured = ordered.filter((index) => slots[index].targetUpgradeId);
+      const at = configured.indexOf(slotIdx);
+      const neighbour = configured[at + direction];
+      if (at < 0 || neighbour === undefined) return;
+      get().setSlotPriority(key, slotIdx, ordered.indexOf(neighbour));
+    },
 
     unlockFabricatorSlot: (key) => {
       let unlocked = false;
@@ -477,6 +549,7 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
         stockpile: stockpileSource ?? {},
         stockpileBudget: budget,
         canRouteByproduct,
+        fillMode: fabricator?.fillMode,
       });
       if (Object.keys(result.consumedStockpile).length > 0) {
         useStockpileStore.getState().consumeMaterials(result.consumedStockpile);
@@ -491,6 +564,41 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
         lastRun: { ...store.lastRun, [key]: result.slotResults },
       }));
       return result;
+    },
+
+    setDrawFromHold: (key, enabled) => set((state) => {
+      const fabricator = state.fabricators[key];
+      if (!fabricator || (fabricator.drawFromHold ?? false) === enabled) return state;
+      return { fabricators: { ...state.fabricators, [key]: { ...fabricator, drawFromHold: enabled } } };
+    }),
+
+    setFillMode: (key, mode) => set((state) => {
+      const fabricator = state.fabricators[key];
+      if (!fabricator || (fabricator.fillMode ?? 'priority') === mode) return state;
+      return { fabricators: { ...state.fabricators, [key]: { ...fabricator, fillMode: mode } } };
+    }),
+
+    loadFromHold: (key) => {
+      if (!get().fabricators[key]) return null;
+      const { raw, stockpile, bandwidth } = holdFeedPools(
+        useUIStore.getState(),
+        useStockpileStore.getState().materials,
+      );
+      const result = get().feedFabricator(key, raw, {}, { remaining: bandwidth }, () => true, stockpile);
+      useUIStore.getState().withdrawCargo(result.consumed);
+      if (result.readyItems.length > 0) useExtractorStore.getState().receiveFabricatorItems(result.readyItems);
+      return result;
+    },
+
+    runHoldFeeds: () => {
+      const fed: string[] = [];
+      const keys = Object.keys(get().fabricators).sort();
+      for (const key of keys) {
+        if (!get().fabricators[key].drawFromHold) continue;
+        const result = get().loadFromHold(key);
+        if (result?.changed) fed.push(key);
+      }
+      return fed;
     },
 
     restoreFabricatorStates: (states) => {

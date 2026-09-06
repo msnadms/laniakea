@@ -65,8 +65,11 @@ export class GalaxyConfig {
 
         this.type = overrides?.type ?? pickType(rng);
         this.numArms = overrides?.numArms ?? (randInt(4) + 2); // 2 to 5
-        if (this.type === 'barred' && overrides?.numArms === undefined) {
-            this.numArms = randInt(2) === 0 ? 2 : 4;
+        if (this.type === 'barred') {
+            // Preserve the historical RNG draw so changing the morphology does
+            // not also reroll the rest of a seeded galaxy's configuration.
+            if (overrides?.numArms === undefined) randInt(2);
+            this.numArms = 2;
         }
         // Mild in-plane ellipticity only; inclination comes from the camera tilt.
         this.galaxyEllipse = rng() * 0.08 + 0.92;

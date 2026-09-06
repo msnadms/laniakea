@@ -164,6 +164,21 @@ describe('instant fixed-point production', () => {
     expect(output(silicaFirst, 'silica_aerogel')).toBe(6);
     expect(output(silicaFirst, 'graphene_lattice')).toBe(0);
   });
+
+  it('spreads a scarce input across slots in shared fill mode', () => {
+    const slots = [slot('graphene_lattice', 0), slot('silica_aerogel', 1)];
+    const shared = processFabricator(slots, 1, { alloys: 900, nutrients: 1000 }, {}, { fillMode: 'shared' });
+    expect(output(shared, 'graphene_lattice')).toBeGreaterThan(0);
+    expect(output(shared, 'silica_aerogel')).toBeGreaterThan(0);
+  });
+
+  it('still buffers to depth in shared mode once nothing else can progress', () => {
+    const partial = { alloys: 100_000 };
+    const shared = processFabricator([slot('graphene_lattice')], 1, { ...partial }, {}, { fillMode: 'shared' });
+    const priority = processFabricator([slot('graphene_lattice')], 1, { ...partial }, {});
+    expect(shared.slots[0].pendingResources.alloys).toBe(priority.slots[0].pendingResources.alloys);
+    expect(shared.consumed.alloys).toBe(priority.consumed.alloys);
+  });
 });
 
 describe('production save migration', () => {
