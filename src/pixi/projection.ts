@@ -1,10 +1,12 @@
 import {
   DEPTH_FADE,
-  GALAXY_FOCAL_LENGTH,
-  GALAXY_PERSPECTIVE,
+  GALAXY_DEPTH_SIZE,
+  GALAXY_GAS_SLABS,
+  GALAXY_ORBIT_INITIAL_YAW,
+  GALAXY_ORBIT_MAX_TILT,
+  GALAXY_ORBIT_MIN_TILT,
   GALAXY_RADIUS,
   GALAXY_TILT,
-  GALAXY_DEPTH_SLABS,
   SC_DEPTH_FADE,
   SC_DEPTH_HALF,
   SC_DEPTH_SIZE,
@@ -235,7 +237,9 @@ export function projectPlanePointWithBasis(
   return projectSystemPointWithBasis(planeScratch, basis, out);
 }
 
-const GALAXY_DEPTH_HALF = GALAXY_RADIUS * Math.sin(GALAXY_TILT);
+// Fixed rather than taken from the live tilt, so turning the disk changes how much
+// depth there is to fade over instead of rescaling the fade itself.
+export const GALAXY_DEPTH_HALF = GALAXY_RADIUS * Math.sin(GALAXY_TILT);
 
 function normalizedDepth(depth: number): number {
   return Math.min(1, Math.max(0, depth / (2 * GALAXY_DEPTH_HALF) + 0.5));
@@ -246,40 +250,37 @@ export function galaxyDepthAlpha(depth: number): number {
   return 1 - DEPTH_FADE * (1 - normalizedDepth(depth));
 }
 
-export function galaxyDepthSlab(depth: number): number {
-  return Math.min(GALAXY_DEPTH_SLABS - 1, Math.floor(normalizedDepth(depth) * GALAXY_DEPTH_SLABS));
+// Orthographic draws every star at its true size, so this is a readability cue
+// rather than perspective.
+export function galaxyDepthScale(depth: number): number {
+  return 1 + GALAXY_DEPTH_SIZE * (normalizedDepth(depth) * 2 - 1);
 }
 
-// Gas dims by the same aerial-perspective law as the stars, but alpha is averaged
-// per colour batch, so a whole slab takes its tint from its centre depth.
-export function galaxySlabTint(slab: number): number {
-  const centre = (slab + 0.5) / GALAXY_DEPTH_SLABS - 0.5;
-  return galaxyDepthAlpha(centre * 2 * GALAXY_DEPTH_HALF);
+// Gas is bucketed by height, not depth: height is what a yaw turn leaves alone, so
+// a band's geometry survives the turn and only its screen offset has to move.
+function normalizedHeight(height: number, halfHeight: number): number {
+  return Math.min(1, Math.max(0, height / (2 * halfHeight) + 0.5));
 }
 
-// Draw order inside the galaxy root. Gas and stars alternate by depth slab so the
-// near side of the disk passes in front of the core and the far side behind it.
-const MIDDLE_SLAB = Math.floor(GALAXY_DEPTH_SLABS / 2);
+export function galaxyGasSlab(height: number, halfHeight: number): number {
+  return Math.min(GALAXY_GAS_SLABS - 1, Math.floor(normalizedHeight(height, halfHeight) * GALAXY_GAS_SLABS));
+}
 
-export const GALAXY_LAYER_Z = {
-  slab: (slab: number) => 10 + slab * 20,
-  stars: (slab: number) => 20 + slab * 20,
-  core: 15 + MIDDLE_SLAB * 20,
-};
+export function galaxyGasSlabHeight(slab: number, halfHeight: number): number {
+  return ((slab + 0.5) / GALAXY_GAS_SLABS - 0.5) * 2 * halfHeight;
+}
 
 export function createGalaxyCamera(): Camera3D {
   return {
-    yaw: 0,
+    yaw: GALAXY_ORBIT_INITIAL_YAW,
     tilt: GALAXY_TILT,
-    focalLength: GALAXY_RADIUS * GALAXY_FOCAL_LENGTH,
-    perspectiveStrength: GALAXY_PERSPECTIVE,
+    focalLength: 1,
+    perspectiveStrength: 0,
   };
 }
 
-// The galaxy opens off its target tilt and settles. Geometry is baked at the fixed
-// tilt, so the settle eases the layer's vertical scale instead of re-projecting.
-export function galaxyTiltSquash(tiltOffset: number): number {
-  return Math.cos(GALAXY_TILT - tiltOffset) / Math.cos(GALAXY_TILT);
+export function clampGalaxyTilt(tilt: number): number {
+  return Math.min(GALAXY_ORBIT_MAX_TILT, Math.max(GALAXY_ORBIT_MIN_TILT, tilt));
 }
 
 export function createSuperclusterCamera(): Camera3D {

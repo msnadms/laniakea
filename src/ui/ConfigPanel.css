@@ -82,31 +82,6 @@
   letter-spacing: 0.03em;
 }
 
-.tutorial-body {
-  gap: 12px;
-}
-
-.tutorial-section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.tutorial-section-title {
-  color: #99bbdd;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.9;
-}
-
-.tutorial-item {
-  color: #6a90b0;
-  padding-left: 8px;
-  border-left: 1px solid rgba(60, 110, 160, 0.35);
-  line-height: 1.55;
-}
-
 /* Visually hidden but keyboard-focusable checkbox backing the custom toggle */
 .config-toggle-checkbox {
   position: absolute;
@@ -208,4 +183,3 @@
   background: rgba(50, 100, 170, 0.6);
   color: #99bbdd;
 }
-

@@ -56,6 +56,7 @@ import { StationMap } from './LogisticsMap';
 import { getSystemKey, getSystemName, projectNodes } from './logisticsProject';
 import type { ProjectedMapNode } from './logisticsProject';
 import { useNow } from './useNow';
+import { TutorialPanel } from './TutorialPanel';
 import './LogisticsModal.css';
 import './LogisticsPolicies.css';
 
@@ -466,7 +467,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       <div className="logistics-panel" onClick={(e) => e.stopPropagation()}>
         <div className="logistics-header">
           <span className="logistics-title">Logistics Network</span>
-          <button className="logistics-close" onClick={onClose}>✕</button>
+          <div className="logistics-header-actions">
+            <TutorialPanel page="logistics" overlay />
+            <button className="logistics-close" onClick={onClose} aria-label="Close logistics network">✕</button>
+          </div>
         </div>
 
         <div className="logistics-body">

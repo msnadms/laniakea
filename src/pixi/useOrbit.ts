@@ -2,19 +2,37 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useApplication } from '@pixi/react';
 import { Ticker } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
-import { SC_ORBIT_EASE, SC_ORBIT_SENSITIVITY } from '../game/constants';
+import { DRAG_THRESHOLD_PX, SC_ORBIT_EASE, SC_ORBIT_SENSITIVITY } from '../game/constants';
 import { clampOrbitTilt, createSuperclusterCamera, type Camera3D } from './projection';
 
 const FRAME_MS = 1000 / 60;
+
+// The ease is asymptotic, so without a snap the camera keeps moving by fractions of
+// a milliradian forever and nothing downstream can ever call itself unchanged.
+const ORBIT_SNAP = 1e-4;
+
+export interface OrbitConfig {
+  createCamera: () => Camera3D;
+  clampTilt: (tilt: number) => number;
+  sensitivity: number;
+  ease: number;
+}
+
+export const SUPERCLUSTER_ORBIT: OrbitConfig = {
+  createCamera: createSuperclusterCamera,
+  clampTilt: clampOrbitTilt,
+  sensitivity: SC_ORBIT_SENSITIVITY,
+  ease: SC_ORBIT_EASE,
+};
 
 export function isOrbitGesture(event: { button: number; shiftKey: boolean }): boolean {
   return event.button === 2 || event.shiftKey;
 }
 
-export function useOrbit() {
+export function useOrbit(config: OrbitConfig = SUPERCLUSTER_ORBIT) {
   const { app, isInitialised } = useApplication();
-  const camera = useMemo(() => ({ current: createSuperclusterCamera() }), []);
-  const target = useRef<Camera3D>(createSuperclusterCamera());
+  const camera = useMemo(() => ({ current: config.createCamera() }), [config]);
+  const target = useMemo(() => ({ current: config.createCamera() }), [config]);
   const isOrbiting = useRef(false);
   const didOrbit = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, yaw: 0, tilt: 0 });
@@ -38,10 +56,13 @@ export function useOrbit() {
 
     const onMove = (event: FederatedPointerEvent) => {
       if (!isOrbiting.current) return;
-      didOrbit.current = true;
       const start = dragStart.current;
-      target.current.yaw = start.yaw + (event.globalX - start.x) * SC_ORBIT_SENSITIVITY;
-      target.current.tilt = clampOrbitTilt(start.tilt - (event.globalY - start.y) * SC_ORBIT_SENSITIVITY);
+      const deltaX = event.globalX - start.x;
+      const deltaY = event.globalY - start.y;
+      if (!didOrbit.current && (Math.abs(deltaX) > DRAG_THRESHOLD_PX || Math.abs(deltaY) > DRAG_THRESHOLD_PX))
+        didOrbit.current = true;
+      target.current.yaw = start.yaw + deltaX * config.sensitivity;
+      target.current.tilt = config.clampTilt(start.tilt - deltaY * config.sensitivity);
     };
 
     const onUp = () => { isOrbiting.current = false; };
@@ -54,9 +75,16 @@ export function useOrbit() {
     canvas.addEventListener('contextmenu', onContextMenu);
 
     const tick = (ticker: Ticker) => {
-      const ease = 1 - Math.pow(1 - SC_ORBIT_EASE, ticker.deltaMS / FRAME_MS);
-      camera.current.yaw += (target.current.yaw - camera.current.yaw) * ease;
-      camera.current.tilt += (target.current.tilt - camera.current.tilt) * ease;
+      const yawGap = target.current.yaw - camera.current.yaw;
+      const tiltGap = target.current.tilt - camera.current.tilt;
+      if (Math.abs(yawGap) < ORBIT_SNAP && Math.abs(tiltGap) < ORBIT_SNAP) {
+        camera.current.yaw = target.current.yaw;
+        camera.current.tilt = target.current.tilt;
+        return;
+      }
+      const ease = 1 - Math.pow(1 - config.ease, ticker.deltaMS / FRAME_MS);
+      camera.current.yaw += yawGap * ease;
+      camera.current.tilt += tiltGap * ease;
     };
     Ticker.shared.add(tick);
 
@@ -70,7 +98,7 @@ export function useOrbit() {
       isOrbiting.current = false;
       didOrbit.current = false;
     };
-  }, [app, isInitialised, camera]);
+  }, [app, isInitialised, camera, target, config]);
 
-  return { orbitCamera: camera, didOrbit };
+  return { orbitCamera: camera, orbitTarget: target, didOrbit };
 }

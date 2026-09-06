@@ -334,15 +334,28 @@ export const CAMERA_ZOOM_FACTOR = 1.12;
 
 export const GALAXY_TILT = 50 * Math.PI / 180;
 
-// Short focal length so the near edge of the disk is visibly larger than the far
-// edge; the cost is that the scale bar is exact only where depth is zero.
-export const GALAXY_FOCAL_LENGTH = 3;
-export const GALAXY_PERSPECTIVE = 0.8;
+// The disk is turned in place rather than flown through, so the projection stays
+// orthographic: gas geometry is baked flat and re-oriented by a container
+// transform, which only agrees with the stars' own projection without perspective.
+export const GALAXY_ORBIT_INITIAL_YAW = 0;
 
-// Depth slabs the galaxy is split into so stars and gas sort between each other.
-// Each slab is one more offscreen filter pass, so turn this down first if the
-// galaxy view ever costs frame time.
-export const GALAXY_DEPTH_SLABS = 3;
+// Past the upper bound the disk reads as an edge-on smear with no usable click
+// targets; past the lower one the tilt stops carrying any depth at all.
+export const GALAXY_ORBIT_MIN_TILT = 15 * Math.PI / 180;
+export const GALAXY_ORBIT_MAX_TILT = 78 * Math.PI / 180;
+
+// Radians of rotation per pixel dragged, and fraction of the remaining rotation
+// covered per 60fps frame.
+export const GALAXY_ORBIT_SENSITIVITY = 0.005;
+export const GALAXY_ORBIT_EASE = 0.12;
+
+// Stand-in for the perspective the orthographic camera gives up: near stars are
+// drawn larger than far ones without their positions moving off the gas.
+export const GALAXY_DEPTH_SIZE = 0.22;
+
+// Height bands the gas is baked into so the disk keeps some thickness as it
+// turns. They share one filter pass, so this is cheap to raise.
+export const GALAXY_GAS_SLABS = 5;
 
 // Scale heights are a fraction of GALAXY_RADIUS, and far past physical: a real
 // disk is a hundred times wider than it is thick, which a tilt cannot show.
@@ -368,8 +381,6 @@ export const IRREGULAR_CORE_FLATTENING = 0.6;
 export const DEPTH_FADE = 0.35;
 
 export const GALAXY_INTRO_TILT_OFFSET = 8 * Math.PI / 180;
-
-export const GALAXY_INTRO_TILT_MS = 700;
 
 export const GALAXY_PICK_SCREEN_PX = 15;
 

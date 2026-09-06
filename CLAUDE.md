@@ -11,7 +11,7 @@ npm run lint      # ESLint
 npm run preview   # Serve the production build locally
 ```
 
-No test suite exists in this project.
+`npm test` runs the vitest suite (projection, logistics and fabricator logic).
 
 ## Code style
 
@@ -47,13 +47,19 @@ Three star populations are generated:
 
 `GalaxyStage` wraps the `@pixi/react` `<Application>`. Inside it, `GalaxyWorld` is the main scene.
 
-**Camera** is managed via mutable refs (`camera.current = { x, y, scale }`) — deliberately not React state to avoid re-renders on every frame. Pan via pointer drag, zoom via scroll wheel with cursor-anchored math.
+**Camera** is managed via mutable refs (`camera.current = { x, y, scale }`) — deliberately not React state to avoid re-renders on every frame. Pan via pointer drag, zoom via scroll wheel with cursor-anchored math. Shift-drag or right-drag turns the disk (`useOrbit`, shared with the supercluster via an `OrbitConfig`); `useCamera` takes a `shouldPan` predicate so it declines the orbit gesture, and the tap handler ignores a tap that ended one.
 
-**Nebula rendering** runs once per galaxy in a `useEffect`. Particles are batched into a `Map<color, Particle[]>` so each unique color issues a single PixiJS `fill()` call. The nebula uses `BlurFilter` + `DisplacementFilter` (animated per-frame via `Ticker.shared`) for organic movement.
+**The galaxy camera is orthographic** (`createGalaxyCamera`, `perspectiveStrength: 0`). That is what makes turning it affordable: the gas cannot be re-projected per particle per frame at ~10^5 particles, so it is baked flat and re-oriented by container transforms, and a container transform is affine while a perspective divide is not — with perspective on, the stars would drift off the gas as the disk turned. `galaxyDepthScale` gives the stars back a near/far size cue as a stylistic effect, the way `superclusterDepthScale` does. Tilt is clamped by `clampGalaxyTilt` clear of both edge-on (no click targets) and face-on (no depth). The opening tilt settle is just the camera starting `GALAXY_INTRO_TILT_OFFSET` flat of its target and letting the orbit ease carry it home.
+
+**Nebula rendering** bakes once per galaxy in a `useEffect`, in **plane coordinates**. Particles are batched into a `Map<color, Particle[]>` so each unique color issues a single PixiJS `fill()` call, then bucketed into `GALAXY_GAS_SLABS` bands by **height** — height is what a yaw turn leaves alone, so a band's geometry survives the turn and only its screen offset moves. Each band is a `Graphics` inside a spin container (`rotation = yaw`) inside a squash container (`scale.y = cos(tilt)`, `y = -height * sin(tilt)`), which is the whole orthographic projection of a fixed-height point. The bands of one layer share a single filtered parent (`BlurFilter` + `DisplacementFilter`, animated per-frame via `Ticker.shared`) — a filtered container renders as one unit so nothing can sort into it, but no star ever falls between two bands of the same layer, so nothing needs to. Gas and core are two such layers.
+
+Being baked flat, the gas cannot carry a per-particle depth tint, so `DepthFadeFilter` (`depthFadeFilter.ts`) reproduces `galaxyDepthAlpha` in the shader: depth is linear in screen y for a flat disk, so the fade is a vertical ramp, and the tick feeds it the galactic centre's screen y (`camera.y`) and the ramp's half-span in screen pixels. It must be a filter rather than a gradient alpha mask: pixi's `MaskFilter` sets `clipToViewport: false`, so a mask sizes its framebuffer from the masked container's *unclipped* global bounds — at the 24x zoom of the enter-system animation that exceeds `MAX_RENDERBUFFER_SIZE` and every draw that frame fails with an incomplete framebuffer.
+
+**Stars are re-projected every frame the disk turns.** `StarNode` registers its container and sprite into a `StarViews` map and the tick writes transforms through `applyStarProjection` (`starView.ts`) — 700-odd stars are nothing to project, but re-rendering that many React components per frame would be. They are direct children of `galaxyRoot` with `zIndex = projected.depth`, so the near half of the disk sorts in front of the gas and the far half behind it.
 
 **Background starfield** is split into two `Graphics` objects (dim ≤0.7 brightness, bright >0.7) so their alpha can be pulsed independently on each tick.
 
-**Star picking** is resolved on the stage's `pointertap` in `GalaxyWorld`, not by a per-star `onClick`: PixiJS only fires a click when press and release resolve to the same object, and in the projected disk a one-pixel wobble between them lands on a neighbouring star's hit area and the click is dispatched on their common ancestor instead. The handler projects the pointer into `galaxyRoot` space and takes the nearest star within `min(GALAXY_PICK_SCREEN_PX / camera.scale, GALAXY_PICK_MAX_WORLD)`, breaking ties frontmost-first, and ignores taps that ended a pan (`hasDragged` from `useCamera`). The same scan runs on `pointermove` to set the canvas cursor, so the cursor and the click agree at every zoom; `StarNode` is `eventMode="none"` and carries no hit area, keeping every star out of Pixi's hit-test tree.
+**Star picking** is resolved on the stage's `pointertap` in `GalaxyWorld`, not by a per-star `onClick`: PixiJS only fires a click when press and release resolve to the same object, and in the projected disk a one-pixel wobble between them lands on a neighbouring star's hit area and the click is dispatched on their common ancestor instead. The handler projects the pointer into `galaxyRoot` space and takes the nearest star within `min(GALAXY_PICK_SCREEN_PX / camera.scale, GALAXY_PICK_MAX_WORLD)`, breaking ties frontmost-first, and ignores taps that ended a pan or an orbit (`hasDragged` from `useCamera`, `didOrbit` from `useOrbit`). The same scan runs on `pointermove` to set the canvas cursor, so the cursor and the click agree at every zoom; `StarNode` is `eventMode="none"` and carries no hit area, keeping every star out of Pixi's hit-test tree.
 
 **Star textures** (`src/pixi/textures.ts → createStarTexture`) are generated per star on a canvas: radial gradient core + 4 diffraction-spike ellipses composited with `destination-over`. Created inside `useMemo` in `StarNode` and destroyed on unmount — do not use module-level caches for PixiJS textures.
 

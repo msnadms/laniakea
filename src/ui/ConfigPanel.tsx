@@ -5,11 +5,11 @@ import { useStockpileStore } from '../store/stockpileStore';
 import { saveStockpile } from '../firebase/stockpile';
 import { RARE_RESOURCES } from '../data/rareResources';
 import { CRAFT_MATERIALS } from '../data/materials';
+import { TutorialPanel } from './TutorialPanel';
 import './ConfigPanel.css';
 
 export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const [settingsExpanded, setSettingsExpanded] = useState(false);
-  const [tutorialExpanded, setTutorialExpanded] = useState(false);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
   const toggleAttractorLabels = useUIStore((s) => s.toggleAttractorLabels);
   const showOrbitRings = useUIStore((s) => s.showOrbitRings);
@@ -152,35 +152,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
 
         </div>
       )}
-      <button className={`config-header${tutorialExpanded ? ' config-header--open' : ''}`} onClick={() => setTutorialExpanded((e) => !e)}>
-        <span className="config-label">Tutorial</span>
-        <span className="config-chevron">{tutorialExpanded ? '▲' : '▼'}</span>
-      </button>
-      {tutorialExpanded && (
-        <div className="config-body tutorial-body">
-          <div className="tutorial-section">
-            <div className="tutorial-section-title">Supercluster View</div>
-            <div className="tutorial-item">Zoom in and click on a galaxy to visit it and add it to your codex. Visit a new supercluster in the settings menu, or by refreshing.</div>
-            <div className="tutorial-item">Drag to pan and scroll to zoom. Hold shift and drag, or drag with the right mouse button, to turn the cosmic web and see its depth.</div>
-          </div>
-          <div className="tutorial-section">
-            <div className="tutorial-section-title">Galaxy View</div>
-            <div className="tutorial-item">Click on a star to visit it and add it to your codex.</div>
-          </div>
-          <div className="tutorial-section">
-            <div className="tutorial-section-title">Codex</div>
-            <div className="tutorial-item">Click the travel button to go to any visited supercluster, galaxy, or system. Remove destinations from your codex with forget mode.</div>
-          </div>
-          <div className="tutorial-section">
-            <div className="tutorial-section-title">Resources</div>
-            <div className="tutorial-item">Manage your <a href="https://en.wikipedia.org/wiki/Exotic_matter" target="_blank" rel="noopener noreferrer">exotic matter</a> reserves, <a href="https://en.wikipedia.org/wiki/Alcubierre_drive" target="_blank" rel="noopener noreferrer">Alcubierre drive</a> integrity, Railgun ammo, and Helium-3 reserves to travel and explore the universe.</div>
-          </div>
-          <div className="tutorial-section">
-            <div className="tutorial-section-title">Extraction</div>
-            <div className="tutorial-item">Build extraction stations on planets to gather alloys, nutrients, exotic matter, and Helium-3.</div>
-          </div>
-        </div>
-      )}
+      <TutorialPanel />
     </div>
   );
 }

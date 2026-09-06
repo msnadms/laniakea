@@ -50,9 +50,9 @@ export function useCamera(
     stage.hitArea = pixi.screen;
 
     const onDown = (event: FederatedPointerEvent) => {
+      hasDragged.current = false;
       if (shouldPanRef.current && !shouldPanRef.current(event)) return;
       isDragging.current = true;
-      hasDragged.current = false;
       dragStart.current = { x: event.globalX, y: event.globalY };
       cameraStart.current = { x: camera.current.x, y: camera.current.y };
     };

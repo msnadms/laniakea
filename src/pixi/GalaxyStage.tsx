@@ -1,7 +1,7 @@
 import { extend, useApplication } from '@pixi/react';
 import { Container, Graphics, Ticker, Sprite, BlurFilter } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import { galaxyTravelCost, trySpendTravelCost } from '../store/travelCosts';
@@ -19,10 +19,10 @@ import {
   CORE_COLORS,
   NEBULA_SCALE_HEIGHT,
   CORE_HEIGHT_SCALE,
-  GALAXY_DEPTH_SLABS,
-  GALAXY_TILT,
+  GALAXY_GAS_SLABS,
   GALAXY_INTRO_TILT_OFFSET,
-  GALAXY_INTRO_TILT_MS,
+  GALAXY_ORBIT_EASE,
+  GALAXY_ORBIT_SENSITIVITY,
   GALAXY_PICK_SCREEN_PX,
   GALAXY_PICK_MAX_WORLD,
 } from '../game/constants';
@@ -30,17 +30,21 @@ import { createDisplacementSetup } from './textures';
 import { createRng } from '../game/galaxyGen';
 import { nebulaClouds, coreGlow, rotate } from '../game/galaxyShapes';
 import { StarNode } from './StarNode';
+import { applyStarProjection, type StarViews } from './starView';
 import {
+  clampGalaxyTilt,
   createGalaxyCamera,
-  galaxyDepthSlab,
-  galaxySlabTint,
+  galaxyGasSlab,
+  galaxyGasSlabHeight,
   projectPlanePointWithBasis,
   updateProjectionBasis,
-  GALAXY_LAYER_Z,
+  GALAXY_DEPTH_HALF,
   type ProjectedPoint,
 } from './projection';
+import { DepthFadeFilter } from './depthFadeFilter';
 import { useCamera } from './useCamera';
-import { animateTiltSettle, animateZoomTo } from './zoomAnim';
+import { useOrbit, isOrbitGesture, type OrbitConfig } from './useOrbit';
+import { animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
 import { ScaleBar } from './ScaleBar';
 import { buildAddressComponent, type StarSystem } from '../game/types';
@@ -52,10 +56,28 @@ import { generateGalaxyName } from '../game/superclusters';
 
 const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000];
 
+const GALAXY_ORBIT: OrbitConfig = {
+  createCamera: createGalaxyCamera,
+  clampTilt: clampGalaxyTilt,
+  sensitivity: GALAXY_ORBIT_SENSITIVITY,
+  ease: GALAXY_ORBIT_EASE,
+};
+
 type Particle = { x: number; y: number; r: number; a: number };
 type Batches = Map<number, Particle[]>;
 type ScaledBatches = Map<number, Batches>;
-type CachedStarProjection = { x: number; y: number; z: number; projected: ProjectedPoint };
+type StarProjection = { system: StarSystem; projected: ProjectedPoint };
+
+interface GasBand {
+  squash: Container;
+  spin: Container;
+  height: number;
+}
+
+interface GasLayer {
+  container: Container;
+  bands: GasBand[];
+}
 
 function batchFor(batches: Batches, color: number): Particle[] {
   let batch = batches.get(color);
@@ -83,6 +105,33 @@ function flushParticleBatches(gfx: Graphics, batches: Batches, alphaScale = 1) {
   }
 }
 
+// Gas is baked once in plane coordinates and turned by container transforms: the
+// spin container carries the yaw, its parent squashes by cos(tilt) and lifts the
+// band by its height, which is the entire projection of a fixed-height point under
+// an orthographic camera.
+function createGasLayer(slabBatches: ScaledBatches[], halfHeight: number): GasLayer {
+  const container = new Container();
+  const bands = slabBatches.map((batchGroups, slab) => {
+    const gfx = new Graphics();
+    for (const [alphaScale, batches] of batchGroups) flushParticleBatches(gfx, batches, alphaScale);
+    const spin = new Container();
+    spin.addChild(gfx);
+    const squash = new Container();
+    squash.addChild(spin);
+    container.addChild(squash);
+    return { squash, spin, height: galaxyGasSlabHeight(slab, halfHeight) };
+  });
+  return { container, bands };
+}
+
+function orientGasLayer(layer: GasLayer, yaw: number, cosTilt: number, sinTilt: number) {
+  for (const band of layer.bands) {
+    band.spin.rotation = yaw;
+    band.squash.scale.y = cosTilt;
+    band.squash.position.y = -band.height * sinTilt;
+  }
+}
+
 function spreadCoreSample(sample: number) {
   return Math.sign(sample) * Math.pow(Math.abs(sample), CORE_DISTRIBUTION_POWER);
 }
@@ -103,16 +152,17 @@ export function GalaxyWorld() {
   const setView = useUIStore((s) => s.setView);
   const config = galaxyConfig;
 
-  const galaxyCamera = useMemo(() => createGalaxyCamera(), []);
-  const galaxyProjection = useMemo(() => updateProjectionBasis(galaxyCamera), [galaxyCamera]);
+  const { orbitCamera, orbitTarget, didOrbit } = useOrbit(GALAXY_ORBIT);
+  const galaxyProjection = useMemo(() => updateProjectionBasis(orbitCamera.current), [orbitCamera]);
 
   const worldRef = useRef<Container>(null);
   const galaxyRootRef = useRef<Container>(null);
-  const starProjectionCacheRef = useRef<Map<number, CachedStarProjection>>(new Map());
   const handleSelectSystemRef = useRef<(id: number | null) => void>(() => {});
-  const starBandsRef = useRef<Array<Array<{ system: StarSystem; projected: ProjectedPoint }>>>([]);
+  const starProjectionsRef = useRef<StarProjection[]>([]);
+  const starViews = useMemo<StarViews>(() => new Map(), []);
 
-  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE);
+  const shouldPan = useCallback((event: FederatedPointerEvent) => !isOrbitGesture(event), []);
+  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE, undefined, shouldPan);
 
   const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, {
     onNavigateBack: () => {
@@ -176,29 +226,22 @@ export function GalaxyWorld() {
 
   handleSelectSystemRef.current = handleSelectSystem;
 
+  // The disk opens a little flatter than it settles; the orbit ease carries it home.
   useEffect(() => {
-    if (!isReady || !galaxyRootRef.current) return;
-    const openingSquash = Math.cos(GALAXY_TILT - GALAXY_INTRO_TILT_OFFSET) / Math.cos(GALAXY_TILT);
-    return animateTiltSettle(galaxyRootRef.current, openingSquash, GALAXY_INTRO_TILT_MS);
-  }, [isReady, galaxySeed]);
+    if (!isReady) return;
+    orbitCamera.current.tilt = clampGalaxyTilt(orbitTarget.current.tilt - GALAXY_INTRO_TILT_OFFSET);
+  }, [isReady, galaxySeed, orbitCamera, orbitTarget]);
 
-  const starBands = useMemo(() => {
-    const bands: Array<Array<{ system: typeof galaxySystems[number]; projected: ProjectedPoint }>> =
-      Array.from({ length: GALAXY_DEPTH_SLABS }, () => []);
-    const previousCache = starProjectionCacheRef.current;
-    const nextCache = new Map<number, CachedStarProjection>();
-    for (const system of galaxySystems) {
-      const cached = previousCache.get(system.id);
-      const projected = cached && cached.x === system.x && cached.y === system.y && cached.z === system.z
-        ? cached.projected
-        : projectPlanePointWithBasis(system.x, system.y, system.z, galaxyProjection);
-      nextCache.set(system.id, { x: system.x, y: system.y, z: system.z, projected });
-      bands[galaxyDepthSlab(projected.depth)].push({ system, projected });
-    }
-    starProjectionCacheRef.current = nextCache;
-    starBandsRef.current = bands;
-    return bands;
-  }, [galaxySystems, galaxyProjection]);
+  const starProjections = useMemo(
+    () => galaxySystems.map((system) => ({
+      system,
+      projected: projectPlanePointWithBasis(system.x, system.y, system.z, galaxyProjection),
+    })),
+    [galaxySystems, galaxyProjection],
+  );
+  useLayoutEffect(() => {
+    starProjectionsRef.current = starProjections;
+  }, [starProjections]);
 
   useEffect(() => {
     if (!isInitialised || !isReady) return;
@@ -213,21 +256,19 @@ export function GalaxyWorld() {
       let nearest: StarSystem | null = null;
       let nearestDist = Infinity;
       let nearestDepth = -Infinity;
-      for (const band of starBandsRef.current) {
-        for (const { system, projected } of band) {
-          const dist = Math.hypot(projected.x - local.x, projected.y - local.y);
-          if (dist > maxDist) continue;
-          if (dist > nearestDist || (dist === nearestDist && projected.depth <= nearestDepth)) continue;
-          nearestDist = dist;
-          nearestDepth = projected.depth;
-          nearest = system;
-        }
+      for (const { system, projected } of starProjectionsRef.current) {
+        const dist = Math.hypot(projected.x - local.x, projected.y - local.y);
+        if (dist > maxDist) continue;
+        if (dist > nearestDist || (dist === nearestDist && projected.depth <= nearestDepth)) continue;
+        nearestDist = dist;
+        nearestDepth = projected.depth;
+        nearest = system;
       }
       return nearest;
     };
 
     const onTap = (event: FederatedPointerEvent) => {
-      if (hasDragged.current || event.button > 0) return;
+      if (hasDragged.current || didOrbit.current || event.button > 0) return;
       const nearest = pickStar(event.global);
       handleSelectSystemRef.current(nearest ? nearest.id : null);
     };
@@ -243,7 +284,7 @@ export function GalaxyWorld() {
       stage.off('pointermove', onMove);
       app.canvas.style.cursor = '';
     };
-  }, [app, isInitialised, isReady, camera, hasDragged]);
+  }, [app, isInitialised, isReady, camera, hasDragged, didOrbit]);
 
   const radiusLy = useMemo(() => {
     const rng = createRng(galaxySeed);
@@ -257,9 +298,8 @@ export function GalaxyWorld() {
 
     const rng = createRng((galaxySeed ^ 0x9e3779b9) >>> 0);
 
-    const slabBatches: ScaledBatches[] = Array.from({ length: GALAXY_DEPTH_SLABS }, () => new Map());
-    const nebulaHeight = GALAXY_RADIUS * NEBULA_SCALE_HEIGHT;
-    const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
+    const nebulaHalfHeight = GALAXY_RADIUS * NEBULA_SCALE_HEIGHT;
+    const nebulaSlabs: ScaledBatches[] = Array.from({ length: GALAXY_GAS_SLABS }, () => new Map());
 
     const layoutRng = createRng((galaxySeed ^ 0x51ed270b) >>> 0);
     for (const cloud of nebulaClouds(layoutRng, config)) {
@@ -271,7 +311,7 @@ export function GalaxyWorld() {
       for (let p = 0; p < cloud.count; p++) {
         const offsetX = ((rng() + rng()) / 2 - 0.5) * 2 * cloud.spread;
         const offsetY = ((rng() + rng()) / 2 - 0.5) * 2 * cloud.spread * config.galaxyEllipse;
-        const offsetHeight = (rng() + rng() - 1) * nebulaHeight;
+        const offsetHeight = (rng() + rng() - 1) * nebulaHalfHeight;
         const particleRadius = cloud.spread * (0.15 + rng() * 0.45) * cloud.blobScale;
         const useNebula = rng() < cloud.nebulaChance;
         const colorList = useNebula
@@ -280,21 +320,18 @@ export function GalaxyWorld() {
         const nebulaColor = colorList[Math.floor(rng() * colorList.length)];
         const alpha = (0.014 + rng() * 0.024) * Math.max(1 - stepFraction, 0.5) * taper;
 
-        projectPlanePointWithBasis(cloud.x + offsetX, cloud.y + offsetY, offsetHeight, galaxyProjection, projected);
         const batches = batchesForScale(
-          slabBatches[galaxyDepthSlab(projected.depth)],
+          nebulaSlabs[galaxyGasSlab(offsetHeight, nebulaHalfHeight)],
           cloud.opacityScale ?? 1,
         );
         batchFor(batches, nebulaColor)
-          .push({ x: projected.x, y: projected.y, r: particleRadius * projected.scale, a: alpha });
+          .push({ x: cloud.x + offsetX, y: cloud.y + offsetY, r: particleRadius, a: alpha });
       }
     }
 
-    const coreGfx = new Graphics();
-    const coreBatches: Batches = new Map();
-    const coreCenterBatches: Batches = new Map();
     const glow = coreGlow(config);
-    const coreHeight = CORE_ELLIPSE_Y * CORE_HEIGHT_SCALE * glow.flattening;
+    const coreHalfHeight = CORE_ELLIPSE_Y * CORE_HEIGHT_SCALE * glow.flattening;
+    const coreSlabs: ScaledBatches[] = Array.from({ length: GALAXY_GAS_SLABS }, () => new Map());
     for (let p = 0; p < glow.count; p++) {
       const unitX = spreadCoreSample(((rng() + rng()) / 2 - 0.5) * 2);
       const unitY = spreadCoreSample(((rng() + rng()) / 2 - 0.5) * 2);
@@ -307,84 +344,102 @@ export function GalaxyWorld() {
         unitY * halfWidth * CORE_ELLIPSE_Y * glow.scaleY,
         config.orientation + glow.angle,
       );
-      const offsetHeight = unitHeight * halfWidth * coreHeight;
+      const offsetHeight = unitHeight * halfWidth * coreHalfHeight;
       const particleRadius = 20 + rng() * 60;
       const coreColor = CORE_COLORS[Math.floor(rng() * CORE_COLORS.length)];
       const reach = Math.hypot(unitX, unitY);
       const fade = Math.pow(Math.min(1, Math.max(0, (1 - reach) / (1 - glow.plateau))), glow.falloff);
       const alpha = (0.012 + rng() * 0.018) * fade * glow.alphaScale * CORE_ALPHA_SCALE;
-      projectPlanePointWithBasis(offsetX, offsetY, offsetHeight, galaxyProjection, projected);
       const isBarredCenter = config.type === 'barred' && reach <= glow.plateau;
-      batchFor(isBarredCenter ? coreCenterBatches : coreBatches, coreColor).push({
-        x: projected.x,
-        y: projected.y,
-        r: particleRadius * projected.scale,
-        a: alpha,
-      });
+      const batches = batchesForScale(
+        coreSlabs[galaxyGasSlab(offsetHeight, coreHalfHeight)],
+        isBarredCenter ? BARRED_CORE_CENTER_ALPHA_SCALE : 1,
+      );
+      batchFor(batches, coreColor).push({ x: offsetX, y: offsetY, r: particleRadius, a: alpha });
     }
-    flushParticleBatches(coreGfx, coreBatches);
-    flushParticleBatches(coreGfx, coreCenterBatches, BARRED_CORE_CENTER_ALPHA_SCALE);
 
-    // The gas has to be a sibling of the star bands, not their parent: a filtered
-    // container renders as one unit, so nothing outside it can sort into it. One
-    // displacement filter instance is shared by every slab so the whole gas layer
-    // keeps drifting as one field rather than shearing at the slab seams.
+    // The gas has to be a sibling of the stars, not their parent: a filtered
+    // container renders as one unit, so nothing outside it can sort into it. Its
+    // height bands do share that one container, and so one filter pass, because no
+    // star ever falls between two of them.
     const disp = createDisplacementSetup(galaxyRoot, NEBULA_DISPLACEMENT_SCALE);
-    const blurs: BlurFilter[] = [];
-
-    const gasLayers = slabBatches.map((batchGroups, slab) => {
-      const gfx = new Graphics();
-      for (const [alphaScale, batches] of batchGroups) {
-        flushParticleBatches(gfx, batches, galaxySlabTint(slab) * alphaScale);
-      }
-      gfx.zIndex = GALAXY_LAYER_Z.slab(slab);
-      const blur = new BlurFilter({ strength: 0.75, quality: 1 });
-      blurs.push(blur);
-      gfx.filters = [blur, disp.filter];
-      return gfx;
-    });
-
-    coreGfx.zIndex = GALAXY_LAYER_Z.core;
+    const nebulaBlur = new BlurFilter({ strength: 0.75, quality: 1 });
     const coreBlur = new BlurFilter({ strength: 0.75, quality: 1, blendMode: 'add' });
-    blurs.push(coreBlur);
-    coreGfx.filters = [coreBlur, disp.filter];
-    gasLayers.push(coreGfx);
 
-    for (const layer of gasLayers) {
-      layer.blendMode = 'screen';
-      galaxyRoot.addChild(layer);
-    }
+    const depthFade = new DepthFadeFilter();
+
+    const nebulaLayer = createGasLayer(nebulaSlabs, nebulaHalfHeight);
+    nebulaLayer.container.filters = [nebulaBlur, disp.filter, depthFade];
+    nebulaLayer.container.blendMode = 'screen';
+    nebulaLayer.container.zIndex = 0;
+
+    const coreLayer = createGasLayer(coreSlabs, coreHalfHeight);
+    coreLayer.container.filters = [coreBlur, disp.filter];
+    coreLayer.container.blendMode = 'screen';
+    coreLayer.container.zIndex = 1;
+
+    galaxyRoot.addChild(nebulaLayer.container);
+    galaxyRoot.addChild(coreLayer.container);
+
+    // World distance from the galactic centre to where the depth fade clamps, which
+    // is where the disk's own depth reaches GALAXY_DEPTH_HALF.
+    let fadeHalfSpan = GALAXY_DEPTH_HALF;
+
+    const orient = () => {
+      const { yaw } = orbitCamera.current;
+      const basis = updateProjectionBasis(orbitCamera.current, galaxyProjection);
+      orientGasLayer(nebulaLayer, yaw, basis.cosTilt, basis.sinTilt);
+      orientGasLayer(coreLayer, yaw, basis.cosTilt, basis.sinTilt);
+      fadeHalfSpan = GALAXY_DEPTH_HALF * basis.cosTilt / basis.sinTilt;
+
+      for (const { system, projected } of starProjectionsRef.current) {
+        projectPlanePointWithBasis(system.x, system.y, system.z, basis, projected);
+        const view = starViews.get(system.id);
+        if (view) applyStarProjection(view, projected);
+      }
+    };
+
+    orient();
 
     let elapsedSecs = 0;
+    let lastYaw = orbitCamera.current.yaw;
+    let lastTilt = orbitCamera.current.tilt;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
       disp.update(elapsedSecs, NEBULA_DISPLACEMENT_SCALE * camera.current.scale);
+
+      const { yaw, tilt } = orbitCamera.current;
+      if (yaw !== lastYaw || tilt !== lastTilt) {
+        lastYaw = yaw;
+        lastTilt = tilt;
+        orient();
+      }
+
+      depthFade.setRamp(camera.current.y, fadeHalfSpan * camera.current.scale);
     };
 
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
-      for (const layer of gasLayers) {
-        galaxyRoot.removeChild(layer);
-        layer.destroy();
-      }
-      for (const blur of blurs) blur.destroy();
+      galaxyRoot.removeChild(nebulaLayer.container);
+      galaxyRoot.removeChild(coreLayer.container);
+      nebulaLayer.container.destroy({ children: true });
+      coreLayer.container.destroy({ children: true });
+      nebulaBlur.destroy();
+      coreBlur.destroy();
+      depthFade.destroy();
       disp.destroy();
     };
-  }, [galaxySeed, config, isInitialised, camera, galaxyProjection]);
+  }, [galaxySeed, config, isInitialised, camera, orbitCamera, galaxyProjection, starViews]);
 
   return (
     <>
       <BackgroundStars stars={galaxyBackgroundStars} />
       <pixiContainer ref={worldRef} visible={isReady}>
         <pixiContainer ref={galaxyRootRef} sortableChildren>
-          {starBands.map((band, slab) => (
-            <pixiContainer key={slab} sortableChildren zIndex={GALAXY_LAYER_Z.stars(slab)}>
-              {band.map(({ system, projected }) => (
-                <StarNode key={system.id} system={system} projected={projected} />
-              ))}
-            </pixiContainer>
+          {starProjections.map(({ system, projected }) => (
+            <StarNode key={system.id} system={system} projected={projected} views={starViews} />
           ))}
         </pixiContainer>
       </pixiContainer>

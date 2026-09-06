@@ -1,19 +1,24 @@
 import { memo, useLayoutEffect, useCallback, useRef } from 'react';
-import { Graphics, Sprite, Texture } from 'pixi.js';
+import { Texture } from 'pixi.js';
+import type { Container, Graphics, Sprite } from 'pixi.js';
 import type { StarSystem } from '../game/types';
 import { createStarTexture } from './textures';
-import { galaxyDepthAlpha, type ProjectedPoint } from './projection';
+import { galaxyDepthAlpha, galaxyDepthScale, type ProjectedPoint } from './projection';
+import { applyStarProjection, STAR_SPRITE_SCALE, type StarViews } from './starView';
 
 export const StarNode = memo(function StarNode({
   system,
   projected,
+  views,
 }: {
   system: StarSystem;
   projected: ProjectedPoint;
+  views: StarViews;
 }) {
   const isVisited = system.visited;
   const isCurrent = system.current;
 
+  const containerRef = useRef<Container>(null);
   const glowSpriteRef = useRef<Sprite>(null);
 
   useLayoutEffect(() => {
@@ -29,6 +34,18 @@ export const StarNode = memo(function StarNode({
       texture.destroy(true);
     };
   }, [system.color, system.size]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const sprite = glowSpriteRef.current;
+    if (!container || !sprite) return;
+    const view = { container, sprite };
+    views.set(system.id, view);
+    applyStarProjection(view, projected);
+    return () => {
+      if (views.get(system.id) === view) views.delete(system.id);
+    };
+  }, [views, system.id, projected]);
 
   const drawRing = useCallback(
     (gfx: Graphics) => {
@@ -52,13 +69,19 @@ export const StarNode = memo(function StarNode({
 
   return (
     <pixiContainer
+      ref={containerRef}
       x={projected.x}
       y={projected.y}
       zIndex={projected.depth}
       alpha={galaxyDepthAlpha(projected.depth)}
       eventMode="none"
     >
-      <pixiSprite ref={glowSpriteRef} texture={Texture.EMPTY} anchor={0.5} scale={0.25 * projected.scale} />
+      <pixiSprite
+        ref={glowSpriteRef}
+        texture={Texture.EMPTY}
+        anchor={0.5}
+        scale={STAR_SPRITE_SCALE * galaxyDepthScale(projected.depth)}
+      />
       <pixiGraphics draw={drawRing} eventMode="none" />
     </pixiContainer>
   );

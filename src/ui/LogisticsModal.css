@@ -30,12 +30,20 @@
 }
 
 .logistics-header {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px 12px;
   border-bottom: 1px solid rgba(0, 100, 150, 0.35);
   flex-shrink: 0;
+}
+
+.logistics-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .logistics-title {

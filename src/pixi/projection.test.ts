@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { generateSystemLayout } from '../game/planetGen';
 import { SOL_SYSTEM_LAYOUT } from '../game/hardcoded';
 import {
-  GALAXY_DEPTH_SLABS,
+  GALAXY_DEPTH_SIZE,
+  GALAXY_GAS_SLABS,
+  GALAXY_ORBIT_MAX_TILT,
+  GALAXY_ORBIT_MIN_TILT,
   GALAXY_RADIUS,
   GALAXY_TILT,
   SC_DEPTH_FADE,
@@ -15,8 +18,11 @@ import {
 import {
   addSystemPoints,
   createGalaxyCamera,
+  clampGalaxyTilt,
   galaxyDepthAlpha,
-  galaxyDepthSlab,
+  galaxyDepthScale,
+  galaxyGasSlab,
+  galaxyGasSlabHeight,
   clampOrbitTilt,
   createSuperclusterCamera,
   createSystemCamera,
@@ -126,21 +132,13 @@ describe('galaxy camera', () => {
     expect(camera.tilt).toBe(GALAXY_TILT);
   });
 
-  // Perspective makes the linear world-pixel-to-light-year factor exact only where
-  // depth is zero. That is the horizontal line through the galactic centre, which
-  // is the axis the scale bar measures.
-  it('keeps the scale bar axis free of perspective', () => {
-    for (const x of [-GALAXY_RADIUS, -1, 0, 1, GALAXY_RADIUS]) {
-      const projected = projectSystemPoint({ x, y: 0, z: 0 }, camera);
-      expect(projected.x).toBe(x);
-      expect(projected.y).toBe(0);
-      expect(projected.scale).toBe(1);
+  // Gas is baked flat and turned by a container transform, which is affine; a
+  // perspective divide is not, so the two would drift apart as the disk turned.
+  it('is orthographic, so a world pixel keeps a fixed light-year value', () => {
+    expect(camera.perspectiveStrength).toBe(0);
+    for (const z of [-GALAXY_RADIUS, 0, GALAXY_RADIUS]) {
+      expect(projectSystemPoint({ x: 100, y: 0, z }, camera).scale).toBe(1);
     }
-  });
-
-  it('keeps focal length clear of the deepest point in the galaxy', () => {
-    const deepest = projectSystemPoint({ x: 0, y: GALAXY_RADIUS, z: GALAXY_RADIUS }, camera).depth;
-    expect(camera.focalLength).toBeGreaterThan(deepest * 1.5);
   });
 
   it('projects the galactic centre to the origin', () => {
@@ -177,27 +175,63 @@ describe('galaxy camera', () => {
   });
 
   it('draws the near edge of the disk larger than the far edge', () => {
-    const near = projectSystemPoint({ x: 0, y: 0, z: GALAXY_RADIUS }, camera);
-    const far = projectSystemPoint({ x: 0, y: 0, z: -GALAXY_RADIUS }, camera);
-    expect(near.scale).toBeGreaterThan(1.1);
-    expect(far.scale).toBeLessThan(0.95);
-    expect(near.scale / far.scale).toBeGreaterThan(1.25);
+    const near = projectSystemPoint({ x: 0, y: 0, z: GALAXY_RADIUS }, camera).depth;
+    const far = projectSystemPoint({ x: 0, y: 0, z: -GALAXY_RADIUS }, camera).depth;
+    expect(galaxyDepthScale(near)).toBeCloseTo(1 + GALAXY_DEPTH_SIZE);
+    expect(galaxyDepthScale(0)).toBeCloseTo(1);
+    expect(galaxyDepthScale(far)).toBeCloseTo(1 - GALAXY_DEPTH_SIZE);
+    expect(galaxyDepthScale(far * 10)).toBeGreaterThan(0);
   });
 
-  it('never inverts, however deep the point', () => {
-    for (const z of [0, GALAXY_RADIUS * 10, -GALAXY_RADIUS * 10]) {
-      expect(projectSystemPoint({ x: 100, y: 0, z }, camera).scale).toBeGreaterThan(0);
-    }
-  });
-
-  it('fades and bands stars from the far edge to the near edge', () => {
+  it('fades stars from the far edge to the near edge', () => {
     const near = projectSystemPoint({ x: 0, y: 0, z: GALAXY_RADIUS }, camera).depth;
     const far = projectSystemPoint({ x: 0, y: 0, z: -GALAXY_RADIUS }, camera).depth;
     expect(galaxyDepthAlpha(near)).toBeGreaterThan(galaxyDepthAlpha(far));
     expect(galaxyDepthAlpha(near)).toBeCloseTo(1);
-    expect(galaxyDepthSlab(far)).toBe(0);
-    expect(galaxyDepthSlab(0)).toBe(Math.floor(GALAXY_DEPTH_SLABS / 2));
-    expect(galaxyDepthSlab(near)).toBe(GALAXY_DEPTH_SLABS - 1);
+  });
+
+  it('bands gas by height, so a yaw turn cannot move a particle between bands', () => {
+    const half = 40;
+    expect(galaxyGasSlab(-half, half)).toBe(0);
+    expect(galaxyGasSlab(0, half)).toBe(Math.floor(GALAXY_GAS_SLABS / 2));
+    expect(galaxyGasSlab(half, half)).toBe(GALAXY_GAS_SLABS - 1);
+    expect(galaxyGasSlab(half * 10, half)).toBe(GALAXY_GAS_SLABS - 1);
+    for (let slab = 0; slab < GALAXY_GAS_SLABS; slab++) {
+      expect(galaxyGasSlab(galaxyGasSlabHeight(slab, half), half)).toBe(slab);
+    }
+    expect(galaxyGasSlabHeight(Math.floor(GALAXY_GAS_SLABS / 2), half)).toBeCloseTo(0);
+  });
+
+  it('clamps orbit tilt clear of both edge-on and face-on', () => {
+    expect(clampGalaxyTilt(GALAXY_TILT)).toBe(GALAXY_TILT);
+    expect(clampGalaxyTilt(Math.PI)).toBe(GALAXY_ORBIT_MAX_TILT);
+    expect(clampGalaxyTilt(-Math.PI)).toBe(GALAXY_ORBIT_MIN_TILT);
+    expect(GALAXY_ORBIT_MAX_TILT).toBeLessThan(Math.PI / 2);
+    expect(GALAXY_ORBIT_MIN_TILT).toBeGreaterThan(0);
+  });
+
+  // The gas keeps its baked plane geometry and is re-oriented by a rotation inside
+  // a vertical squash, so the star projection has to agree with exactly that.
+  it('projects a flat point as a yaw rotation inside a cos(tilt) squash', () => {
+    for (const tilt of [GALAXY_ORBIT_MIN_TILT, GALAXY_TILT, GALAXY_ORBIT_MAX_TILT]) {
+      for (const yaw of [-1.2, 0, 0.7]) {
+        const turned = { ...camera, yaw, tilt };
+        const [planeX, planeY] = [230, -640];
+        const projected = projectPlanePoint(planeX, planeY, 0, turned);
+        const spunX = planeX * Math.cos(yaw) - planeY * Math.sin(yaw);
+        const spunY = planeX * Math.sin(yaw) + planeY * Math.cos(yaw);
+        expect(projected.x).toBeCloseTo(spunX);
+        expect(projected.y).toBeCloseTo(spunY * Math.cos(tilt));
+      }
+    }
+  });
+
+  it('offsets a band of fixed height by its height alone', () => {
+    const turned = { ...camera, yaw: 0.7, tilt: 1.1 };
+    const flat = projectPlanePoint(230, -640, 0, turned);
+    const lifted = projectPlanePoint(230, -640, 30, turned);
+    expect(lifted.x).toBeCloseTo(flat.x);
+    expect(lifted.y).toBeCloseTo(flat.y - 30 * Math.sin(1.1));
   });
 
   it('is deterministic for the same point and camera', () => {

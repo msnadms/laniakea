@@ -1,0 +1,178 @@
+.tutorial-control {
+  position: relative;
+  width: 160px;
+  font-family: inherit;
+  user-select: none;
+}
+
+.tutorial-trigger {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  width: 160px;
+  min-height: 31px;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(6, 12, 28, 0.88);
+  border: 1px solid rgba(40, 80, 120, 0.5);
+  border-radius: 4px;
+  color: #6a90b0;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0.04em;
+  opacity: 0.45;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.tutorial-trigger:hover,
+.tutorial-trigger--open {
+  opacity: 1;
+  color: #99bbdd;
+  border-color: rgba(60, 110, 160, 0.7);
+}
+
+.tutorial-trigger:focus-visible {
+  outline: 2px solid rgba(0, 190, 230, 0.8);
+  outline-offset: 2px;
+}
+
+.tutorial-trigger-icon {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.tutorial-trigger-label {
+  text-align: left;
+}
+
+.tutorial-trigger-context {
+  display: none;
+  color: rgba(130, 200, 220, 0.55);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tutorial-trigger-chevron {
+  font-size: 8px;
+  opacity: 0.6;
+}
+
+.tutorial-card {
+  width: min(330px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 120px));
+  margin-top: 2px;
+  padding: 14px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: rgba(6, 12, 28, 0.97);
+  border: 1px solid rgba(40, 110, 150, 0.72);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38), 0 0 18px rgba(0, 160, 200, 0.1);
+  color: #8aa4bc;
+  backdrop-filter: blur(8px);
+}
+
+.tutorial-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #b8dcef;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tutorial-card-eyebrow {
+  color: rgba(0, 190, 230, 0.58);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+}
+
+.tutorial-card-intro {
+  margin: 8px 0 14px;
+  color: #7898b1;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.tutorial-card-section + .tutorial-card-section {
+  margin-top: 14px;
+}
+
+.tutorial-card-section h3 {
+  margin: 0 0 7px;
+  color: #99bbdd;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.tutorial-card-section ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.tutorial-card-section li {
+  padding-left: 3px;
+  color: #7898b1;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.tutorial-card-section li::marker {
+  color: rgba(0, 190, 230, 0.68);
+  font-family: monospace;
+  font-size: 9px;
+}
+
+.tutorial-control--overlay {
+  width: auto;
+  margin-left: auto;
+  z-index: 4;
+}
+
+.tutorial-control--overlay .tutorial-trigger {
+  display: flex;
+  width: auto;
+  min-width: 220px;
+  background: rgba(0, 35, 52, 0.58);
+  border-color: rgba(0, 140, 180, 0.34);
+  border-radius: 2px;
+  font: 9px monospace;
+  opacity: 1;
+  text-transform: uppercase;
+}
+
+.tutorial-control--overlay .tutorial-trigger-context {
+  display: inline;
+  margin-left: auto;
+}
+
+.tutorial-control--overlay .tutorial-card {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  margin: 0;
+  text-transform: none;
+}
+
+@media (max-width: 620px) {
+  .tutorial-control--overlay .tutorial-trigger {
+    min-width: 0;
+  }
+
+  .tutorial-control--overlay .tutorial-trigger-context {
+    display: none;
+  }
+}
