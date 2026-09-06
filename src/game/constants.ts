@@ -289,6 +289,35 @@ export const SC_FILAMENT_SCATTER = 0.025;
 // 46 billion light years
 export const OBS_UNIVERSE_RADIUS = 46_000_000_000;
 
+// ─── Supercluster projection ─────────────────────────────────────────────────
+
+// The cosmic web is turned in place rather than flown through, so the projection
+// stays orthographic and a world pixel keeps a fixed light-year value.
+export const SC_ORBIT_INITIAL_YAW = 0;
+export const SC_ORBIT_INITIAL_TILT = 22 * Math.PI / 180;
+
+// Past this the web reads as an edge-on smear with no usable click targets.
+export const SC_ORBIT_MAX_TILT = 72 * Math.PI / 180;
+
+// Radians of rotation per pixel dragged.
+export const SC_ORBIT_SENSITIVITY = 0.005;
+
+// Fraction of the remaining rotation covered per 60fps frame.
+export const SC_ORBIT_EASE = 0.18;
+
+// Half-depth that the aerial-perspective cues normalize against.
+export const SC_DEPTH_HALF = SC_WORLD_HALF * 1.2;
+
+// How much of a far dot's alpha the depth haze takes.
+export const SC_DEPTH_FADE = 0.45;
+
+// Orthographic keeps every dot the same size, so this size swing is a stylistic
+// depth cue rather than perspective.
+export const SC_DEPTH_SIZE = 0.22;
+
+// Radius the shared dot sprite is rasterised at, in texture pixels.
+export const SC_DOT_TEXTURE_RADIUS = 16;
+
 // ─── Camera ──────────────────────────────────────────────────────────────────
 
 // Starting zoom level. 1.0 = 1:1 pixels, < 1 = zoomed out.

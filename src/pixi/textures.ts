@@ -1,5 +1,5 @@
 import { Texture, Sprite, DisplacementFilter, Container } from 'pixi.js';
-import { GALAXY_RADIUS } from '../game/constants';
+import { GALAXY_RADIUS, SC_DOT_TEXTURE_RADIUS } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
 
 function colorToRgb(color: number) {
@@ -554,5 +554,24 @@ export function createGasGiantAlbedoTexture(baseColor: number, seed: number, isI
     y += bandH;
   }
 
+  return Texture.from(canvas, true);
+}
+
+export function createSuperclusterDotTexture(): Texture {
+  const radius = SC_DOT_TEXTURE_RADIUS;
+  const size = radius * 2 + 4;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const center = size / 2;
+  const gradient = ctx.createRadialGradient(center, center, 0, center, center, radius);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.72, 'rgba(255,255,255,1)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(center, center, radius, 0, Math.PI * 2);
+  ctx.fill();
   return Texture.from(canvas, true);
 }

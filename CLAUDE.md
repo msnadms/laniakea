@@ -185,14 +185,38 @@ The top-level zoom level above individual galaxies. `Supercluster` wraps a `@pix
 - `attractors` — named gravitational attractor regions (galaxy groups/clusters within the supercluster)
 - `backgroundStars` — fixed screen-space starfield
 
-**Rendering:**
-- Dots are bucketed into 5 `BRIGHTNESS_TIERS` (yellow → orange → pink → violet → purple) and batch-drawn with a `BlurFilter` + `screen` blend mode for a glow effect.
-- Visited dots get a white circle outline drawn around them.
-- Attractor labels and the supercluster title are rendered via `createPointerLabel` (from `labels.ts`). Attractor label visibility is toggled by `showAttractorLabels` and hidden when zoomed out below scale 0.25.
-- A displacement filter (`createDisplacementSetup`) animates the dot field organically.
-- A `ScaleBar` converts world pixels to Million Light Years (`SC_WORLD_HALF_MLY / SC_WORLD_HALF`).
+**Rendering** is a re-projected 3D field, not a baked 2D one. `useOrbit` owns an orthographic
+`Camera3D` (yaw/tilt, `perspectiveStrength: 0`) that eases toward a drag target every tick, and the
+scene re-projects `dot.z` into screen space on every frame:
 
-**Navigation:** Tapping a dot (within `15 / camera.scale` px, only active at scale ≥ 0.5) marks it visited, calls `regenerateGalaxy(dot.seed)`, resolves the nearest attractor (within `SC_ATTRACTOR_LABEL_MAX_DIST`), pushes address breadcrumbs, and switches `view` to `'galaxy'`.
+- The ~31k dots live in one `ParticleContainer` (`position`/`vertex`/`color` dynamic) over a single
+  tinted dot sprite, wrapped in a `BlurFilter` + `screen`-blend container. Graphics geometry cannot
+  be re-emitted per frame at this count — do not go back to `circle()` batches here.
+- `projectSuperclusterField` (`projection.ts`) projects the whole field in one fused pass into
+  typed arrays; per-point calls through the scratch objects cost more than the arithmetic. The tick
+  then only copies into particles. Everything else (labels, overlays, hit tests) is few enough to
+  use `projectPlanePointWithBasis` per point.
+- Depth reads through aerial perspective: `superclusterDepthAlpha` hazes far dots and
+  `superclusterDepthScale` shrinks them. Orthographic means the size cue is stylistic, not
+  perspective — that is what keeps `ScaleBar`'s `SC_WORLD_HALF_MLY / SC_WORLD_HALF` exact.
+- Dots are bucketed into 5 brightness tiers (yellow → orange → pink → violet → purple) for colour,
+  radius and base alpha, and into 10 blink groups whose phase multiplies that alpha.
+- Visited dots, the current-galaxy crosshair, and attractor labels are all reprojected each tick.
+  Labels live in an unrotated container so they stay screen-facing, and fade with depth.
+- Attractor labels and the supercluster title are rendered via `createPointerLabel` (from
+  `labels.ts`). Attractor label visibility is toggled by `showAttractorLabels` and hidden when
+  zoomed out below scale 0.25.
+
+**Input:** left-drag pans and the wheel zooms as before (`useCamera`); shift-drag or right-drag
+turns the field (`isOrbitGesture`). `useCamera` takes a `shouldPan` predicate so it declines the
+orbit gesture rather than panning during it, and the tap handler ignores a pointertap that ended
+an orbit drag.
+
+**Navigation:** Tapping a dot (within `15 / camera.scale` px of its *projected* position, only
+active at scale ≥ 0.5) marks it visited, calls `regenerateGalaxy(dot.seed)`, resolves the nearest
+attractor (within `SC_ATTRACTOR_LABEL_MAX_DIST`), pushes address breadcrumbs, and switches `view`
+to `'galaxy'`. Overlapping dots resolve to the frontmost by depth. Travel cost and attractor
+resolution still use true 2D world distance, not the projected or 3D distance.
 
 ### `TopNavBar.tsx`
 

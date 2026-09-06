@@ -1,6 +1,7 @@
 import { useApplication } from '@pixi/react';
-import { Container, Graphics, Ticker, BlurFilter } from 'pixi.js';
-import { useEffect, useRef } from 'react';
+import { Container, Graphics, Rectangle, Ticker, BlurFilter, Particle, ParticleContainer } from 'pixi.js';
+import type { FederatedPointerEvent } from 'pixi.js';
+import { useCallback, useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import { superclusterTravelCost, trySpendTravelCost } from '../store/travelCosts';
@@ -8,13 +9,29 @@ import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
 import { buildAddressComponent, type SuperclusterDot } from '../game/types';
 import { useCamera } from './useCamera';
-import { SC_CAMERA_INITIAL_SCALE, SC_WORLD_HALF, SC_WORLD_HALF_MLY, OBS_UNIVERSE_RADIUS } from '../game/constants';
+import {
+  SC_CAMERA_INITIAL_SCALE,
+  SC_DOT_TEXTURE_RADIUS,
+  SC_WORLD_HALF,
+  SC_WORLD_HALF_MLY,
+  OBS_UNIVERSE_RADIUS,
+} from '../game/constants';
 import { MSG_DRIVE_REQUIRED_GALAXY } from '../ui/strings';
 import { animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
+import { useOrbit, isOrbitGesture } from './useOrbit';
+import {
+  projectPlanePointWithBasis,
+  projectSuperclusterField,
+  superclusterDepthAlpha,
+  updateProjectionBasis,
+  type ProjectedPoint,
+  type ProjectionBasis,
+} from './projection';
 import { ScaleBar } from './ScaleBar';
 import { createRng } from '../game/galaxyGen';
 import { createPointerLabel } from './labels';
+import { createSuperclusterDotTexture } from './textures';
 import { BackgroundStars } from './BackgroundStars';
 import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
 import { pushAttractorAddress } from '../game/superclusters';
@@ -50,6 +67,9 @@ function getBrightnessTiers(seed: number) {
   return TIER_BASE.map((t, i) => ({ ...t, color: colors[i] }));
 }
 
+const LABEL_DEPTH_FADE = 0.4;
+
+const SC_FIELD_EXTENT = SC_WORLD_HALF * 3;
 
 export function SuperclusterWorld() {
   const { app, isInitialised } = useApplication();
@@ -67,19 +87,30 @@ export function SuperclusterWorld() {
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
 
   const worldRef = useRef<Container>(null);
-  const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE);
+  const { orbitCamera, didOrbit } = useOrbit();
+  const shouldPan = useCallback((event: FederatedPointerEvent) => !isOrbitGesture(event), []);
+  const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE, undefined, undefined, shouldPan);
   const showAttractorLabelsRef = useRef(showAttractorLabels);
   useEffect(() => {
     showAttractorLabelsRef.current = showAttractorLabels;
   }, [showAttractorLabels]);
 
-  const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, {
-    getCurrentPos: () => useGameStore.getState().supercluster.dots.find(d => d.current),
-  });
+  const getCurrentPos = useCallback(() => {
+    const current = useGameStore.getState().supercluster.dots.find((d) => d.current);
+    if (!current) return undefined;
+    const basis = updateProjectionBasis(orbitCamera.current);
+    return projectPlanePointWithBasis(current.x, current.y, current.z, basis);
+  }, [orbitCamera]);
 
-  const visitedGfxRef = useRef<Graphics | null>(null);
-  const currentGfxRef = useRef<Graphics | null>(null);
-  const currentDotPosRef = useRef<{ x: number; y: number } | null>(null);
+  const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, { getCurrentPos });
+
+  const visitedDotsRef = useRef<SuperclusterDot[]>([]);
+  const currentDotRef = useRef<SuperclusterDot | null>(null);
+
+  useEffect(() => {
+    visitedDotsRef.current = scDots.filter((d) => d.visited && !d.current);
+    currentDotRef.current = scDots.find((d) => d.current) ?? null;
+  }, [scDots]);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
@@ -90,12 +121,39 @@ export function SuperclusterWorld() {
     pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'));
 
     const tiers = getBrightnessTiers(scSeed);
-    const buckets: SuperclusterDot[][] = tiers.map(() => []);
-    // Read dots directly from store — brightness/position never change, only visited flag does.
-    // The visited overlay is handled by its own separate effect below.
+    // Read dots directly from store — position/brightness never change, only the
+    // visited flag does, and the overlay below redraws that from its own ref.
     const initialDots = useGameStore.getState().supercluster.dots;
-    for (const dot of initialDots) {
-      buckets[tiers.findIndex(t => dot.brightness > t.min)].push(dot);
+    const count = initialDots.length;
+
+    const planeX = new Float32Array(count);
+    const planeY = new Float32Array(count);
+    const height = new Float32Array(count);
+    const baseScale = new Float32Array(count);
+    const baseAlpha = new Float32Array(count);
+    const blinkGroup = new Uint8Array(count);
+    const projectedX = new Float32Array(count);
+    const projectedY = new Float32Array(count);
+    const depthAlpha = new Float32Array(count);
+    const depthScale = new Float32Array(count);
+    const particles: Particle[] = new Array(count);
+
+    const dotTexture = createSuperclusterDotTexture();
+    for (let i = 0; i < count; i++) {
+      const dot = initialDots[i];
+      const tier = tiers[tiers.findIndex((t) => dot.brightness > t.min)];
+      planeX[i] = dot.x;
+      planeY[i] = dot.y;
+      height[i] = dot.z;
+      baseScale[i] = tier.radius / SC_DOT_TEXTURE_RADIUS;
+      baseAlpha[i] = tier.alpha;
+      blinkGroup[i] = dot.seed % N_BLINK_GROUPS;
+      particles[i] = new Particle({
+        texture: dotTexture,
+        anchorX: 0.5,
+        anchorY: 0.5,
+        tint: tier.color,
+      });
     }
 
     const scContainer = new Container();
@@ -105,112 +163,63 @@ export function SuperclusterWorld() {
     const blurFilter = new BlurFilter({ strength: 0.05 });
     dotsContainer.filters = [blurFilter];
 
-    const blinkGroups: Graphics[] = [];
-    for (let g = 0; g < N_BLINK_GROUPS; g++) {
-      const gfx = new Graphics();
-      blinkGroups.push(gfx);
-      dotsContainer.addChild(gfx);
-    }
-
-    for (let i = 0; i < tiers.length; i++) {
-      for (const d of buckets[i]) {
-        blinkGroups[d.seed % N_BLINK_GROUPS].circle(d.x, d.y, tiers[i].radius);
-      }
-      for (let g = 0; g < N_BLINK_GROUPS; g++) {
-        blinkGroups[g].fill({ color: tiers[i].color, alpha: tiers[i].alpha });
-      }
-    }
+    const particleContainer = new ParticleContainer({
+      texture: dotTexture,
+      particles,
+      dynamicProperties: { position: true, vertex: true, color: true, rotation: false, uvs: false },
+    });
+    // A ParticleContainer reports empty bounds, which would collapse the blur
+    // filter's render region, and it only uploads static attributes once its
+    // children are marked dirty.
+    particleContainer.boundsArea = new Rectangle(-SC_FIELD_EXTENT, -SC_FIELD_EXTENT, SC_FIELD_EXTENT * 2, SC_FIELD_EXTENT * 2);
+    particleContainer.update();
+    dotsContainer.addChild(particleContainer);
 
     const visitedGfx = new Graphics();
-    visitedGfxRef.current = visitedGfx;
     const currentGfx = new Graphics();
-    currentGfxRef.current = currentGfx;
     scContainer.addChild(dotsContainer);
     scContainer.addChild(visitedGfx);
     scContainer.addChild(currentGfx);
     world.addChild(scContainer);
 
+    const basis = updateProjectionBasis(orbitCamera.current);
+    const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
+    const blink = new Float32Array(N_BLINK_GROUPS);
+
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
+      updateProjectionBasis(orbitCamera.current, basis);
+
       for (let g = 0; g < N_BLINK_GROUPS; g++) {
         const phase = (g / N_BLINK_GROUPS) * Math.PI * 2;
         const t = 0.5 + 0.5 * Math.sin(elapsedSecs * BLINK_FREQ * Math.PI * 2 + phase);
-        blinkGroups[g].alpha = BLINK_MIN + (BLINK_MAX - BLINK_MIN) * t;
+        blink[g] = BLINK_MIN + (BLINK_MAX - BLINK_MIN) * t;
       }
-      const pos = currentDotPosRef.current;
-      const gfx = currentGfxRef.current;
-      if (pos && gfx) {
-        const pulse = 0.5 + 0.5 * Math.sin(elapsedSecs * Math.PI * 2 * 0.7);
-        const outerR = 26 + pulse * 10;
-        gfx.clear();
-        gfx.circle(pos.x, pos.y, outerR);
-        gfx.stroke({ color: 0x00e8ff, width: 1.2, alpha: 0.2 + pulse * 0.45 });
-        gfx.circle(pos.x, pos.y, outerR + 6);
-        gfx.stroke({ color: 0x00e8ff, width: 0.6, alpha: 0.08 + pulse * 0.18 });
+
+      projectSuperclusterField(planeX, planeY, height, basis, projectedX, projectedY, depthAlpha, depthScale);
+      for (let i = 0; i < count; i++) {
+        const particle = particles[i];
+        particle.x = projectedX[i];
+        particle.y = projectedY[i];
+        particle.scaleX = baseScale[i] * depthScale[i];
+        particle.scaleY = particle.scaleX;
+        particle.alpha = baseAlpha[i] * blink[blinkGroup[i]] * depthAlpha[i];
       }
+
+      drawVisited(visitedGfx, visitedDotsRef.current, basis, projected);
+      drawCurrent(currentGfx, currentDotRef.current, basis, projected, elapsedSecs);
     };
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
-      visitedGfxRef.current = null;
-      currentGfxRef.current = null;
-      currentDotPosRef.current = null;
       world.removeChild(scContainer);
       scContainer.destroy({ children: true });
       blurFilter.destroy();
+      dotTexture.destroy(true);
     };
-  }, [scSeed, scName, pushAddress, app, isInitialised]);
-
-  // Redraws only the visited-dot overlay when scDots changes, without rebuilding the scene.
-  useEffect(() => {
-    const gfx = visitedGfxRef.current;
-    if (!gfx) return;
-    gfx.clear();
-
-    // Visited dots (white outline rings)
-    for (const d of scDots) {
-      if (!d.visited || d.current) continue;
-      gfx.circle(d.x, d.y, 8);
-    }
-    gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
-    for (const d of scDots) {
-      if (!d.visited || d.current) continue;
-      gfx.circle(d.x, d.y, 11);
-    }
-    gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
-
-    // Current galaxy — static parts: solid fill + inner rings + crosshair
-    const cur = scDots.find(d => d.current);
-    currentDotPosRef.current = cur ? { x: cur.x, y: cur.y } : null;
-    if (cur) {
-      const { x, y } = cur;
-      // Bright filled core
-      gfx.circle(x, y, 5);
-      gfx.fill({ color: 0x00e8ff, alpha: 0.55 });
-      // Inner solid ring
-      gfx.circle(x, y, 12);
-      gfx.stroke({ color: 0x00e8ff, width: 2, alpha: 0.95 });
-      // Second solid ring
-      gfx.circle(x, y, 18);
-      gfx.stroke({ color: 0x00e8ff, width: 1, alpha: 0.55 });
-      // Crosshair arms (gap from r=20 to r=38)
-      const gap = 20, arm = 38;
-      gfx.moveTo(x - arm, y).lineTo(x - gap, y);
-      gfx.moveTo(x + gap, y).lineTo(x + arm, y);
-      gfx.moveTo(x, y - arm).lineTo(x, y - gap);
-      gfx.moveTo(x, y + gap).lineTo(x, y + arm);
-      gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.85 });
-      // Crosshair tick marks at arm ends (small perpendicular nubs)
-      const nub = 4;
-      gfx.moveTo(x - arm, y - nub).lineTo(x - arm, y + nub);
-      gfx.moveTo(x + arm, y - nub).lineTo(x + arm, y + nub);
-      gfx.moveTo(x - nub, y - arm).lineTo(x + nub, y - arm);
-      gfx.moveTo(x - nub, y + arm).lineTo(x + nub, y + arm);
-      gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.65 });
-    }
-  }, [scDots, isInitialised]);
+  }, [scSeed, scName, pushAddress, app, isInitialised, orbitCamera]);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
@@ -225,14 +234,29 @@ export function SuperclusterWorld() {
     world.addChild(titleGroup);
 
     const labelContainer = new Container();
+    const labelGroups: Container[] = [];
     for (const att of scAttractors) {
       const group = createPointerLabel(att.name, 40, { lineLength: 120 });
       group.position.set(att.x, att.y);
       labelContainer.addChild(group);
+      labelGroups.push(group);
     }
     world.addChild(labelContainer);
 
-    const tick = () => { labelContainer.visible = showAttractorLabelsRef.current && camera.current.scale > 0.25; };
+    const basis = updateProjectionBasis(orbitCamera.current);
+    const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
+
+    const tick = () => {
+      labelContainer.visible = showAttractorLabelsRef.current && camera.current.scale > 0.25;
+      if (!labelContainer.visible) return;
+      updateProjectionBasis(orbitCamera.current, basis);
+      for (let i = 0; i < scAttractors.length; i++) {
+        const att = scAttractors[i];
+        projectPlanePointWithBasis(att.x, att.y, att.z, basis, projected);
+        labelGroups[i].position.set(projected.x, projected.y);
+        labelGroups[i].alpha = 1 - LABEL_DEPTH_FADE * (1 - superclusterDepthAlpha(projected.depth));
+      }
+    };
     Ticker.shared.add(tick);
 
     return () => {
@@ -242,7 +266,7 @@ export function SuperclusterWorld() {
       titleGroup.destroy({ children: true });
       labelContainer.destroy({ children: true });
     };
-  }, [scSeed, scName, scAttractors, isInitialised, camera]);
+  }, [scSeed, scName, scAttractors, isInitialised, camera, orbitCamera]);
 
 
   useEffect(() => {
@@ -250,19 +274,31 @@ export function SuperclusterWorld() {
     const world = worldRef.current;
     const stage = app.stage;
 
-    const onTap = (e: { global: { x: number; y: number } }) => {
+    const onTap = (e: FederatedPointerEvent) => {
       if (isAnimatingRef.current) return;
+      if (didOrbit.current || isOrbitGesture(e)) return;
       if (camera.current.scale < 0.5) return;
       const local = world.toLocal(e.global);
       const sc = useGameStore.getState().supercluster;
-      let nearest = sc.dots[0];
-      let nearestDist = Infinity;
-      for (const dot of sc.dots) {
-        const d = Math.hypot(dot.x - local.x, dot.y - local.y);
-        if (d < nearestDist) { nearestDist = d; nearest = dot; }
-      }
+      const basis = updateProjectionBasis(orbitCamera.current);
+      const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
       const maxDist = 15 / camera.current.scale;
-      if (nearestDist > maxDist) return;
+      let nearest: SuperclusterDot | null = null;
+      let nearestDepth = -Infinity;
+      let nearestX = 0;
+      let nearestY = 0;
+      // Overlapping dots resolve to the front one, so a click never selects a
+      // galaxy hidden behind the one under the cursor.
+      for (const dot of sc.dots) {
+        projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
+        if (Math.hypot(projected.x - local.x, projected.y - local.y) > maxDist) continue;
+        if (projected.depth <= nearestDepth) continue;
+        nearestDepth = projected.depth;
+        nearest = dot;
+        nearestX = projected.x;
+        nearestY = projected.y;
+      }
+      if (!nearest) return;
       if (useUIStore.getState().checkDetectionLethal()) return;
       const currentGalaxySeed = useGameStore.getState().galaxy.seed;
       const isCurrent = nearest.seed === currentGalaxySeed;
@@ -292,7 +328,7 @@ export function SuperclusterWorld() {
       isAnimatingRef.current = true;
       cancelZoomRef.current = animateZoomTo(
         camera, world,
-        nearest.x, nearest.y,
+        nearestX, nearestY,
         e.global.x, e.global.y,
         24, 500,
         () => useUIStore.getState().setViewTransitioning(true),
@@ -314,7 +350,7 @@ export function SuperclusterWorld() {
         useUIStore.getState().setViewTransitioning(false);
       }
     };
-  }, [app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType, camera, cancelZoomRef, isAnimatingRef]);
+  }, [app, isInitialised, regenerateGalaxy, markDotVisited, setView, pushAddress, removeAddressType, camera, cancelZoomRef, isAnimatingRef, orbitCamera, didOrbit]);
 
   return (
     <>
@@ -328,4 +364,65 @@ export function SuperclusterWorld() {
       />
     </>
   );
+}
+
+function drawVisited(
+  gfx: Graphics,
+  dots: SuperclusterDot[],
+  basis: ProjectionBasis,
+  projected: ProjectedPoint,
+) {
+  gfx.clear();
+  if (dots.length === 0) return;
+  for (const dot of dots) {
+    projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
+    gfx.circle(projected.x, projected.y, 8);
+  }
+  gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
+  for (const dot of dots) {
+    projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
+    gfx.circle(projected.x, projected.y, 11);
+  }
+  gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
+}
+
+function drawCurrent(
+  gfx: Graphics,
+  dot: SuperclusterDot | null,
+  basis: ProjectionBasis,
+  projected: ProjectedPoint,
+  elapsedSecs: number,
+) {
+  gfx.clear();
+  if (!dot) return;
+  projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
+  const { x, y } = projected;
+
+  gfx.circle(x, y, 5);
+  gfx.fill({ color: 0x00e8ff, alpha: 0.55 });
+  gfx.circle(x, y, 12);
+  gfx.stroke({ color: 0x00e8ff, width: 2, alpha: 0.95 });
+  gfx.circle(x, y, 18);
+  gfx.stroke({ color: 0x00e8ff, width: 1, alpha: 0.55 });
+
+  const gap = 20, arm = 38;
+  gfx.moveTo(x - arm, y).lineTo(x - gap, y);
+  gfx.moveTo(x + gap, y).lineTo(x + arm, y);
+  gfx.moveTo(x, y - arm).lineTo(x, y - gap);
+  gfx.moveTo(x, y + gap).lineTo(x, y + arm);
+  gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.85 });
+
+  const nub = 4;
+  gfx.moveTo(x - arm, y - nub).lineTo(x - arm, y + nub);
+  gfx.moveTo(x + arm, y - nub).lineTo(x + arm, y + nub);
+  gfx.moveTo(x - nub, y - arm).lineTo(x + nub, y - arm);
+  gfx.moveTo(x - nub, y + arm).lineTo(x + nub, y + arm);
+  gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.65 });
+
+  const pulse = 0.5 + 0.5 * Math.sin(elapsedSecs * Math.PI * 2 * 0.7);
+  const outerR = 26 + pulse * 10;
+  gfx.circle(x, y, outerR);
+  gfx.stroke({ color: 0x00e8ff, width: 1.2, alpha: 0.2 + pulse * 0.45 });
+  gfx.circle(x, y, outerR + 6);
+  gfx.stroke({ color: 0x00e8ff, width: 0.6, alpha: 0.08 + pulse * 0.18 });
 }
