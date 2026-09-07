@@ -14,7 +14,7 @@ import {
 } from './fabricatorStore';
 import type { FeedResult, MaterialBudget, SlotRunResult } from './fabricatorStore';
 import { useStockpileStore } from './stockpileStore';
-import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR, decayDetectionHeat, computeDetectionDecayPerMs } from './uiStore';
+import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, computeRouteCap, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR, decayDetectionHeat, computeDetectionDecayPerMs } from './uiStore';
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 import { getSuperclusterCoords } from '../game/superclusters';
 import { OBS_UNIVERSE_RADIUS } from '../game/constants';
@@ -250,16 +250,17 @@ export function routeDetectionRisk(
   const { extractors, nodeEquipped } = useExtractorStore.getState();
   const nearbyExtractors = Object.values(extractors);
   const routeExtractors = [...groups.values()].flatMap((group) => group.extractors);
-  let risk = 0;
+  const galaxyRisk = new Map<number, number>();
   for (const routeExtractor of routeExtractors) {
-    const localRisk = nearbyExtractors.reduce((sum, extractor) => {
+    const density = nearbyExtractors.reduce((sum, extractor) => {
       if (extractor.galaxySeed === routeExtractor.galaxySeed) return sum + 1;
       if (extractor.superclusSeed === routeExtractor.superclusSeed) return sum + 0.5;
       return sum;
     }, 0);
-    risk += localRisk * getExtractorMultipliers(routeExtractor.key, nodeEquipped).signalRiskMultiplier;
+    const contribution = density * getExtractorMultipliers(routeExtractor.key, nodeEquipped).signalRiskMultiplier;
+    galaxyRisk.set(routeExtractor.galaxySeed, Math.max(galaxyRisk.get(routeExtractor.galaxySeed) ?? 0, contribution));
   }
-  return risk;
+  return [...galaxyRisk.values()].reduce((sum, contribution) => sum + contribution, 0);
 }
 
 export function routeExtractorKeys(groups: Map<string, NodeGroup>): ExtractorKey[] {
@@ -1122,7 +1123,9 @@ interface LogisticsState {
 
 export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
   routes: [], lastRuns: {}, automationNotices: {},
-  addRoute: (route) => set((state) => ({ routes: [...state.routes, route] })),
+  addRoute: (route) => set((state) => state.routes.length < computeRouteCap(useUIStore.getState().logisticsA)
+    ? { routes: [...state.routes, route] }
+    : state),
   updateRoute: (id, patch) => set((state) => ({ routes: state.routes.map((route) => route.id === id ? { ...route, ...patch } : route) })),
   removeRoute: (id) => {
     previewCache.delete(id);

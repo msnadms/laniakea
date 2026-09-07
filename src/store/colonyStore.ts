@@ -43,7 +43,7 @@ export const DYSON_COST: MaterialCost = { statite_mirror: 60, tpv_film: 60, mome
 export const PROBE_COST: MaterialCost = { replicator_probe: 30 };
 export const DYSON_LABOR = 100;
 export const PROBE_LABOR = 50;
-// Extraction currently runs in real seconds: a mature 1000-person colony draws 5/s.
+// A mature 1000-person colony draws 18,000 nutrients per hour and must rely on staffed farms.
 export const NUTRIENTS_PER_PERSON_HOUR = 18;
 export const JOB_WEIGHT_MAX = 10;
 export const DEFAULT_JOB_WEIGHT = 5;
@@ -518,7 +518,7 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
   colonies: {},
   planCharter: (key, now = Date.now()) => {
     const f = useFabricatorStore.getState().fabricators[key];
-    if (!f || f.tier !== 2 || get().colonies[key] || useUIStore.getState().destroyed) return false;
+    if (!f || f.tier < 1 || get().colonies[key] || useUIStore.getState().destroyed) return false;
     const system = useGameStore.getState().system;
     const districtSlots = system && system.id === f.systemId
       ? planetDistrictSlots(system.seed, system.starType, f.planetName) : undefined;
@@ -600,8 +600,8 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
     set({ colonies: { ...get().colonies, [key]: { ...c, districts, population: c.population - displaced, lostPeople: c.lostPeople + displaced } } });
     const ui = useUIStore.getState();
     ui.triggerHudNotify(displaced >= 1
-      ? `${c.planetName}: ${district.name} razed, ${Math.floor(displaced)} people displaced · salvaged ${count} ${materialName(material)}`
-      : `${c.planetName}: ${district.name} razed · salvaged ${count} ${materialName(material)}`);
+      ? `${c.planetName}: ${district.name} razed, ${Math.floor(displaced)} people displaced - salvaged ${count} ${materialName(material)}`
+      : `${c.planetName}: ${district.name} razed - salvaged ${count} ${materialName(material)}`);
     return true;
   },
   setJobPriority: (key, priority) => set(state => {

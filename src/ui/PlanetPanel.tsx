@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
-import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
+import { useExtractorStore, peekAccumulated, extractorUnitsPerHour, getExtractorMultipliers } from '../store/extractorStore';
 import { EXTRACTOR_HOLD_CAPS, computeStorageCap, computeLogisticsCap, UPGRADE_POOL } from '../store/uiStore';
 import { makeExtractorKey, makeFabricatorKey, RESOURCE_LABELS } from '../game/types';
 import { FABRICATOR_COST, FABRICATOR_UPGRADE_COST, FABRICATOR_UPGRADE_MATERIALS, FABRICATOR_TIER_LABELS } from '../game/types';
@@ -18,6 +18,7 @@ import { saveExtractor, updateExtractorCollected, deleteExtractor } from '../fir
 import './PlanetPanel.css';
 import { ColonyDetails } from './ColonyPanel';
 import { useColonyStore, canBuildExtractor } from '../store/colonyStore';
+import { effectiveExtractionPerHour, extractorHoldFillHours, MINING_STATION_COST, MINING_STATION_REFUND } from '../game/economy';
 
 const TIERS = [
   { min: 0.80, label: 'S' },
@@ -46,7 +47,11 @@ const COST_UNITS: Record<string, string> = {
 };
 
 function costLabel(cost: Record<string, number>): string {
-  return Object.entries(cost).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`).join(' · ');
+  return Object.entries(cost).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`).join(' - ');
+}
+
+function hoursLabel(hours: number): string {
+  return hours < 1 ? `${Math.round(hours * 60)}m` : `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
 }
 
 const ZONE_LABELS: Record<string, string> = {
@@ -73,7 +78,7 @@ function ResourcePickButton({ resource, affordable, locked, logisticsTier, onPla
       <span className={`planet-panel-resource-dot res-${resource.type}`} />
       {locked
         ? `${RESOURCE_LABELS[resource.type]} (logistics ${logisticsTier}/${UPGRADE_POOL})`
-        : `${RESOURCE_LABELS[resource.type]} (${resource.count}/hour)`}
+        : `${RESOURCE_LABELS[resource.type]} (${effectiveExtractionPerHour(resource.count)}/hour)`}
       {!locked && <TierBadge type={resource.type} count={resource.count} />}
     </button>
   );
@@ -104,6 +109,7 @@ export function PlanetPanel() {
   const logisticsB = useUIStore((s) => s.logisticsB);
   const maxStations = computeLogisticsCap(logisticsA);
   const extractorRoster = useExtractorStore(s => s.extractors);
+  const nodeEquipped = useExtractorStore(s => s.nodeEquipped);
   const colonyRoster = useColonyStore(s => s.colonies);
   const atMax = useMemo(() => {
     void extractorRoster; void colonyRoster; void logisticsA;
@@ -120,6 +126,10 @@ export function PlanetPanel() {
 
   const cap = computeStorageCap(storageA);
   const accumulated = extractor ? peekAccumulated(extractor) : 0;
+  const effectiveRate = extractor ? extractorUnitsPerHour(extractor, logisticsB, nodeEquipped) : 0;
+  const extractorHold = extractor
+    ? Math.floor(EXTRACTOR_HOLD_CAPS[storageB] * getExtractorMultipliers(extractor.key, nodeEquipped).storageMultiplier)
+    : EXTRACTOR_HOLD_CAPS[storageB];
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 5000);
@@ -144,9 +154,6 @@ export function PlanetPanel() {
 
   if (!selectedKey || !system?.planets) return null;
   if (!planet) return null;
-
-  const STATION_COST = 200;
-  const STATION_REFUND = 50;
 
   function canAffordCost(cost: typeof FABRICATOR_COST | typeof FABRICATOR_UPGRADE_COST): boolean {
     return alloys >= cost.alloys && helium3Reserves >= cost.helium3
@@ -175,8 +182,8 @@ export function PlanetPanel() {
 
   function handlePlace(resource: { type: Resource['type']; count: number }) {
     if (useUIStore.getState().checkDetectionLethal()) return;
-    if (!system || alloys < STATION_COST || !canBuildExtractor(galaxySeed, system.id)) return;
-    spendAlloys(STATION_COST);
+    if (!system || alloys < MINING_STATION_COST || !canBuildExtractor(galaxySeed, system.id)) return;
+    spendAlloys(MINING_STATION_COST);
     const now = Date.now();
     const key = makeExtractorKey(galaxySeed, system.id, planet!.name);
     const galaxyDot = supercluster.dots.find((d) => d.seed === galaxy.seed);
@@ -216,7 +223,7 @@ export function PlanetPanel() {
     if (useUIStore.getState().checkDetectionLethal()) return;
     if (!selectedKey) return;
     removeExtractor(selectedKey);
-    addCargo('alloys', STATION_REFUND);
+    addCargo('alloys', MINING_STATION_REFUND);
     if (user) deleteExtractor(user.uid, selectedKey);
   }
 
@@ -292,7 +299,7 @@ export function PlanetPanel() {
             <li key={r.type} className="planet-panel-resource">
               <span className={`planet-panel-resource-dot res-${r.type}`} />
               <span className="planet-panel-resource-label">{RESOURCE_LABELS[r.type]}</span>
-              <span className="planet-panel-resource-count">{r.count}</span>
+              <span className="planet-panel-resource-count">{effectiveExtractionPerHour(r.count)}/hour</span>
               <TierBadge type={r.type} count={r.count} />
             </li>
           )) : <span>Barren</span>}
@@ -306,7 +313,7 @@ export function PlanetPanel() {
                 <li key={moon.name} className="planet-panel-moon">
                   <span className="planet-panel-moon-name">{moon.name}</span>
                   <span className="planet-panel-moon-resources">
-                    {moon.resources ? moon.resources.map((r) => `${r.count} ${RESOURCE_LABELS[r.type]}`).join(', ') : <span>Barren</span>}
+                    {moon.resources ? moon.resources.map((r) => `${RESOURCE_LABELS[r.type]} ${effectiveExtractionPerHour(r.count)}/hour`).join(', ') : <span>Barren</span>}
                   </span>
                 </li>
               ))}
@@ -334,7 +341,7 @@ export function PlanetPanel() {
                   <span className="planet-panel-extractor-resource">
                     Harvesting: {RESOURCE_LABELS[extractor.resourceType]}
                   </span>
-                  <span className="planet-panel-extractor-rate">+{extractor.rate} / hour · stores up to {EXTRACTOR_HOLD_CAPS[storageB]} · cargo cap {cap}</span>
+                  <span className="planet-panel-extractor-rate">+{effectiveRate} / hour - hold fills in {hoursLabel(extractorHoldFillHours(extractorHold, effectiveRate))} - cargo cap {cap}</span>
                 </div>
                 <button
                   className={`planet-panel-btn${collectable === 0 ? ' planet-panel-btn--dim' : ''}`}
@@ -346,7 +353,7 @@ export function PlanetPanel() {
                     : cargoSpace === 0 ? 'Cargo full' : '(nothing yet)'}
                 </button>
                 <button className="planet-panel-btn planet-panel-btn--dismantle" onClick={handleDismantle}>
-                  Dismantle Station (+{STATION_REFUND} alloys)
+                  Dismantle Station (+{MINING_STATION_REFUND} alloys)
                 </button>
               </div>
             )}
@@ -364,11 +371,11 @@ export function PlanetPanel() {
                 <span className="planet-panel-extractor-rate">
                   Plus {Object.entries(FABRICATOR_UPGRADE_MATERIALS)
                     .map(([id, amt]) => `${amt}x ${materialName(id)} (${stockpileMaterials[id] ?? 0} held)`)
-                    .join(' · ')} — assembles rare components for future bases
+                    .join(' - ')} — assembles rare components for future bases
                 </span>
               </div>
             )}
-            {fabricator.tier === 2 && !colony && <button className="planet-panel-btn" onClick={() => useColonyStore.getState().planCharter(fabricator.key)}>Stage colony charter · open delivery demand</button>}
+            {!colony && <button className="planet-panel-btn" onClick={() => useColonyStore.getState().planCharter(fabricator.key)}>Stage colony charter - open delivery demand</button>}
             {colony && <ColonyDetails colonyKey={colony.key} />}
             <button className="planet-panel-btn planet-panel-btn--abandon" disabled={!!colony} onClick={handleAbandon}>
               Abandon {FABRICATOR_TIER_LABELS[fabricator.tier ?? 1]}
@@ -388,32 +395,32 @@ export function PlanetPanel() {
                   </button>
                 ) : (
                   <button
-                    className={`planet-panel-btn${alloys < STATION_COST ? ' planet-panel-btn--dim' : ''}`}
+                    className={`planet-panel-btn${alloys < MINING_STATION_COST ? ' planet-panel-btn--dim' : ''}`}
                     onClick={() => handlePlace(allResources[0])}
-                    disabled={alloys < STATION_COST}
+                    disabled={alloys < MINING_STATION_COST}
                   >
-                    {alloys < STATION_COST ? `Need ${STATION_COST} alloys` : `Place Mining Station (${STATION_COST} alloys)`}
-                    {alloys >= STATION_COST && <TierBadge type={allResources[0].type} count={allResources[0].count} />}
+                    {alloys < MINING_STATION_COST ? `Need ${MINING_STATION_COST} alloys` : `Place Mining Station (${MINING_STATION_COST} alloys)`}
+                    {alloys >= MINING_STATION_COST && <TierBadge type={allResources[0].type} count={allResources[0].count} />}
                   </button>
                 )
               ) : (
                 <>
                   <div className="planet-panel-section-label">
-                    MINE WHICH RESOURCE? · {STATION_COST} alloys
+                    MINE WHICH RESOURCE? - {MINING_STATION_COST} alloys
                   </div>
                   <div className="planet-panel-resource-picker">
                     {allResources.map((r) => (
                       <ResourcePickButton
                         key={r.type}
                         resource={r}
-                        affordable={alloys >= STATION_COST}
+                        affordable={alloys >= MINING_STATION_COST}
                         locked={r.type === 'neutronStarMatter' && logisticsA + logisticsB < UPGRADE_POOL}
                         logisticsTier={logisticsA + logisticsB}
                         onPlace={handlePlace}
                       />
                     ))}
-                    {alloys < STATION_COST && (
-                      <span className="planet-panel-extractor-rate">Need {STATION_COST} alloys to build</span>
+                    {alloys < MINING_STATION_COST && (
+                      <span className="planet-panel-extractor-rate">Need {MINING_STATION_COST} alloys to build</span>
                     )}
                   </div>
                 </>
@@ -428,7 +435,7 @@ export function PlanetPanel() {
                   <span className="planet-panel-extractor-resource">
                     Harvesting: {RESOURCE_LABELS[extractor.resourceType]}
                   </span>
-                  <span className="planet-panel-extractor-rate">+{extractor.rate} / hour · stores up to {EXTRACTOR_HOLD_CAPS[storageB]} · cargo cap {cap}</span>
+                  <span className="planet-panel-extractor-rate">+{effectiveRate} / hour - hold fills in {hoursLabel(extractorHoldFillHours(extractorHold, effectiveRate))} - cargo cap {cap}</span>
                 </div>
                 <button
                   className={`planet-panel-btn${collectable === 0 ? ' planet-panel-btn--dim' : ''}`}
@@ -440,7 +447,7 @@ export function PlanetPanel() {
                     : cargoSpace === 0 ? 'Cargo full' : '(nothing yet)'}
                 </button>
                 <button className="planet-panel-btn planet-panel-btn--dismantle" onClick={handleDismantle}>
-                  Dismantle Station (+{STATION_REFUND} alloys)
+                  Dismantle Station (+{MINING_STATION_REFUND} alloys)
                 </button>
               </div>
             )}

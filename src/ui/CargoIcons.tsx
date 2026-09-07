@@ -49,3 +49,9 @@ export const UpgradeModuleIcon = ({ size = 20 }: { size?: number }) => (
     <path d={ICON_PATHS.upgradeModule} />
   </svg>
 );
+
+export const AmenitiesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox={VIEWBOX} fill="currentColor">
+    <path d={ICON_PATHS.amenities} />
+  </svg>
+);

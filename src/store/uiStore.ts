@@ -99,6 +99,9 @@ export const LOGISTICS_A_BONUS = [0, 3, 6, 9, 12];
 export function computeLogisticsCap(a: number): number {
   return LOGISTICS_BASE + LOGISTICS_A_BONUS[a];
 }
+export function computeRouteCap(logisticsA: number): number {
+  return logisticsA + 1;
+}
 export const LOGISTICS_B_RATE = [1.0, 1.25, 1.5, 1.75, 2.0];
 
 const MATERIAL_BANDWIDTH_BASE = 4;
@@ -112,14 +115,14 @@ export function computeMaterialBandwidth(a: number, b: number): number {
 export const DELIVERY_UNLOCK_THRESHOLD = 2;
 
 export const UPGRADE_COSTS = {
-  storageA:   [150, 300, 600, 1000, 2000] as const,
-  storageB:   [100, 250, 500,  900, 1600] as const,
-  driveA:     [150, 300, 600, 1000, 1800] as const,
-  driveB:     [150, 300, 600, 1000, 1800] as const,
-  weaponA:    [100, 200, 400,  800, 2000] as const,
-  weaponB:    [100, 200, 400,  800, 2000] as const,
-  logisticsA: [200, 400, 700, 1200, 1800] as const,
-  logisticsB: [200, 400, 700, 1200, 1800] as const,
+  storageA:   [75, 200, 500, 1000, 2000] as const,
+  storageB:   [50, 150, 400,  900, 1600] as const,
+  driveA:     [50, 200, 500, 1000, 1800] as const,
+  driveB:     [75, 225, 550, 1000, 1800] as const,
+  weaponA:    [75, 200, 400,  800, 2000] as const,
+  weaponB:    [75, 200, 400,  800, 2000] as const,
+  logisticsA: [100, 300, 700, 1200, 1800] as const,
+  logisticsB: [100, 300, 700, 1200, 1800] as const,
 };
 
 interface UIState {
@@ -386,7 +389,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
   selectedPlanetKey: null,
   setSelectedPlanet: (key) => set({ selectedPlanetKey: key }),
-  exoticMatter: 250,
+  exoticMatter: 350,
   detectionRating: 0,
   detectionHeat: 0,
   lastDetectionChangeAt: 0,

@@ -3,7 +3,7 @@ import {
   useUIStore,
   UPGRADE_COSTS, UPGRADE_POOL,
   EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE,
-  computeStorageCap, computeDriveMultiplier, computeLogisticsCap, computeMaterialBandwidth, computeWeaponCap,
+  computeStorageCap, computeDriveMultiplier, computeLogisticsCap, computeMaterialBandwidth, computeRouteCap, computeWeaponCap,
 } from '../store/uiStore';
 import './ShipUpgradePanel.css';
 
@@ -86,15 +86,15 @@ const WEAPON_B_DESCS = [
 
 // ── Logistics ─────────────────────────────────────────────────────────────────
 const LOGISTICS_A_NAMES = [
-  'Stock Logistics',
-  'Relay Beacon Array',
+  'Starter Drone Link',
+  'Expanded Relay Array',
   'Subspace Logistics Net',
   'Distributed Mesh Array',
   'Quantum Coordination Grid',
 ];
 const LOGISTICS_A_DESCS = [
-  'Direct telemetry links to up to five simultaneous mining stations within standard coordination range.',
-  'A sparse network of relay beacons extends the ship\'s coordination bandwidth, adding synchronized mining stations to the extraction mesh.',
+  'One drone route coordinates up to five mining stations within standard range.',
+  'A sparse relay array expands the working network with another route and three additional stations.',
   'Quantum-paired subspace relays maintain phase-locked telemetry across wider deployment zones, pushing station capacity further.',
   'A distributed relay mesh extends coordination across multiple star systems, enabling additional simultaneous mining operations.',
   'Quantum-entangled coordination nodes maintain zero-latency telemetry across any distance, supporting the full extraction mesh at maximum capacity.',
@@ -109,9 +109,9 @@ const LOGISTICS_B_NAMES = [
 const LOGISTICS_B_DESCS = [
   'Mining stations operate at baseline extraction velocity. No rate enhancements applied.',
   'Upgraded drill heads and optimized power routing push extraction speed beyond baseline, compressing time between collections.',
-  'Synchronized resonance pulses between drill arrays maximize material dislodgement rates, accelerating per-minute yield.',
+  'Synchronized resonance pulses between drill arrays maximize material dislodgement rates, accelerating hourly yield.',
   'Phase-synchronized drill timing eliminates mechanical interference between adjacent units, pushing throughput well beyond standard limits.',
-  'Full overdrive mode engages all drill systems at maximum resonance frequency, doubling per-minute extraction yield.',
+  'Full overdrive mode engages all drill systems at maximum resonance frequency, doubling hourly extraction yield.',
 ];
 
 // ── Components ────────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ function ShipUpgradePanelInner() {
               maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - logisticsB),
               names: LOGISTICS_A_NAMES,
               descs: LOGISTICS_A_DESCS,
-              stat: (lvl) => `${computeLogisticsCap(lvl)} stations · ${computeMaterialBandwidth(lvl, logisticsB)} bandwidth`,
+              stat: (lvl) => `${computeLogisticsCap(lvl)} stations - ${computeRouteCap(lvl)} routes - ${computeMaterialBandwidth(lvl, logisticsB)} bandwidth`,
               costs: UPGRADE_COSTS.logisticsA,
               currency: 'alloys',
               canAfford: alloys >= logisticsACost,
@@ -371,7 +371,7 @@ function ShipUpgradePanelInner() {
               maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - logisticsA),
               names: LOGISTICS_B_NAMES,
               descs: LOGISTICS_B_DESCS,
-              stat: (lvl) => `${LOGISTICS_B_RATE[lvl]}× rate · ${computeMaterialBandwidth(logisticsA, lvl)} bandwidth`,
+              stat: (lvl) => `${LOGISTICS_B_RATE[lvl]}× rate - ${computeMaterialBandwidth(logisticsA, lvl)} bandwidth`,
               costs: UPGRADE_COSTS.logisticsB,
               currency: 'alloys',
               canAfford: alloys >= logisticsBCost,

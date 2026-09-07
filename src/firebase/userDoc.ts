@@ -52,7 +52,7 @@ export const defaultSettings: UserSettings = {
   showHUD: true,
   showBootSequence: true,
   infiniteExplore: false,
-  exoticMatter: 75,
+  exoticMatter: 350,
   detectionRating: 0,
   detectionHeat: 0,
   lastDetectionChangeAt: 0,

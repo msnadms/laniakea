@@ -502,8 +502,8 @@ describe('route dispatch integration', () => {
       resourceType: type, rate: 1, placedAt: now - age, lastCollectedAt: now - age,
       systemX: systemId, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
     });
-    const relevant = source('relevant', 1, 'alloys', 100 * HOUR);
-    const irrelevant = source('irrelevant', 2, 'exotic', 300 * HOUR);
+    const relevant = source('relevant', 1, 'alloys', 10 * HOUR);
+    const irrelevant = source('irrelevant', 2, 'exotic', 30 * HOUR);
     const fab: Fabricator = {
       key: 'weighted-fab', tier: 1, galaxySeed: 82, systemId: 3, systemName: 'Factory', planetName: 'Forge',
       builtAt: 1, systemX: 3, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
@@ -571,11 +571,11 @@ describe('route dispatch integration', () => {
       fabricators: { [first.key]: first, [second.key]: second },
       fabricatorStates: {
         [first.key]: { slots: [{
-          ...slot('graphene_lattice'), pendingResources: { alloys: 400, nutrients: 250 },
+          ...slot('graphene_lattice'), pendingResources: { alloys: 32, nutrients: 20 },
         }] },
         [second.key]: { slots: [{
           ...slot('hea_billet'),
-          pendingResources: { alloys: 900, metallicHydrogen: 200 },
+          pendingResources: { alloys: 180, metallicHydrogen: 40 },
           pendingMaterials: { boron_ceramic: 1 },
         }] },
       },
@@ -761,6 +761,27 @@ describe('route dispatch integration', () => {
     expect(routeDetectionRisk([], groups)).toBe(2.5);
     expect(probeAttentionFromRisk(3)).toBe(0);
     expect(probeAttentionFromRisk(3.5)).toBe(1);
+  });
+
+  it('does not multiply galaxy risk by the number of routed extractors sharing it', () => {
+    const extractor = (key: string, galaxySeed: number, superclusSeed: number): Extractor => ({
+      key, galaxySeed, systemId: key.length, systemName: key, planetName: 'Mine',
+      resourceType: 'alloys', rate: 1, placedAt: 1, lastCollectedAt: 1,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed,
+    });
+    const routedA = extractor('routed-a', 20, 1);
+    const routedB = extractor('routed-b', 20, 1);
+    const roster = [routedA, routedB];
+    const groups = new Map<string, NodeGroup>([
+      [extractorNodeId(routedA.galaxySeed, routedA.systemId), { ...routedA, nodeId: extractorNodeId(routedA.galaxySeed, routedA.systemId), extractors: [routedA], fabricatorKeys: [] }],
+      [extractorNodeId(routedB.galaxySeed, routedB.systemId), { ...routedB, nodeId: extractorNodeId(routedB.galaxySeed, routedB.systemId), extractors: [routedB], fabricatorKeys: [] }],
+    ]);
+    useExtractorStore.setState({
+      extractors: Object.fromEntries(roster.map((entry) => [entry.key, entry])),
+      ownedUpgrades: [], nodeEquipped: {},
+    });
+
+    expect(routeDetectionRisk([], groups)).toBe(2);
   });
 
   it('halves an extractor risk with one signal dampener and eliminates it with two', () => {

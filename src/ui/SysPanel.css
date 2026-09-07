@@ -171,25 +171,32 @@
   font-weight: 400;
 }
 
-.sys-strip {
+.sys-vitals {
   display: grid;
-  grid-template-columns: 130px 1fr 90px;
-  align-items: center;
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
   margin: 14px 0;
 }
 
-.sys-strip > div {
-  height: 8px;
-  overflow: hidden;
+.sys-vital {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
   background: #122532;
   border: 1px solid #294b5b;
+  color: #57c99e;
 }
 
-.sys-strip i {
-  display: block;
-  height: 100%;
-  background: #57c99e;
+.sys-vital svg {
+  flex: none;
+}
+
+.sys-vital b {
+  color: #cfe9f2;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .sys-district-grid {

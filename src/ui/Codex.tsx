@@ -176,8 +176,8 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
           )}
           <div className="codex-stats">
             <span>
-              {enriched.length} {enriched.length === 1 ? 'supercluster' : 'superclusters'} ·{' '}
-              {totalGalaxies} {totalGalaxies === 1 ? 'galaxy' : 'galaxies'} ·{' '}
+              {enriched.length} {enriched.length === 1 ? 'supercluster' : 'superclusters'} -{' '}
+              {totalGalaxies} {totalGalaxies === 1 ? 'galaxy' : 'galaxies'} -{' '}
               {totalStars} {totalStars === 1 ? 'star' : 'stars'}
             </span>
             <button

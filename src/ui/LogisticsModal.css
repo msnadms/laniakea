@@ -870,11 +870,15 @@
 }
 
 .logistics-resource-type {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: rgba(0, 160, 200, 0.55);
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  color: rgba(0, 200, 232, 0.75);
   white-space: nowrap;
+}
+
+.logistics-resource-type svg {
+  width: 20px;
+  height: 20px;
 }
 
 .logistics-resource-amount {

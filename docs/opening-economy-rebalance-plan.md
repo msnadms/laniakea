@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed. This document defines the balance and implementation work needed before changing gameplay values.
+Implemented in code September 7, 2026; clean-save manual playtesting remains pending. The deterministic simulation and its CI ceilings are the authority for future tuning.
 
 ## Problem
 
@@ -176,7 +176,7 @@ Every recipe should be evaluated using `cost / expected hourly input`, including
 
 For the first pass, divide tier-1 raw recipe costs by approximately four to six and advanced/rare raw costs by approximately five to ten, then run the dependency simulation. Outputs and material requirements should remain intact initially so the production graph keeps its current shape.
 
-Exact recipe values should not be committed until the simulator includes competition between recipes for the same tier-1 materials. A recipe that looks reasonable alone can still block the charter for days when three downstream items consume the same input.
+The committed recipe values were selected with a dependency simulation that shares intermediate inventory and byproducts across competing recipes. Future changes must keep that competition in the simulation; evaluating a recipe alone can still hide a multi-day charter bottleneck.
 
 ### 7. Match automation polling to the new cadence
 

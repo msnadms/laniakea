@@ -31,13 +31,13 @@ A breadcrumb address bar tracks your position through the hierarchy: `Observable
 
 Beyond exploring, you run a ship that mines and ferries resources across the galaxy.
 
-- **Mining stations** — Open a planet's panel and place a station (200 alloys) on one of its surface or moon resources. Stations passively accumulate that resource over time, up to a hold cap, and must be collected before they fill up.
+- **Mining stations** — Open a planet's panel and place a station (50 alloys) on one of its surface or moon resources. Each deposit-rating point produces 10 units per hour before upgrades. Stations accumulate up to a hold cap and must be collected before they fill up.
 - **Fabricators** — Build on a habitable planet to configure five basic recipe slots (six maximum), or upgrade to an eight-slot advanced production hub. Recipes process their entire feasible batch instantly when a route visits.
 - **Drone logistics** — The "AUTO" button opens a DAG editor for connected extraction and fabrication networks. Routes support demand-aware branches, cargo filters, priorities, weighted splits, reserves, per-edge bandwidth, dry runs, and automatic activation.
 
 ### Tips for automating extraction
 
-- **Unlock logistics before scaling up.** Drone routes are locked until you put at least one point into the **Logistics-A** workshop track. That first point also raises your station cap from 5 to 8 and grants your first route slot; each additional tier adds +3 stations and +1 route (up to 17 stations / 4 routes at max tier).
+- **Expand logistics as the network grows.** The starter drone link supports one route and five stations immediately. Each **Logistics-A** tier adds +3 stations and +1 route, reaching 17 stations and five routes at max tier.
 - **Logistics-B is throughput, not capacity.** It speeds up how fast stations fill (1.0×→2.0× at max tier) — invest here once you have more stations than your routes can keep collected.
 - **Build one connected network per route.** Every dispatch pays a flat base fee plus edge travel costs. Disconnected islands are rejected, and branch policy determines how much useful output one run produces.
 - **Dispatch is the production event.** A run collects cargo, processes all feasible fabricator batches in priority order, and carries output into later fabrication stages during the same traversal. An unchanged route does no work and spends no fuel.

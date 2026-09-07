@@ -31,5 +31,5 @@ export const QUESTS: QuestDef[] = [
   { id: 'upgrade_storage',   title: 'Expanded Cargo',      description: 'Upgrade your cargo storage capacity.' },
   { id: 'upgrade_drive',     title: 'Drive Enhancement',   description: 'Upgrade the Alcubierre drive systems.' },
   { id: 'new_supercluster',  title: 'Supercluster Jump',   description: 'Travel to a new supercluster region.' },
-  { id: 'delivery_network',  title: 'Logistics Online',    description: 'Unlock the automated extraction delivery network.' },
+  { id: 'delivery_network',  title: 'Logistics Expanded',  description: 'Expand the automated extraction delivery network.' },
 ];

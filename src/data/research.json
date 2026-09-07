@@ -5,7 +5,6 @@
       "name": "Planetary Civilization",
       "description": "Unify settlement science into a body of knowledge capable of sustaining an autonomous world.",
       "threshold": 120,
-      "milestone": "Maintain a fully staffed, food-positive colony for one hour.",
       "unlock": "Planetary autonomy and Dyson swarm planning"
     },
     {

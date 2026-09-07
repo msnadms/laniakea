@@ -1,8 +1,9 @@
-import { peekAccumulated, getExtractorMultipliers } from '../store/extractorStore';
+import { peekAccumulated, extractorUnitsPerHour } from '../store/extractorStore';
 import { RESOURCE_LABELS, extractorNodeId, fabricatorNodeId, colonyNodeId } from '../game/types';
 import type { Extractor, Fabricator, Colony } from '../game/types';
 import { colonyDefense, colonyPopCap } from '../store/colonyStore';
 import { GALAXY_RADIUS, SC_WORLD_HALF } from '../game/constants';
+import { useUIStore } from '../store/uiStore';
 
 export function getSystemKey(ext: Extractor): string {
   return extractorNodeId(ext.galaxySeed, ext.systemId);
@@ -117,12 +118,11 @@ function buildRawNodes(
   for (const [sk, exts] of extMap) {
     const rep = exts[0];
     const resources = exts.map((e) => {
-      const { rateMultiplier } = getExtractorMultipliers(e.key, nodeEquipped);
       return {
         label: RESOURCE_LABELS[e.resourceType],
         type: e.resourceType as string,
         accumulated: peekAccumulated(e, now),
-        rate: e.rate * rateMultiplier,
+        rate: extractorUnitsPerHour(e, useUIStore.getState().logisticsB, nodeEquipped),
       };
     });
     nodes.push({
@@ -171,7 +171,7 @@ function buildRawNodes(
   }
   for (const [nodeId, members] of colonyGroups) {
     const c = members[0];
-    nodes.push({ nodeId, nodeType: 'colony', name: `${c.systemName} · ${members.some(x => x.foundedAt) ? 'Colony' : 'Charter'}`,
+    nodes.push({ nodeId, nodeType: 'colony', name: `${c.systemName} - ${members.some(x => x.foundedAt) ? 'Colony' : 'Charter'}`,
       keys: members.map(x => x.key), galaxySeed: c.galaxySeed, superclusSeed: c.superclusSeed,
       sysX: c.systemX, sysY: c.systemY, galX: c.galaxyX, galY: c.galaxyY,
       populationFill: members.reduce((n,x) => n+x.population, 0) / Math.max(1, members.reduce((n,x) => n+colonyPopCap(x), 0)),

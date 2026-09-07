@@ -28,7 +28,7 @@ import {
 } from '../store/fabricatorStore';
 import type { SlotRunResult, FeedResult } from '../store/fabricatorStore';
 import { useShallow } from 'zustand/react/shallow';
-import { useUIStore, computeMaterialBandwidth } from '../store/uiStore';
+import { useUIStore, computeMaterialBandwidth, computeRouteCap } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import {
   RESOURCE_LABELS,
@@ -45,7 +45,7 @@ import type { Craftable } from '../data/upgrades';
 import { CRAFTABLE_MATERIALS, STOCKED_MATERIALS, MATERIAL_TIERS, materialName } from '../data/materials';
 import { RARE_RESOURCES, RARE_ROLES } from '../data/rareResources';
 import { useStockpileStore } from '../store/stockpileStore';
-import { UpgradeModuleIcon } from './CargoIcons';
+import { AlloysIcon, ExoticMatterIcon, Helium3Icon, MetallicHydrogenIcon, NeutronStarMatterIcon, NutrientsIcon, UpgradeModuleIcon } from './CargoIcons';
 import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, RouteFillAggregate, Resource, SlotFillMode } from '../game/types';
 import { maxFabricatorSlots, makeEmptyFabricatorSlot, RAW_TYPES } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
@@ -76,6 +76,18 @@ type DispatchAnim = {
 
 const ROUTABLE_MATERIALS = [...new Set([...STOCKED_MATERIALS, ...RARE_RESOURCES].map((material) => material.id))];
 const DETAIL_POP_HEIGHT = 210;
+
+function ResourceIcon({ type }: { type: Resource['type'] }) {
+  switch (type) {
+    case 'alloys': return <AlloysIcon />;
+    case 'nutrients': return <NutrientsIcon />;
+    case 'metallicHydrogen': return <MetallicHydrogenIcon />;
+    case 'neutronStarMatter': return <NeutronStarMatterIcon />;
+    case 'exotic': return <ExoticMatterIcon />;
+    case 'helium-3': return <Helium3Icon />;
+    default: return <UpgradeModuleIcon />;
+  }
+}
 
 function costParts(exotic: number, helium: number): Array<[string, number]> {
   const parts: Array<[string, number]> = [];
@@ -231,7 +243,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t);
   }, [dispatchAnim]);
 
-  const maxRoutes = logisticsA;
+  const maxRoutes = computeRouteCap(logisticsA);
   const canAddRoute = routes.length < maxRoutes;
   const allExtractors = useMemo(() => Object.values(extractors), [extractors]);
   const allFabricators = useMemo(() => Object.values(fabricators), [fabricators]);
@@ -418,7 +430,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
         });
       }
       if (materialsMoved > 0) {
-        lines.push({ text: `${materialsMoved} material-edge units moved · ${bandwidth} cap/edge`, isCost: true, revealStep: lastStep });
+        lines.push({ text: `${materialsMoved} material-edge units moved - ${bandwidth} cap/edge`, isCost: true, revealStep: lastStep });
       }
 
       if (orderedNodeIds.length > 0) {
@@ -533,15 +545,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
               <span className="logistics-routes-cap">{routes.length}/{maxRoutes}</span>
             </div>
 
-            {logisticsA === 0 ? (
-              <div className="logistics-locked">
-                <div className="logistics-locked-title">Logistics Locked</div>
-                <div className="logistics-locked-desc">
-                  Upgrade Extraction Logistics in the Ship Workshop to unlock drone route planning.
-                </div>
-              </div>
-            ) : (
-              <>
+            <>
                 <button
                   className="logistics-new-btn"
                   onClick={startNew}
@@ -620,12 +624,12 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
                         {preview && (
                           <div className="lroute-preview">
-                            Dry run · {preview.expectedBatches} ready slot{preview.expectedBatches === 1 ? '' : 's'} ·{' '}
-                            {Object.values(preview.expectedEdgeUse).reduce((sum, edge) => sum + edge.used, 0)} expected edge units ·{' '}
-                            {preview.shortages.length} shortage{preview.shortages.length === 1 ? '' : 's'} · {preview.detectionRisk} risk
-                            {preview.expectedRecipes.length > 0 && <span title={preview.expectedRecipes.join(', ')}> · recipes: {preview.expectedRecipes.slice(0, 2).join(', ')}{preview.expectedRecipes.length > 2 ? '…' : ''}</span>}
+                            Dry run - {preview.expectedBatches} ready slot{preview.expectedBatches === 1 ? '' : 's'} -{' '}
+                            {Object.values(preview.expectedEdgeUse).reduce((sum, edge) => sum + edge.used, 0)} expected edge units -{' '}
+                            {preview.shortages.length} shortage{preview.shortages.length === 1 ? '' : 's'} - {preview.detectionRisk} risk
+                            {preview.expectedRecipes.length > 0 && <span title={preview.expectedRecipes.join(', ')}> - recipes: {preview.expectedRecipes.slice(0, 2).join(', ')}{preview.expectedRecipes.length > 2 ? '…' : ''}</span>}
                             {Object.entries(preview.expectedOutputs).slice(0, 1).map(([id, count]) => (
-                              <span key={id}> · {fmt(count * 3_600_000 / AUTOMATION_POLL_MS)} {materialName(id)} / hr at {fmt(cost.exotic * 3_600_000 / AUTOMATION_POLL_MS)} exotic / hr</span>
+                              <span key={id}> - {fmt(count * 3_600_000 / AUTOMATION_POLL_MS)} {materialName(id)} / hr at {fmt(cost.exotic * 3_600_000 / AUTOMATION_POLL_MS)} exotic / hr</span>
                             ))}
                           </div>
                         )}
@@ -700,13 +704,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     );
                   })}
                 </div>
-              </>
-            )}
+            </>
           </div>
 
           {/* ── Middle: editor ── */}
-          {logisticsA > 0 && (
-            <div className="logistics-editor">
+          <div className="logistics-editor">
               {!isEditing ? (
                 <div className="logistics-editor-empty">
                   Select a route or create a new one
@@ -729,7 +731,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     {/* Station map */}
                     <div className="logistics-map-section">
                       <div className="logistics-col-label">
-                        Drag node to node to link · click a link to cut it · click a node for details
+                        Drag node to node to link - click a link to cut it - click a node for details
                       </div>
                       <div className="station-map-container">
                         <StationMap
@@ -921,8 +923,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                   </div>
                 </>
               )}
-            </div>
-          )}
+          </div>
           {/* ── Right panel ── */}
           <div className="logistics-resources-panel">
             {lastHoveredNode?.nodeType === 'colony' && lastHoveredNode.keys.map(key => <ColonyDetails key={key} colonyKey={key} />)}
@@ -1004,11 +1005,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
               <>
                 <div className="logistics-reserves-section">
                   <div className="logistics-reserve-row">
-                    <span className="logistics-resource-type">Exotic Matter</span>
+                    <span className="logistics-resource-type" title="Exotic Matter"><ResourceIcon type="exotic" /></span>
                     <span className="logistics-resource-amount">{fmt(exoticMatter)}</span>
                   </div>
                   <div className="logistics-reserve-row">
-                    <span className="logistics-resource-type">Helium-3</span>
+                    <span className="logistics-resource-type" title="Helium-3"><ResourceIcon type="helium-3" /></span>
                     <span className="logistics-resource-amount">{fmt(helium3)}</span>
                   </div>
                 </div>
@@ -1028,7 +1029,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                               return (
                                 <div key={ext.key} className="logistics-resource-row">
                                   <div className="logistics-resource-meta">
-                                    <span className="logistics-resource-type">{RESOURCE_LABELS[ext.resourceType]}</span>
+                                    <span className="logistics-resource-type" title={RESOURCE_LABELS[ext.resourceType]}><ResourceIcon type={ext.resourceType} /></span>
                                     <span className={`logistics-resource-amount${accum === 0 ? ' logistics-resource-amount--zero' : ''}`}>
                                       {fmt(accum)}
                                     </span>
@@ -1072,7 +1073,7 @@ function EdgePolicyPanel({
     <div className={`logistics-policy-panel logistics-edge-policies${open ? ' logistics-policy-panel--open' : ''}`}>
       <button type="button" className="logistics-policy-summary" onClick={() => setOpen((prev) => !prev)}>
         <span>Edge policies</span>
-        <span className="logistics-policy-summary-meta">{edges.length} edge{edges.length === 1 ? '' : 's'} · last-run flow on map</span>
+        <span className="logistics-policy-summary-meta">{edges.length} edge{edges.length === 1 ? '' : 's'} - last-run flow on map</span>
       </button>
       {open && (
       <div className="logistics-edge-policies-content">
@@ -1353,7 +1354,7 @@ function SlotView({
             <div className="lm-slot-last-run">
               Last run: {lastResult.batches} batch{lastResult.batches === 1 ? '' : 'es'}
               {Object.keys(lastResult.missingResources).length + Object.keys(lastResult.missingMaterials).length > 0
-                ? ` · missing ${[
+                ? ` - missing ${[
                     ...Object.entries(lastResult.missingResources).map(([id, amount]) => `${amount} ${RESOURCE_LABELS[id as Resource['type']] ?? id}`),
                     ...Object.entries(lastResult.missingMaterials).map(([id, amount]) => `${amount} ${materialName(id)}`),
                   ].join(', ')}`
@@ -1394,7 +1395,7 @@ function describeHoldFeed(result: FeedResult): string {
   }
   const batches = result.slotResults.reduce((sum, entry) => sum + entry.batches, 0);
   const head = parts.length > 0 ? parts.join(', ') : 'buffers unchanged';
-  return batches > 0 ? `${head} · ${batches} batch${batches === 1 ? '' : 'es'}` : head;
+  return batches > 0 ? `${head} - ${batches} batch${batches === 1 ? '' : 'es'}` : head;
 }
 
 function FabricatorSlotList({
@@ -1443,7 +1444,7 @@ function FabricatorSlotList({
   return (
     <>
       {configured.length > 1 && (
-        <div className="lm-fabricator-order-note">Dispatch order · top runs first</div>
+        <div className="lm-fabricator-order-note">Dispatch order - top runs first</div>
       )}
       {configured.map((entry, rank) => renderSlot(entry, rank + 1))}
       {empty.length > 0 && configured.length > 0 && (
@@ -1520,8 +1521,8 @@ function FabricatorSidebar({
           <div key={k} className="lm-fabricator-entry">
             {fabricator && (
               <div className="lm-fabricator-planet-name">
-                {node.keys.length > 1 ? `${fabricator.planetName} · ` : ''}
-                {FABRICATOR_TIER_LABELS[fabricator.tier]} · {depth}× buffers
+                {node.keys.length > 1 ? `${fabricator.planetName} - ` : ''}
+                {FABRICATOR_TIER_LABELS[fabricator.tier]} - {depth}× buffers
               </div>
             )}
             <FabricatorSlotList
@@ -1570,7 +1571,7 @@ function FabricatorSidebar({
                 onClick={() => onUnlockSlot(k)}
                 title="Free configuration slot"
               >
-                + Configure Slot {slotCount + 1} · Free
+                + Configure Slot {slotCount + 1} - Free
               </button>
             )}
           </div>
@@ -1608,7 +1609,7 @@ function HeldCargoNotice({
   return (
     <div className="lm-held-cargo">
       <div className="lm-held-cargo-title">Stranded route cargo</div>
-      <div>{entries.join(' · ')}</div>
+      <div>{entries.join(' - ')}</div>
       <button type="button" onClick={onFlush}>Flush to ship</button>
     </div>
   );
@@ -1783,7 +1784,7 @@ function recipeTip(
   for (const [id, amt] of materialCostEntries(recipe.byproducts)) {
     yields.push(`leaves ${amt}× ${materialName(id)}`);
   }
-  const notes = [yields.join(' · '), note].filter(Boolean).join(' — ');
+  const notes = [yields.join(' - '), note].filter(Boolean).join(' — ');
   return {
     title: recipe.name,
     time: 'Instant on dispatch',
@@ -1881,7 +1882,7 @@ function InventoryPanel({
     <>
       {pendingEquip && (
         <div className="lm-inventory-context">
-          {pendingEquip.nodeName} · {pendingEquip.resourceLabel} · Slot {pendingEquip.slot + 1}
+          {pendingEquip.nodeName} - {pendingEquip.resourceLabel} - Slot {pendingEquip.slot + 1}
         </div>
       )}
       <div className="lm-inventory-list">
@@ -1983,7 +1984,7 @@ function MaterialsPanel({
   return (
     <>
       <div className="lm-inventory-context">
-        Stockpile · {total} held{rareTotal > 0 ? ` · ${rareTotal} rare` : ''}
+        Stockpile - {total} held{rareTotal > 0 ? ` - ${rareTotal} rare` : ''}
       </div>
       <div className="lm-inventory-list">
         {MATERIAL_TIERS.map((tier) => {

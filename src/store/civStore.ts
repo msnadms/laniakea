@@ -1,5 +1,5 @@
 import type { Colony } from '../game/types';
-import { useColonyStore, HOUR } from './colonyStore';
+import { useColonyStore } from './colonyStore';
 import { useUIStore, detectionFloor } from './uiStore';
 import { generateSupercluster } from '../game/superclusters';
 import { useResearchStore } from './researchStore';
@@ -10,8 +10,7 @@ export const STRIKE_EXPOSURE_INTERVAL = 100;
 
 export function civilizationMilestoneMet(colonies: Colony[], tier: number): boolean {
   const living = colonies.filter(c => c.foundedAt > 0 && c.population > 0);
-  if (tier === 1) return living.some(c => (c.planetaryProgressMs ?? 0) >= HOUR
-    || (c.population >= 500 && ((c as Colony & { selfSufficientMs?: number }).selfSufficientMs ?? 0) >= HOUR));
+  if (tier === 1) return true;
   if (tier === 2) return living.some(c => c.swarmComplete);
   if (tier !== 3) return tier <= 0;
   const galaxies = new Map<number, Set<number>>();

@@ -92,8 +92,8 @@ Orbit radii grow by a factor of 1.55–2.2 per ring from a base of ~380–500 un
 ### Zustand stores
 
 - `gameStore` — holds the active `Galaxy`, `supercluster`, `system` (active `StarSystem | null`), `regenerateGalaxy(seed?)`, `setSystem(system)`, `markSystemVisited(id)` actions
-- `uiStore` — `view` (`'supercluster' | 'galaxy' | 'system'`), `showHyperlanes`, `showAttractorLabels`, `showOrbitRings`, address breadcrumb stack (`pushAddress`, `removeAddressType`); also owns ship resource state (`exoticMatter`, `helium3Reserves`, `alloys`, `nutrients`, `metallicHydrogen`, `neutronStarMatter`, `railgunAmmo`, `detectionRating`), upgrade tiers (`storageA/B`, `weaponA/B`, `driveA/B`, `logisticsA/B`) and the derived-cap helpers `computeStorageCap`, `computeWeaponCap`, `computeDriveMultiplier`, `computeLogisticsCap`, `computeMaterialBandwidth`
-- `extractorStore` — placed `Extractor`s keyed by `ExtractorKey`; `peekAccumulated`/`collectExtractor` derive accrued resources from elapsed time (`ACCUMULATION_RATE_PER_MS`) scaled by `storageB`/`logisticsB` tiers. Also owns the extractor-upgrade-module system: `ownedUpgrades` (inventory) and `nodeEquipped` (per-extractor `[slot0, slot1]` upgrade ids, see `getExtractorMultipliers`). `receiveFabricatorItems` deposits finished fabricator output — materials/rares to `stockpileStore`, modules to `ownedUpgrades`
+- `uiStore` — `view` (`'supercluster' | 'galaxy' | 'system'`), `showHyperlanes`, `showAttractorLabels`, `showOrbitRings`, address breadcrumb stack (`pushAddress`, `removeAddressType`); also owns ship resource state (`exoticMatter`, `helium3Reserves`, `alloys`, `nutrients`, `metallicHydrogen`, `neutronStarMatter`, `railgunAmmo`, `detectionRating`), upgrade tiers (`storageA/B`, `weaponA/B`, `driveA/B`, `logisticsA/B`) and the derived-cap helpers `computeStorageCap`, `computeWeaponCap`, `computeDriveMultiplier`, `computeLogisticsCap`, `computeRouteCap`, `computeMaterialBandwidth`
+- `extractorStore` — placed `Extractor`s keyed by `ExtractorKey`; `peekAccumulated`/`collectExtractor` derive accrued resources from elapsed time at 10 units per deposit-rating point per hour, scaled by `storageB`/`logisticsB` tiers. Also owns the extractor-upgrade-module system: `ownedUpgrades` (inventory) and `nodeEquipped` (per-extractor `[slot0, slot1]` upgrade ids, see `getExtractorMultipliers`). `receiveFabricatorItems` deposits finished fabricator output — materials/rares to `stockpileStore`, modules to `ownedUpgrades`
 - `fabricatorStore` — placed `Fabricator`s and their `fabricatorStates` (per-fabricator production slots). See **Fabricator production model** below
 - `stockpileStore` — the ship's uncapped hold of crafted goods: `materials` (intermediate materials, with `hasMaterials`/`consumeMaterials`/`addMaterial`) and `rares` (rare assemblies from advanced fabricators, `addRare`). Persisted via `firebase/stockpile.ts`
 - `logisticsStore` — drone delivery `routes`, each a **DAG** over map-node ids (membership derived from `LogisticsRoute.edges`). See **Logistics routes are DAGs** below
@@ -190,7 +190,7 @@ Route risk over 3 adds one probe attention point; it is not a probability roll.
 `useLogisticsAutomation` runs the same `dispatchRoute` path as manual operation and persists each
 completed run.
 
-**The intended cadence is a check-in every day or so, not a watched tab.** Three things carry that.
+**The intended cadence is a productive opening session followed by spaced check-ins, not a watched tab.** Three things carry that.
 `runAutomation` skips a route whose dry run moves less than `MIN_DISPATCH_UNITS` and expects no
 batch, so a trickle of demand cannot bleed a full dispatch fee. Extractors already accrue offline
 from `lastCollectedAt`, but routes do not, so the automation hook's **first** tick calls

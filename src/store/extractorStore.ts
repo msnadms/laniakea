@@ -7,8 +7,21 @@ import { useStockpileStore } from './stockpileStore';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE } from './uiStore';
 import { canBuildExtractor } from './colonyStore';
 import { useQuestStore } from './questStore';
+import { effectiveExtractionPerHour, EXTRACTION_UNITS_PER_RATING_PER_HOUR } from '../game/economy';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
+export const ACCUMULATION_RATE_PER_MS = EXTRACTION_UNITS_PER_RATING_PER_HOUR / (60 * 60 * 1000);
+
+export function extractorUnitsPerHour(
+  extractor: Extractor,
+  logisticsB: number,
+  nodeEquipped: Record<string, [string | null, string | null]>,
+): number {
+  return effectiveExtractionPerHour(
+    extractor.rate,
+    LOGISTICS_B_RATE[logisticsB],
+    getExtractorMultipliers(extractor.key, nodeEquipped).rateMultiplier,
+  );
+}
 
 export function getExtractorMultipliers(
   extractorKey: string,

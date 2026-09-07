@@ -6,7 +6,7 @@
       "role": "power",
       "desc": "Vacuum power source and anchor for a Research District, increasing that district's research output by 25%.",
       "effect": { "stat": "research", "value": 0.25 },
-      "cost": { "exotic": 800 },
+      "cost": { "exotic": 100 },
       "materials": { "casimir_plate": 2, "bec_cell": 1 }
     },
     {
@@ -15,7 +15,7 @@
       "role": "fuel",
       "desc": "Farm District anchor and colony dispatch reserve. Stores 2000 units of each warp fuel so its network can operate without the Peregrine.",
       "effect": { "stat": "autonomy", "value": 2000 },
-      "cost": { "helium": 2200, "metallicHydrogen": 800 },
+      "cost": { "helium": 275, "metallicHydrogen": 100 },
       "materials": { "positron_trap": 2, "deuterium_slush": 4 }
     },
     {
@@ -24,7 +24,7 @@
       "role": "field",
       "desc": "Defense District anchor. Its superconducting mount slews a fire-control battery fast enough to engage a census probe before it can look twice.",
       "effect": { "stat": "defense", "value": 40 },
-      "cost": { "alloys": 1800, "exotic": 1200 },
+      "cost": { "alloys": 225, "exotic": 150 },
       "materials": { "ybco_tape": 3, "degenerate_core": 1 }
     },
     {
@@ -33,7 +33,7 @@
       "role": "life",
       "desc": "Civilian District anchor. Recycles air, water and waste for 1000 people; food still requires farms or supply ships.",
       "effect": { "stat": "popCap", "value": 1000 },
-      "cost": { "nutrients": 3200, "alloys": 1200 },
+      "cost": { "nutrients": 400, "alloys": 150 },
       "materials": { "silica_aerogel": 6, "graphene_lattice": 4, "muon_cell": 1 }
     },
     {
@@ -42,7 +42,7 @@
       "role": "population",
       "desc": "Built into a Civilian District, where it safely grows and supports a new population.",
       "effect": { "stat": "ectogenesis", "value": 1000 },
-      "cost": { "nutrients": 3000, "alloys": 2000 },
+      "cost": { "nutrients": 375, "alloys": 250 },
       "materials": { "bec_cell": 2, "muon_cell": 2, "silica_aerogel": 6 }
     }
   ]

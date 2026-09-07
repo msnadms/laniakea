@@ -18,9 +18,9 @@ export function ColonySummary({ colonyKey }: { colonyKey: string }) {
   ];
   return <section className="colony-summary">
     <strong>{colony.foundedAt ? `${Math.floor(colony.population).toLocaleString()} people` : 'Charter staging'}</strong>
-    <span>{Number.isFinite(runway) ? `${runway.toFixed(1)}h food runway` : 'No food demand'} · {Math.floor(colony.supplies.nutrients ?? 0)} / {Math.floor(colonyFoodCapacity(colony))} nutrients</span>
+    <span>{Number.isFinite(runway) ? `${runway.toFixed(1)}h food runway` : 'No food demand'} - {Math.floor(colony.supplies.nutrients ?? 0)} / {Math.floor(colonyFoodCapacity(colony))} nutrients</span>
     <span className={runway < 0.25 ? 'colony-warning' : ''}>{colonyNextAction(colony)}</span>
-    {!colony.foundedAt && <button disabled={blockers.length > 0} title={blockers.length ? `Needs ${blockers.join(', ')}` : 'Charter this colony'} onClick={() => useColonyStore.getState().charterColony(colony.key)}>Charter colony · {blockers.length ? `needs ${blockers.join(', ')}` : 'ready'}</button>}
+    {!colony.foundedAt && <button disabled={blockers.length > 0} title={blockers.length ? `Needs ${blockers.join(', ')}` : 'Charter this colony'} onClick={() => useColonyStore.getState().charterColony(colony.key)}>Charter colony - {blockers.length ? `needs ${blockers.join(', ')}` : 'ready'}</button>}
     <button onClick={() => useUIStore.getState().setShowSysPanel(true)}>Open Humanity</button>
   </section>;
 }
@@ -32,8 +32,8 @@ export function StrikeWarning() {
   const colonies = useColonyStore(state => state.colonies);
   const now = useNow(1000);
   if (!strike) return null;
-  return <aside className="strike-warning" role="alert"><strong>Cannon transit · {strike.targetName}</strong><p>{Math.max(0, Math.ceil((strike.arrivesAt - now) / 1000))} seconds to impact.</p>
-    {Object.values(colonies).filter(colony => colony.superclusSeed === strike.superclusSeed && colony.population > 0).map(colony => <button key={colony.key} disabled={now >= strike.arrivesAt} onClick={() => useColonyStore.getState().evacuate(colony.key)}>Evacuate {colony.planetName} · {Math.floor(colony.population)} people</button>)}
+  return <aside className="strike-warning" role="alert"><strong>Cannon transit - {strike.targetName}</strong><p>{Math.max(0, Math.ceil((strike.arrivesAt - now) / 1000))} seconds to impact.</p>
+    {Object.values(colonies).filter(colony => colony.superclusSeed === strike.superclusSeed && colony.population > 0).map(colony => <button key={colony.key} disabled={now >= strike.arrivesAt} onClick={() => useColonyStore.getState().evacuate(colony.key)}>Evacuate {colony.planetName} - {Math.floor(colony.population)} people</button>)}
   </aside>;
 }
 

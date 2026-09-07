@@ -92,7 +92,7 @@ const TUTORIAL_CONTENT: Record<TutorialPage, TutorialContent> = {
       {
         title: 'Create a route',
         items: [
-          'Unlock Extraction Logistics in the Ship Workshop, then choose New Route.',
+          'Choose New Route to use the starter drone link; Extraction Logistics upgrades expand its route and station capacity.',
           'Drag from one map node to another to create a directed link. Select a link to remove it.',
           'Every node must belong to one connected, cycle-free network before the route can be saved.',
         ],

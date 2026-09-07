@@ -6,7 +6,7 @@ import { charterSite, CHARTER_ASSEMBLIES, colonyPopCap, colonyDemand, colonyExpo
 import { applyUserSettings, useUIStore, probeEscapes, FIRE_COOLDOWN_MS } from './uiStore';
 import { defaultSettings } from '../firebase/userDoc';
 import { useGameStore } from './gameStore';
-import { useFabricatorStore, processFabricator, holdFeedPools } from './fabricatorStore';
+import { useFabricatorStore, processFabricator, holdFeedPools, fabricatorCanCraft } from './fabricatorStore';
 import { useExtractorStore } from './extractorStore';
 import { useStockpileStore } from './stockpileStore';
 import { useLogisticsStore } from './logisticsStore';
@@ -125,6 +125,20 @@ describe('colony population arithmetic', () => {
 });
 
 describe('charter accounting', () => {
+  it('lets a basic fabricator stage demand but requires advanced fabrication to found', () => {
+    const basic = { ...f, tier: 1 as const };
+    useFabricatorStore.getState().placeFabricator(basic);
+    expect(useColonyStore.getState().planCharter(basic.key, NOW)).toBe(true);
+    expect(colonyDemand(useColonyStore.getState().colonies[basic.key]).materials).toEqual(CHARTER_ASSEMBLIES);
+    expect(fabricatorCanCraft(1, 'rare')).toBe(false);
+    useStockpileStore.setState({ rares: { ...CHARTER_ASSEMBLIES } });
+    useGameStore.setState(s => ({ galaxy: { ...s.galaxy, seed: 1 }, system: { ...s.galaxy.systems[0], id: 1,
+      planets: [{ name: 'Haven', type: 'habitable', resources: [], moons: [] }] } }));
+    expect(useColonyStore.getState().charterColony(basic.key)).toBe(false);
+    useFabricatorStore.setState(state => ({ fabricators: { ...state.fabricators, [basic.key]: { ...basic, tier: 2 } } }));
+    expect(useColonyStore.getState().charterColony(basic.key)).toBe(true);
+  });
+
   function prepare() {
     useFabricatorStore.getState().placeFabricator(f);
     useColonyStore.getState().planCharter(f.key, NOW);
@@ -238,8 +252,8 @@ describe('colony routes', () => {
     expect(result).not.toBe(false);
     const colonyFood = useColonyStore.getState().colonies[f.key].supplies.nutrients!;
     const fabFood = useFabricatorStore.getState().fabricatorStates[f.key].slots[0].pendingResources.nutrients!;
-    expect(colonyFood).toBe(50); expect(fabFood).toBe(50);
-    expect(colonyFood + fabFood).toBe(100);
+    expect(colonyFood).toBe(200); expect(fabFood).toBe(100);
+    expect(colonyFood + fabFood).toBe(300);
   });
   it('honors filters on the assemblies a colony has standing orders for', () => {
     routeSetup(); useStockpileStore.setState({ rares: { ...CHARTER_ASSEMBLIES }, materials: { graphene_lattice: 20 } });
@@ -305,9 +319,9 @@ describe('civilization and strikes', () => {
     expect(useFabricatorStore.getState().fabricatorStates[other.key].slots[0].pendingMaterials.graphene_lattice).toBe(2);
     expect(useLogisticsStore.getState().routes[0].heldCargo?.[colonyNodeId(1,1)].materials.graphene_lattice).toBe(1);
   });
-  it('requires sustained local output for Type I and distinct stars in one galaxy for III', () => {
-    expect(evaluateKardashev([makeLiving({ population: 500, selfSufficientMs: HOUR - 1 })], 1120)).toBe(0);
-    expect(evaluateKardashev([makeLiving({ population: 500, selfSufficientMs: HOUR })], 120)).toBe(1);
+  it('requires only research for Type I and distinct stars in one galaxy for III', () => {
+    expect(evaluateKardashev([makeLiving({ population: 500 })], 119)).toBe(0);
+    expect(evaluateKardashev([makeLiving({ population: 500 })], 120)).toBe(1);
     expect(evaluateKardashev([makeLiving({ swarmComplete: true })], 420, 1)).toBe(2);
     const stars = [1,2,3].map(systemId => makeLiving({ systemId, swarmComplete: true, probeCoverage: 1 }));
     expect(evaluateKardashev(stars, 1120, 2)).toBe(3);
