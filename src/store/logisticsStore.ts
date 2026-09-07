@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type {
   Extractor, LogisticsRoute, RouteEdge, ExtractorKey, Fabricator, Resource,
   FabricatorProductionItem, FabricatorState, MaterialCost, SlotStatus,
-  RouteAutomationPolicy,
+  RouteAutomationPolicy, Colony,
 } from '../game/types';
 import { extractorNodeId, fabricatorNodeId, bufferDepth, RAW_TYPES } from '../game/types';
 import { getCraftable } from '../data/upgrades';
@@ -18,6 +18,9 @@ import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialB
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 import { getSuperclusterCoords } from '../game/superclusters';
 import { OBS_UNIVERSE_RADIUS } from '../game/constants';
+import { useColonyStore, colonyDemand, deliverColony, colonyFuelCap, colonyExport } from './colonyStore';
+import { RARE_RESOURCES } from '../data/rareResources';
+const rareIds = new Set(RARE_RESOURCES.map(r => r.id));
 
 const FABRICATOR_PREFIX = 'fabricator:';
 export const AUTOMATION_POLL_MS = 15_000;
@@ -38,6 +41,7 @@ export interface NodeGroup {
   nodeId: string;
   extractors: Extractor[];
   fabricatorKeys: string[];
+  colonyKeys?: string[];
   galaxySeed: number;
   systemId: number;
   systemX: number;
@@ -51,7 +55,14 @@ export function resolveNodeGroup(
   nodeId: string,
   extractors: Record<string, Extractor>,
   fabricators: Record<string, Fabricator>,
+  colonies: Record<string, Colony> = useColonyStore.getState().colonies,
 ): NodeGroup | null {
+  if (nodeId.startsWith('colony:')) {
+    const members = Object.values(colonies).filter(c => extractorNodeId(c.galaxySeed, c.systemId) === nodeId.slice(7));
+    const rep = members[0];
+    if (!rep) return null;
+    return { ...rep, nodeId, extractors: [], fabricatorKeys: [], colonyKeys: members.map(c => c.key) };
+  }
   const isFabricator = nodeId.startsWith(FABRICATOR_PREFIX);
   const systemKey = isFabricator ? nodeId.slice(FABRICATOR_PREFIX.length) : nodeId;
   const members = isFabricator
@@ -278,6 +289,7 @@ export interface EdgeFlowResult {
 }
 
 export interface DispatchResult {
+  colonyKeys: string[];
   order: string[];
   collected: { key: ExtractorKey; amount: number }[];
   deliveries: FabricatorDelivery[];
@@ -307,6 +319,10 @@ export interface RoutePreview {
 }
 
 export interface RouteWorld {
+  colony?(key: string): Colony | undefined;
+  feedColony?(key: string, raw: Cargo['raw'], materials: MaterialCost): ReturnType<typeof deliverColony> | undefined;
+  withdrawStockpile?(id: string, amount: number): void;
+  collectColonyOutput?(key: string): MaterialCost;
   peekExtractor(key: ExtractorKey): number;
   collectExtractor(key: ExtractorKey, max: number): number;
   fabricator(key: string): { fabricator?: Fabricator; state?: FabricatorState };
@@ -350,6 +366,23 @@ function cloneFabricatorState(state: FabricatorState | undefined): FabricatorSta
 }
 
 class ShadowWorld implements RouteWorld {
+  private readonly colonies: Record<string, Colony> = { ...useColonyStore.getState().colonies };
+  colony(key: string) { return this.colonies[key]; }
+  collectColonyOutput(key: string) {
+    const c = this.colonies[key];
+    if (!c) return {};
+    const output = colonyExport(c);
+    this.colonies[key] = { ...c, assemblies: { ...c.assemblies } };
+    for (const [id, n] of Object.entries(output)) this.colonies[key].assemblies[id] -= n;
+    return output;
+  }
+  feedColony(key: string, raw: Cargo['raw'], materials: MaterialCost) {
+    if (!this.colonies[key]) return;
+    const result = deliverColony(this.colonies[key], raw, materials, Date.now());
+    this.colonies[key] = result.colony;
+    return result;
+  }
+  withdrawStockpile(id: string, amount: number) { this.stockpile[id] = (this.stockpile[id] ?? 0) - amount; }
   private readonly extractors: Record<string, Extractor>;
   private readonly fabricators: Record<string, Fabricator>;
   private readonly available: Record<string, number>;
@@ -392,16 +425,37 @@ class ShadowWorld implements RouteWorld {
     return result;
   }
   depositRaw(type: Resource['type'], amount: number) {
-    const accepted = Math.min(Math.max(0, amount), Math.max(0, this.cap - this.hold[type]));
+    const accepted = Math.min(Math.max(0, amount), type === 'alienMatter' ? Infinity : Math.max(0, this.cap - this.hold[type]));
     this.hold[type] += accepted;
     return accepted;
   }
   depositMaterial(id: string, amount: number) { this.stockpile[id] = (this.stockpile[id] ?? 0) + amount; }
   readStockpile() { return { ...this.stockpile }; }
-  holdRoom(type: Resource['type']) { return Math.max(0, this.cap - this.hold[type]); }
+  holdRoom(type: Resource['type']) { return type === 'alienMatter' ? Infinity : Math.max(0, this.cap - this.hold[type]); }
 }
 
 class LiveWorld implements RouteWorld {
+  colony(key: string) { return useColonyStore.getState().colonies[key]; }
+  collectColonyOutput(key: string) {
+    const c = this.colony(key);
+    if (!c) return {};
+    const output = colonyExport(c);
+    const assemblies = { ...c.assemblies };
+    for (const [id, n] of Object.entries(output)) assemblies[id] -= n;
+    if (Object.keys(output).length) useColonyStore.setState(s => ({ colonies: { ...s.colonies, [key]: { ...c, assemblies } } }));
+    return output;
+  }
+  feedColony(key: string, raw: Cargo['raw'], materials: MaterialCost) {
+    const c = this.colony(key);
+    if (!c) return;
+    const result = deliverColony(c, raw, materials, Date.now());
+    if (result.changed) useColonyStore.setState(s => ({ colonies: { ...s.colonies, [key]: result.colony } }));
+    return result;
+  }
+  withdrawStockpile(id: string, amount: number) {
+    const field = rareIds.has(id) ? 'rares' : 'materials';
+    useStockpileStore.setState(s => ({ [field]: { ...s[field], [id]: (s[field][id] ?? 0) - amount } }));
+  }
   private readonly extractors: Record<string, Extractor>;
   private readonly fabricators: Record<string, Fabricator>;
   constructor(
@@ -422,11 +476,14 @@ class LiveWorld implements RouteWorld {
     return useFabricatorStore.getState().feedFabricator(key, raw, materials, budget, canRouteByproduct, stockpile);
   }
   depositRaw(type: Resource['type'], amount: number) { return useUIStore.getState().depositCargo(type, amount); }
-  depositMaterial(id: string, amount: number) { useStockpileStore.getState().addMaterial(id, amount); }
-  readStockpile() { return { ...useStockpileStore.getState().materials }; }
+  depositMaterial(id: string, amount: number) {
+    if (rareIds.has(id)) useStockpileStore.getState().addRare(id, amount);
+    else useStockpileStore.getState().addMaterial(id, amount);
+  }
+  readStockpile() { const s = useStockpileStore.getState(); return { ...s.materials, ...s.rares }; }
   holdRoom(type: Resource['type']) {
     const ui = useUIStore.getState();
-    return Math.max(0, computeStorageCap(ui.storageA) - resourceAmount(ui, type));
+    return type === 'alienMatter' ? Infinity : Math.max(0, computeStorageCap(ui.storageA) - resourceAmount(ui, type));
   }
 }
 
@@ -484,6 +541,13 @@ export function runRouteTraversal(
   for (const [nodeId, group] of groups) {
     const raw: Cargo['raw'] = {};
     const materials: MaterialCost = {};
+    for (const key of group.colonyKeys ?? []) {
+      const c = world.colony?.(key);
+      if (!c) continue;
+      const demand = colonyDemand(c);
+      for (const [id, n] of Object.entries(demand.raw)) raw[id as Resource['type']] = (raw[id as Resource['type']] ?? 0) + (n ?? 0);
+      for (const [id, n] of Object.entries(demand.materials)) materials[id] = (materials[id] ?? 0) + n;
+    }
     for (const key of group.fabricatorKeys) {
       const { fabricator, state } = world.fabricator(key);
       const depth = bufferDepth(fabricator?.tier);
@@ -570,6 +634,14 @@ export function runRouteTraversal(
     }
     const beganWithHeldCargo = !!restoredHeld && cargoHasValues(restoredHeld);
     const outgoing = outgoingByNode.get(nodeId) ?? [];
+    if (outgoing.length > 0) for (const key of group.colonyKeys ?? []) {
+      const output = world.collectColonyOutput?.(key) ?? {};
+      for (const [id, n] of Object.entries(output)) {
+        cargo.materials[id] = (cargo.materials[id] ?? 0) + n;
+        carried[id] = (carried[id] ?? 0) + n;
+        didWork = true;
+      }
+    }
 
     for (const extractor of [...group.extractors].sort((a, b) => a.key.localeCompare(b.key))) {
       const type = extractor.resourceType;
@@ -613,7 +685,7 @@ export function runRouteTraversal(
       }
       for (const item of result.readyItems) {
         expectedOutputs[item.upgradeId] = (expectedOutputs[item.upgradeId] ?? 0) + item.count;
-        if (item.category === 'material') {
+        if (item.category === 'material' || item.category === 'rare') {
           cargo.materials[item.upgradeId] = (cargo.materials[item.upgradeId] ?? 0) + item.count;
           carried[item.upgradeId] = (carried[item.upgradeId] ?? 0) + item.count;
         } else endItems.push(item);
@@ -631,6 +703,42 @@ export function runRouteTraversal(
         }
       }
       result.statuses.forEach((status) => { if (status === 'starved' || status === 'jammed') stalled.push({ fabricatorKey: key, status }); });
+    }
+
+    for (const key of [...(group.colonyKeys ?? [])].sort()) {
+      const c = world.colony?.(key);
+      if (!c) continue;
+      // Cargo already on the route wins; remaining demand draws the stockpile only
+      // through incoming edges, sharing their material bandwidth with fabricators.
+      const demand = colonyDemand(c);
+      const supplied = { ...cargo.materials };
+      const injected: MaterialCost = {};
+      const injectionPlan: { flow: EdgeFlowResult; id: string; take: number }[] = [];
+      for (const [id, wanted] of Object.entries(demand.materials)) {
+        let left = Math.min(Math.max(0, wanted - (supplied[id] ?? 0)), remainingStockpile[id] ?? 0);
+        for (const edge of incomingByNode.get(nodeId) ?? []) {
+          if (!edgeAllowsMaterial(edge, id)) continue;
+          const flow = edgeFlows[edgeKey(edge)];
+          const planned = injectionPlan.reduce((n, entry) => entry.flow === flow ? n + entry.take : n, 0);
+          const take = Math.min(left, Math.max(0, flow.capacity - flow.used - planned));
+          if (take <= 0) continue;
+          injectionPlan.push({ flow, id, take });
+          supplied[id] = (supplied[id] ?? 0) + take;
+          injected[id] = (injected[id] ?? 0) + take;
+          left -= take;
+        }
+      }
+      const result = world.feedColony?.(key, cargo.raw, supplied);
+      if (!result) continue;
+      for (const { flow, id, take } of injectionPlan) {
+        flow.used += take;
+        flow.materials[id] = (flow.materials[id] ?? 0) + take;
+        remainingStockpile[id] -= take;
+      }
+      if (result.changed) didWork = true;
+      for (const [id, n] of Object.entries(result.consumedRaw)) cargo.raw[id as Resource['type']] = Math.max(0, (cargo.raw[id as Resource['type']] ?? 0) - (n ?? 0));
+      for (const [id, n] of Object.entries(result.consumedMaterials)) cargo.materials[id] = Math.max(0, (cargo.materials[id] ?? 0) - (n - (injected[id] ?? 0)));
+      for (const [id, n] of Object.entries(injected)) { world.withdrawStockpile?.(id, n); injectedStockpile += n; }
     }
 
     if (outgoing.length === 0) {
@@ -715,6 +823,8 @@ export function runRouteTraversal(
 }
 
 interface PreviewCacheEntry {
+  colonies: Record<string, Colony>;
+  rares: MaterialCost;
   route: LogisticsRoute;
   extractors: Record<string, Extractor>;
   fabricators: Record<string, Fabricator>;
@@ -733,10 +843,12 @@ function previewTraversal(route: LogisticsRoute, force = false): { groups: Map<s
   const nodeEquipped = useExtractorStore.getState().nodeEquipped;
   const { fabricators, fabricatorStates } = useFabricatorStore.getState();
   const stockpile = useStockpileStore.getState().materials;
+  const rares = useStockpileStore.getState().rares;
+  const colonies = useColonyStore.getState().colonies;
   const ui = useUIStore.getState();
   const uiKey = [ui.storageA, ui.storageB, ui.logisticsA, ui.logisticsB, ...RAW_TYPES.map((type) => resourceAmount(ui, type))].join('|');
   const cached = previewCache.get(route.id);
-  if (!force && cached?.route === route && cached.extractors === extractors
+  if (!force && cached?.route === route && cached.colonies === colonies && cached.rares === rares && cached.extractors === extractors
     && cached.fabricators === fabricators && cached.fabricatorStates === fabricatorStates
     && cached.stockpile === stockpile && cached.nodeEquipped === nodeEquipped && cached.uiKey === uiKey) {
     return cached;
@@ -746,10 +858,10 @@ function previewTraversal(route: LogisticsRoute, force = false): { groups: Map<s
   const bandwidth = computeMaterialBandwidth(ui.logisticsA, ui.logisticsB);
   const traversal = runRouteTraversal(
     route, groups, edges,
-    new ShadowWorld(extractors, fabricators, fabricatorStates, stockpile, ui),
+    new ShadowWorld(extractors, fabricators, fabricatorStates, { ...stockpile, ...rares }, ui),
     bandwidth,
   );
-  const entry = { route, extractors, fabricators, fabricatorStates, stockpile, nodeEquipped, uiKey, groups, traversal };
+  const entry = { route, extractors, fabricators, fabricatorStates, stockpile, rares, colonies, nodeEquipped, uiKey, groups, traversal };
   previewCache.set(route.id, entry);
   return entry;
 }
@@ -765,8 +877,8 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const risk = routeDetectionRisk(route.edges, groups);
   const ui = useUIStore.getState();
   const cost = computeRouteCost(route.edges, extractors, fabricators, traversal.throughputUnits);
-  const affordable = ui.exoticMatter - cost.exotic >= ui.fuelReserveExotic
-    && ui.helium3Reserves - cost.helium >= ui.fuelReserveHelium3;
+  const affordable = !!routeSponsor(groups, cost) || (ui.exoticMatter - cost.exotic >= ui.fuelReserveExotic
+    && ui.helium3Reserves - cost.helium >= ui.fuelReserveHelium3);
   let reason = 'Ready';
   const effectiveHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
     ? ui.detectionHeat
@@ -854,6 +966,13 @@ export function allocateEdgeCargo(
   return { allocations, leftover: amount - moved };
 }
 
+function routeSponsor(groups: Map<string, NodeGroup>, cost: { exotic: number; helium: number }): Colony | undefined {
+  return [...groups.values()].flatMap(g => g.colonyKeys ?? []).sort()
+    .map(key => useColonyStore.getState().colonies[key])
+    .find(c => c && c.population > 0 && colonyFuelCap(c) > 0
+      && (c.supplies.exotic ?? 0) >= cost.exotic && (c.supplies['helium-3'] ?? 0) >= cost.helium);
+}
+
 function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | false {
   const logistics = useLogisticsStore.getState();
   if (useUIStore.getState().checkDetectionLethal()) return false;
@@ -877,17 +996,31 @@ function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | 
   const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
   const edges = route.edges.filter((edge) => groups.has(edge.from) && groups.has(edge.to));
   const bandwidth = computeMaterialBandwidth(currentUI.logisticsA, currentUI.logisticsB);
+  const sponsor = routeSponsor(groups, preview.cost);
   const traversal = runRouteTraversal(route, groups, edges, new LiveWorld(extractors, fabricators), bandwidth);
   if (!traversal.didWork) return false;
+  const liveSponsor = sponsor ? useColonyStore.getState().colonies[sponsor.key] : undefined;
+  const sponsorCanPay = !!liveSponsor && liveSponsor.population > 0
+    && (liveSponsor.supplies.exotic ?? 0) >= preview.cost.exotic
+    && (liveSponsor.supplies['helium-3'] ?? 0) >= preview.cost.helium;
 
   // The useful-work decision is made by the dry run. Charge exactly once, after
   // the traversal succeeds, so a failed dispatch can never need a clamped refund.
-  useUIStore.getState().consumeResources(preview.cost.exotic, preview.cost.helium);
+  if (sponsorCanPay) useColonyStore.setState(s => {
+    const colony = s.colonies[liveSponsor!.key];
+    if (!colony) return {};
+    return { colonies: { ...s.colonies, [colony.key]: { ...colony, supplies: {
+      ...colony.supplies, exotic: (colony.supplies.exotic ?? 0) - preview.cost.exotic,
+      'helium-3': (colony.supplies['helium-3'] ?? 0) - preview.cost.helium,
+    } } } };
+  });
+  else useUIStore.getState().consumeResources(preview.cost.exotic, preview.cost.helium);
   const deliveries = traversal.endItems.length > 0
     ? useExtractorStore.getState().receiveFabricatorItems(traversal.endItems)
     : [];
   if (preview.detectionRisk > 0) useUIStore.getState().raiseDetectionHeat(preview.detectionRisk);
   const result: DispatchResult = {
+    colonyKeys: [...groups.values()].flatMap(g => g.colonyKeys ?? []),
     order: traversal.order,
     collected: traversal.collected,
     deliveries,
@@ -950,7 +1083,8 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       if ((amount ?? 0) > accepted) rejected.raw[type as Resource['type']] = (amount ?? 0) - accepted;
     }
     for (const [materialId, amount] of Object.entries(cargo.materials ?? {})) if (amount > 0) {
-      useStockpileStore.getState().addMaterial(materialId, amount);
+      if (rareIds.has(materialId)) useStockpileStore.getState().addRare(materialId, amount);
+      else useStockpileStore.getState().addMaterial(materialId, amount);
       moved = true;
     }
     set((state) => ({ routes: state.routes.map((candidate) => {

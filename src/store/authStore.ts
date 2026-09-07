@@ -15,6 +15,8 @@ import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
 import { useFabricatorStore } from './fabricatorStore';
+import { useColonyStore } from './colonyStore';
+import { loadAllColonies } from '../firebase/colonies';
 import { useLogisticsStore } from './logisticsStore';
 import { useStockpileStore } from './stockpileStore';
 import { useQuestStore } from './questStore';
@@ -45,7 +47,7 @@ export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const [baseSettings, discoveries, extractors, fabricators, quests, logisticsRoutes, extractorUpgrades, stockpile] = await Promise.all([
+        const [baseSettings, discoveries, extractors, fabricators, quests, logisticsRoutes, extractorUpgrades, stockpile, colonies] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
           loadAllExtractors(user.uid),
@@ -54,6 +56,7 @@ export function initAuth(): () => void {
           loadLogisticsRoutes(user.uid),
           loadExtractorUpgrades(user.uid),
           loadStockpile(user.uid),
+          loadAllColonies(user.uid),
         ]);
         // localStorage nav is more recent than Firebase's debounced write — prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
@@ -73,6 +76,7 @@ export function initAuth(): () => void {
         useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped);
         useFabricatorStore.getState().restoreFabricators(fabricators.fabricators);
         useFabricatorStore.getState().restoreFabricatorStates(fabricators.fabricatorStates);
+        useColonyStore.getState().restoreColonies(colonies);
         useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
         useStockpileStore.getState().restoreStockpile(stockpile.materials, stockpile.rares);
         const legacyProductionItems = [

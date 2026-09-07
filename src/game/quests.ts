@@ -9,6 +9,7 @@ export const QUEST_IDS = [
   'upgrade_drive',
   'new_supercluster',
   'delivery_network',
+  'living_colony',
 ] as const;
 
 export type QuestId = typeof QUEST_IDS[number];
@@ -20,6 +21,7 @@ export interface QuestDef {
 }
 
 export const QUESTS: QuestDef[] = [
+  { id: 'living_colony', title: 'Found a Colony', description: 'Deliver a charter and bring the Peregrine to found a human colony.' },
   { id: 'first_galaxy',      title: 'Galaxy Hopper',       description: 'Navigate to your first galaxy.' },
   { id: 'first_system',      title: 'Stellar Pioneer',     description: 'Enter a star system.' },
   { id: 'first_exotic',      title: 'Exotic Matter',       description: 'Collect exotic matter from a celestial body.' },

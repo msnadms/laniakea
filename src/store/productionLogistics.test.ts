@@ -357,9 +357,17 @@ describe('route dispatch integration', () => {
       lastFireAt: now - 60_000, railgunAmmo: 20, destroyed: false,
     });
     useUIStore.getState().tickRailgunSuppression();
-    expect(useUIStore.getState().detectionHeat).toBeGreaterThan(0);
-    expect(useUIStore.getState().detectionHeat).toBeLessThan(1);
+    // Two shots land, but the first killed at observation range and its wreckage half-suppresses.
+    expect(useUIStore.getState().detectionHeat).toBeCloseTo(1);
+    expect(useUIStore.getState().alienMatter).toBe(1);
+    useUIStore.setState({
+      detectionHeat: 1.5, detectionRating: 1, lastDetectionChangeAt: now,
+      lastFireAt: now - 30_000, railgunAmmo: 20, alienMatter: 0,
+    });
+    useUIStore.getState().tickRailgunSuppression();
+    expect(useUIStore.getState().detectionHeat).toBeCloseTo(0.5);
     expect(useUIStore.getState().detectionRating).toBe(0);
+    expect(useUIStore.getState().alienMatter).toBe(0);
   });
 
   it('previews and dispatches hold-bound cargo in batch mode', () => {

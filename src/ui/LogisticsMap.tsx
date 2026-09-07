@@ -10,9 +10,27 @@ const ICON_SIZE = NODE_R * 1.6;
 const ICON_HALF = ICON_SIZE / 2;
 
 const MIN_VIEW_SIZE = MAP_SIZE * 0.18;
-const MAX_VIEW_SIZE = MAP_SIZE * 2.5;
 const DEFAULT_VIEW = { cx: MAP_SIZE / 2, cy: MAP_SIZE / 2, size: MAP_SIZE };
+const FIT_PADDING = NODE_R + 26;
 const ZOOM_STEP = 1.25;
+
+type MapView = { cx: number; cy: number; size: number };
+
+function fitViewOf(projected: ProjectedMapNode[]): MapView {
+  if (projected.length === 0) return DEFAULT_VIEW;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of projected) {
+    minX = Math.min(minX, p.svgX);
+    maxX = Math.max(maxX, p.svgX);
+    minY = Math.min(minY, p.svgY);
+    maxY = Math.max(maxY, p.svgY);
+  }
+  return {
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    size: Math.max(MAP_SIZE * 0.5, maxX - minX + FIT_PADDING * 2, maxY - minY + FIT_PADDING * 2),
+  };
+}
 
 const STATUS_RING: Record<SlotStatus, string | null> = {
   idle: null,
@@ -35,11 +53,11 @@ function NodeIcon({ cx, cy, resourceType, color }: { cx: number; cy: number; res
   );
 }
 
-function clampViewSize(size: number): number {
-  return Math.max(MIN_VIEW_SIZE, Math.min(MAX_VIEW_SIZE, size));
+function clampViewSize(size: number, fitSize: number): number {
+  return Math.max(MIN_VIEW_SIZE, Math.min(fitSize * 2.5, size));
 }
 
-function viewBoxOf(view: { cx: number; cy: number; size: number }, aspect: number) {
+function viewBoxOf(view: MapView, aspect: number) {
   const w = aspect >= 1 ? view.size * aspect : view.size;
   const h = aspect >= 1 ? view.size : view.size / aspect;
   return { x: view.cx - w / 2, y: view.cy - h / 2, w, h };
@@ -95,16 +113,32 @@ export function StationMap({
   const pannedRef = useRef(false);
   const panRef = useRef<{ px: number; py: number; vx: number; vy: number } | null>(null);
   const [drag, setDrag] = useState<{ from: string; x: number; y: number; over: string | null } | null>(null);
-  const [view, setView] = useState(DEFAULT_VIEW);
+  const [savedView, setSavedView] = useState<{ sig: string; view: MapView } | null>(null);
   const [aspect, setAspect] = useState(1);
   const [panning, setPanning] = useState(false);
+  const nodeSignature = projected.map((p) => p.nodeId).join('|');
+  const fitView = fitViewOf(projected);
+  const userView = savedView && savedView.sig === nodeSignature ? savedView.view : null;
+  const view = userView ?? fitView;
   const box = viewBoxOf(view, aspect);
   const viewRef = useRef(view);
   const boxRef = useRef(box);
+  const fitRef = useRef(fitView);
+  const sigRef = useRef(nodeSignature);
+
+  function setUserView(next: MapView | ((prev: MapView | null) => MapView) | null) {
+    setSavedView((prev) => {
+      if (next === null) return null;
+      const current = prev && prev.sig === sigRef.current ? prev.view : null;
+      return { sig: sigRef.current, view: typeof next === 'function' ? next(current) : next };
+    });
+  }
 
   useEffect(() => {
     viewRef.current = view;
     boxRef.current = box;
+    fitRef.current = fitView;
+    sigRef.current = nodeSignature;
   });
 
   const byNodeId = useMemo(
@@ -124,11 +158,11 @@ export function StationMap({
       e.preventDefault();
       const rect = svg.getBoundingClientRect();
       const v = viewRef.current;
-      const size = clampViewSize(v.size * (e.deltaY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP));
+      const size = clampViewSize(v.size * (e.deltaY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP), fitRef.current.size);
       const next = viewBoxOf({ ...v, size }, rect.width / rect.height);
       const fx = (e.clientX - rect.left) / rect.width - 0.5;
       const fy = (e.clientY - rect.top) / rect.height - 0.5;
-      setView({
+      setUserView({
         cx: v.cx + fx * (boxRef.current.w - next.w),
         cy: v.cy + fy * (boxRef.current.h - next.h),
         size,
@@ -142,7 +176,10 @@ export function StationMap({
   }, [projected.length]);
 
   function zoomAtCenter(factor: number) {
-    setView((v) => ({ ...v, size: clampViewSize(v.size * factor) }));
+    setUserView((v) => {
+      const base = v ?? fitRef.current;
+      return { ...base, size: clampViewSize(base.size * factor, fitRef.current.size) };
+    });
   }
 
   function endPan() {
@@ -212,7 +249,7 @@ export function StationMap({
           const dx = (e.clientX - pan.px) * (boxRef.current.w / rect.width);
           const dy = (e.clientY - pan.py) * (boxRef.current.h / rect.height);
           if (Math.abs(dx) + Math.abs(dy) > 0.5) pannedRef.current = true;
-          setView((v) => ({ ...v, cx: pan.vx - dx, cy: pan.vy - dy }));
+          setUserView((v) => ({ ...(v ?? fitRef.current), cx: pan.vx - dx, cy: pan.vy - dy }));
           return;
         }
         if (!drag) return;
@@ -397,7 +434,12 @@ export function StationMap({
               stroke={inRoute ? strokeActive : strokeIdle}
               strokeWidth="1.5"
             />
-            {isFabricator ? (
+            {p.nodeType === 'colony' ? (
+              <g style={{ pointerEvents: 'none' }}>
+                <polygon points={Array.from({ length: 6 }, (_, i) => `${p.svgX + 7 * Math.cos(i * Math.PI / 3)},${p.svgY + 7 * Math.sin(i * Math.PI / 3)}`).join(' ')} fill={p.supplied ? '#66e6af' : '#efb65b'} />
+                <circle cx={p.svgX} cy={p.svgY} r={NODE_R + 6} fill="none" stroke={p.supplied ? '#66e6af' : '#efb65b'} strokeWidth="2" pathLength="100" strokeDasharray={`${Math.min(100, (p.populationFill ?? 0) * 100)} 100`} transform={`rotate(-90 ${p.svgX} ${p.svgY})`} />
+              </g>
+            ) : isFabricator ? (
               <polygon
                 points={`${p.svgX},${p.svgY - ICON_HALF * 0.85} ${p.svgX + ICON_HALF * 0.65},${p.svgY} ${p.svgX},${p.svgY + ICON_HALF * 0.85} ${p.svgX - ICON_HALF * 0.65},${p.svgY}`}
                 fill={iconColor}
@@ -426,7 +468,7 @@ export function StationMap({
     <div className="station-map-controls">
       <button type="button" title="Zoom in" onClick={() => zoomAtCenter(1 / ZOOM_STEP)}>+</button>
       <button type="button" title="Zoom out" onClick={() => zoomAtCenter(ZOOM_STEP)}>−</button>
-      <button type="button" title="Reset view" onClick={() => setView(DEFAULT_VIEW)}>⤾</button>
+      <button type="button" title="Reset view" onClick={() => setUserView(null)}>⤾</button>
     </div>
     </>
   );

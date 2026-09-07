@@ -784,6 +784,10 @@
   overflow: hidden;
 }
 
+.logistics-resources-panel .colony-details {
+  padding-inline: 12px;
+}
+
 .logistics-resources-header {
   display: flex;
   align-items: center;

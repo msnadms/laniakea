@@ -1,0 +1,185 @@
+.civilization-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #020812d9;
+}
+
+.civilization-panel {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 28px;
+  color: #c5e5ed;
+  background: #08121c;
+  border: 1px solid #346679;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(42, 106, 138, 0.85) transparent;
+}
+
+.civilization-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.civilization-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.civilization-panel::-webkit-scrollbar-thumb {
+  background: rgba(26, 58, 92, 0.82);
+  border: 1px solid rgba(0, 200, 232, 0.28);
+  border-radius: 8px;
+}
+
+.civilization-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(42, 106, 138, 0.95);
+}
+
+.civilization-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+}
+
+.civilization-type-list {
+  margin: 12px 0;
+  padding-left: 22px;
+}
+
+.civilization-type-list li {
+  margin: 4px 0;
+}
+
+.civilization-type-list strong {
+  color: #70d9b1;
+}
+
+.colony-details {
+  padding: 16px 0;
+  color: #c5e5ed;
+  border-top: 1px solid #345363;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.colony-accordion {
+  border-top: 1px solid #345363;
+}
+
+.colony-accordion summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 4px;
+  color: #70d9b1;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.colony-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.colony-accordion summary::before {
+  content: '›';
+  margin-right: 8px;
+  color: #2a6a8a;
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.colony-accordion[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.colony-accordion summary span:first-of-type {
+  margin-right: auto;
+}
+
+.colony-accordion summary span:last-of-type {
+  color: #7ab0c8;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.colony-accordion .colony-details {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.colony-details h3,
+.colony-details h4 {
+  margin: 8px 0;
+  color: #70d9b1;
+}
+
+.colony-details button,
+.civilization-panel button,
+.strike-warning button {
+  margin: 4px 4px 4px 0;
+  padding: 6px 10px;
+  color: #c5e5ed;
+  background: #13303d;
+  border: 1px solid #3b7181;
+  cursor: pointer;
+  font: inherit;
+}
+
+.colony-details button:disabled,
+.civilization-panel button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.colony-meter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid #ffffff0c;
+}
+
+.colony-order {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.colony-details .colony-order button {
+  min-width: 22px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
+.colony-warning,
+.colony-danger {
+  color: #ffc174 !important;
+}
+
+.strike-warning {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  z-index: 1400;
+  max-width: 90vw;
+  padding: 16px;
+  color: #ffd0ad;
+  background: #301516f5;
+  border: 1px solid #c17650;
+  transform: translateX(-50%);
+  font: 12px var(--font-mono);
+}

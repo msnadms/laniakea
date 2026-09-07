@@ -1,5 +1,6 @@
 import type { CraftMaterial } from '../game/types';
 import raw from './materials.json';
+import { getRareResource } from './rareResources';
 
 export const CRAFT_MATERIALS: CraftMaterial[] = raw.materials as unknown as CraftMaterial[];
 
@@ -16,5 +17,5 @@ export function getMaterial(id: string): CraftMaterial | undefined {
 }
 
 export function materialName(id: string): string {
-  return getMaterial(id)?.name ?? id;
+  return getMaterial(id)?.name ?? getRareResource(id)?.name ?? id;
 }

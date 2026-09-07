@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AddressComponent, AddressComponentType, Resource } from '../game/types';
+import type { AddressComponent, AddressComponentType, Resource, CannonStrike } from '../game/types';
 import type { UserSettings } from '../firebase/userDoc';
 import { useQuestStore } from './questStore';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
@@ -29,12 +29,12 @@ export const UPGRADE_POOL = 5;
 const STORAGE_BASE = 500;
 export const STORAGE_A_BONUS = [0, 500, 1500, 2000, 3000]; 
 export function resourceAmount(
-  state: { exoticMatter: number; helium3Reserves: number; alloys: number; nutrients: number; metallicHydrogen: number; neutronStarMatter: number },
+  state: { exoticMatter: number; helium3Reserves: number; alloys: number; nutrients: number; metallicHydrogen: number; neutronStarMatter: number; alienMatter?: number },
   type: Resource['type'],
 ): number {
   if (type === 'exotic') return state.exoticMatter;
   if (type === 'helium-3') return state.helium3Reserves;
-  return state[type];
+  return state[type] ?? 0;
 }
 
 export function cargoField(type: Resource['type']): 'exoticMatter' | 'helium3Reserves' | Exclude<Resource['type'], 'exotic' | 'helium-3'> {
@@ -64,7 +64,29 @@ export function computeWeaponCap(a: number, b: number): number {
 
 export const FIRE_COST = 5;
 const DETENT_PER_SHOT = 1;
-const FIRE_COOLDOWN_MS = 30 * 1000;
+export const FIRE_COOLDOWN_MS = 30 * 1000;
+export const PROBE_ESCAPE_THRESHOLD = 2;
+export const PROBE_SATURATION_THRESHOLD = 4;
+export const WRECK_HEAT_PER_KILL = 0.5;
+export const detectionFloor = (tier: number) => tier >= 3 ? 2 : tier >= 2 ? 1 : 0;
+
+/** A permanent tier floor must never sit at the escape threshold and leak exposure by itself. */
+export const probeEscapeThreshold = (floor = 0) => Math.max(PROBE_ESCAPE_THRESHOLD, floor + 1);
+
+/**
+ * Observation is rate-limited independently of the weapon's firing clock. Above saturation
+ * more probes converge than one mount can engage, so being armed stops being enough.
+ */
+export function probeEscapes(heat: number, shotAvailable: boolean, lastEscapeAt: number, now: number, floor = 0): boolean {
+  if (now - lastEscapeAt < FIRE_COOLDOWN_MS) return false;
+  return heat >= PROBE_SATURATION_THRESHOLD || (heat >= probeEscapeThreshold(floor) && !shotAvailable);
+}
+
+/** Only a probe that closed to observation range leaves recoverable wreckage. */
+export function salvageableKills(heat: number, shots: number, floor = 0): number {
+  const threshold = probeEscapeThreshold(floor);
+  return heat < threshold ? 0 : Math.min(shots, Math.floor(heat - threshold) + 1);
+}
 const RELOAD_HELIUM_PER_AMMO = 3;
 
 const LOGISTICS_BASE = 5;
@@ -96,6 +118,16 @@ export const UPGRADE_COSTS = {
 };
 
 interface UIState {
+  geneLines: number;
+  exposure: number;
+  lastProbeEscapeAt: number;
+  alienMatter: number;
+  kardashevTier: number;
+  strike: CannonStrike | null;
+  nextStrikeExposure: number;
+  evacuatedPopulation: number;
+  spendGeneLine: (count?: number) => boolean;
+  receiveGeneLine: (count?: number) => void;
   showAttractorLabels: boolean;
   toggleAttractorLabels: () => void;
   showOrbitRings: boolean;
@@ -198,6 +230,16 @@ function upsertAddress(address: AddressComponent[], component: AddressComponent)
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
+  geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0,
+  kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0,
+  spendGeneLine: (count = 1) => {
+    if (!Number.isInteger(count) || count <= 0 || get().geneLines < count) return false;
+    set({ geneLines: get().geneLines - count });
+    return true;
+  },
+  receiveGeneLine: (count = 1) => {
+    if (Number.isInteger(count) && count > 0) set({ geneLines: get().geneLines + count });
+  },
   showAttractorLabels: true,
   toggleAttractorLabels: () => set((s) => ({ showAttractorLabels: !s.showAttractorLabels })),
   showOrbitRings: false,
@@ -240,6 +282,8 @@ export const useUIStore = create<UIState>((set, get) => ({
       ? s.detectionHeat
       : s.detectionRating * DETECTION_HEAT_PER_BAR;
     const next = decayDetectionHeat(heat, s.lastDetectionChangeAt, now);
+    next.detectionHeat = Math.max(detectionFloor(s.kardashevTier), next.detectionHeat);
+    next.detectionRating = detectionRatingFromHeat(next.detectionHeat);
     if (next.detectionHeat !== s.detectionHeat || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {
       set(next);
     }
@@ -261,6 +305,12 @@ export const useUIStore = create<UIState>((set, get) => ({
     const s = get();
     const now = Date.now();
     if (s.lastFireAt <= 0) { set({ lastFireAt: now }); return; }
+    const floor = detectionFloor(s.kardashevTier);
+    const shotAvailable = computeWeaponCap(s.weaponA, s.weaponB) > 0 && s.railgunAmmo >= FIRE_COST;
+    if (probeEscapes(s.detectionHeat, shotAvailable, s.lastProbeEscapeAt, now, floor)) {
+      set({ exposure: s.exposure + 1, lastProbeEscapeAt: now });
+      s.triggerHudNotify('CENSUS PROBE ESCAPED — EXPOSURE PERMANENT');
+    }
     if (s.detectionRating <= 0 || s.railgunAmmo < FIRE_COST) {
       if (now - s.lastFireAt >= FIRE_COOLDOWN_MS) set({ lastFireAt: now });
       return;
@@ -273,8 +323,12 @@ export const useUIStore = create<UIState>((set, get) => ({
       Math.ceil(s.detectionRating / DETENT_PER_SHOT),
     );
     if (shots <= 0) return;
-    const detectionHeat = Math.max(0, s.detectionHeat - shots * DETENT_PER_SHOT * DETECTION_HEAT_PER_BAR);
+    const salvage = salvageableKills(s.detectionHeat, shots, floor);
+    // Wreckage advertises itself, so a close kill only half suppresses. Firing is never worse than not.
+    const detectionHeat = Math.min(s.detectionHeat,
+      Math.max(floor, s.detectionHeat - shots * DETENT_PER_SHOT * DETECTION_HEAT_PER_BAR) + salvage * WRECK_HEAT_PER_KILL);
     set({
+      alienMatter: s.alienMatter + salvage,
       railgunAmmo: s.railgunAmmo - shots * FIRE_COST,
       detectionHeat,
       detectionRating: detectionRatingFromHeat(detectionHeat),
@@ -304,8 +358,8 @@ export const useUIStore = create<UIState>((set, get) => ({
     set({
       exoticMatter: s.exoticMatter - cost.exotic,
       helium3Reserves: s.helium3Reserves - cost.helium,
-      detectionRating: 0,
-      detectionHeat: 0,
+      detectionRating: detectionFloor(s.kardashevTier),
+      detectionHeat: detectionFloor(s.kardashevTier),
       lastDetectionChangeAt: now,
       lastPurgeAt: now,
     });
@@ -334,6 +388,7 @@ export const useUIStore = create<UIState>((set, get) => ({
       if (type === 'nutrients') return { nutrients: Math.min(cap, s.nutrients + amount) };
       if (type === 'metallicHydrogen') return { metallicHydrogen: Math.min(cap, s.metallicHydrogen + amount) };
       if (type === 'neutronStarMatter') return { neutronStarMatter: Math.min(cap, s.neutronStarMatter + amount) };
+      if (type === 'alienMatter') return { alienMatter: s.alienMatter + Math.max(0, amount) };
       return {};
     });
   },
@@ -404,7 +459,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   })),
   showUpgradePanel: false,
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
-  resetUpgrades: () => set((s) => ({ storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
+  resetUpgrades: () => set((s) => ({ geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0, kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0, storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
   upgradeStorageA: () => {
     if (get().checkDetectionLethal()) return;
     const { storageA, storageB, alloys } = get();
@@ -486,6 +541,14 @@ export const useUIStore = create<UIState>((set, get) => ({
 export function applyUserSettings(settings: UserSettings): void {
   const cap = computeStorageCap(settings.storageA);
   useUIStore.setState({
+    geneLines: settings.geneLines ?? 24,
+    exposure: settings.exposure ?? 0,
+    lastProbeEscapeAt: settings.lastProbeEscapeAt ?? 0,
+    alienMatter: settings.alienMatter ?? 0,
+    kardashevTier: settings.kardashevTier ?? 0,
+    strike: settings.strike ?? null,
+    nextStrikeExposure: settings.nextStrikeExposure ?? 20,
+    evacuatedPopulation: settings.evacuatedPopulation ?? 0,
     showOrbitRings: settings.showOrbitRings,
     showAttractorLabels: settings.showAttractorLabels,
     showHUD: settings.showHUD,

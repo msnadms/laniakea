@@ -4,9 +4,9 @@ import { DEATH_SEQUENCE_MS } from '../store/resetGame';
 import './DeathOverlay.css';
 
 const LINES = [
-  'In the end,',
-  'You shone too bright.',
-  'In the dark forest, the only way to survive is to get lost.',
+  'A census probe reached weapons range.',
+  'The Peregrine is gone.',
+  '873 people. No reply.',
 ];
 
 const LINE_INTERVAL_MS = DEATH_SEQUENCE_MS / (LINES.length + 1);

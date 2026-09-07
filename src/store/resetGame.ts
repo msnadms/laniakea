@@ -3,6 +3,8 @@ import { useUIStore, applyUserSettings } from './uiStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
 import { useFabricatorStore } from './fabricatorStore';
+import { useColonyStore } from './colonyStore';
+import { deleteAllColonies } from '../firebase/colonies';
 import { useLogisticsStore } from './logisticsStore';
 import { useStockpileStore } from './stockpileStore';
 import { useCodexStore } from './codexStore';
@@ -16,6 +18,7 @@ import { deleteQuests } from '../firebase/quests';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { saveStockpile } from '../firebase/stockpile';
 import { clearFirstVisit } from '../lib/firstVisit';
+import { flushRunPersistence } from './persistRun';
 
 export const DEATH_SEQUENCE_MS = 2800;
 
@@ -47,6 +50,7 @@ export async function resetGame(): Promise<void> {
   useGameStore.getState().resetToInitial();
   useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {} });
   useFabricatorStore.setState({ fabricators: {}, fabricatorStates: {} });
+  useColonyStore.setState({ colonies: {} });
   useLogisticsStore.setState({ routes: [] });
   useStockpileStore.setState({ materials: {}, rares: {} });
   useCodexStore.getState().setAll([]);
@@ -54,10 +58,13 @@ export async function resetGame(): Promise<void> {
 
   if (!user) return;
 
+  await flushRunPersistence(user.uid).catch(error => console.error('Final run write failed during reset', error));
+
   await Promise.all([
     saveUserSettings(user.uid, defaultSettings),
     deleteAllExtractors(user.uid),
     deleteAllFabricators(user.uid),
+    deleteAllColonies(user.uid),
     deleteAllLogisticsRoutes(user.uid),
     deleteAllDiscoveries(user.uid),
     deleteQuests(user.uid),

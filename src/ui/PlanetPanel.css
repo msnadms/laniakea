@@ -9,7 +9,10 @@
   position: absolute;
   bottom: 24px;
   left: 24px;
-  width: 300px;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
   background: rgba(6, 12, 28, 0.92);
   border: 1px solid #1a3a5c;
   box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
@@ -17,6 +20,15 @@
   font-family: var(--font-mono);
   color: #c0dde8;
   user-select: none;
+}
+
+@media (max-width: 520px) {
+  .planet-panel {
+    bottom: 12px;
+    left: 12px;
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
 }
 
 .planet-panel-close {

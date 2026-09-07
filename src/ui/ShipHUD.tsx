@@ -10,6 +10,7 @@ import { ShipUpgradePanel } from './ShipUpgradePanel';
 import { AlloysIcon, NutrientsIcon, MetallicHydrogenIcon, NeutronStarMatterIcon } from './CargoIcons';
 import './ShipHUD.css';
 import './ShipUpgradePanel.css';
+import { CivilizationButton } from './ColonyPanel';
 
 const TrapezoidOutline = ({ points = "1,0.1 0.39,0.1 0.05,1 0.65,1" }: { points?: string }) => (
   <svg className="nav-back-btn-outline" viewBox="0 0 1 1" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -202,6 +203,9 @@ export function ShipHUD() {
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const detectionHeat = useUIStore((s) => s.detectionHeat);
   const railgunAmmo = useUIStore((s) => s.railgunAmmo);
+  const geneLines = useUIStore(s => s.geneLines);
+  const exposure = useUIStore(s => s.exposure);
+  const alienMatter = useUIStore(s => s.alienMatter);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
   const alloys = useUIStore((s) => s.alloys);
   const nutrients = useUIStore((s) => s.nutrients);
@@ -214,6 +218,7 @@ export function ShipHUD() {
   const weaponA = useUIStore((s) => s.weaponA);
   const weaponB = useUIStore((s) => s.weaponB);
   const hudRef = useRef<HTMLDivElement>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   const storageCap = computeStorageCap(storageA);
   const weaponCap = computeWeaponCap(weaponA, weaponB);
@@ -290,11 +295,23 @@ export function ShipHUD() {
           </div>
 
           <div className="hud-row">
-            <span className="hud-label">DETECTION RATING</span>
+            <span className="hud-label">PROBE ATTENTION</span>
             <DetectionBars value={detectionHeat} />
             <span className="hud-value">{detectionHeat.toFixed(1)} <span className="hud-value-dim">/ 5</span></span>
           </div>
-
+          <div className="hud-row hud-row--details">
+            <button
+              className={`hud-action-btn hud-details-toggle${showDetails ? ' hud-details-toggle--open' : ''}`}
+              onClick={() => setShowDetails(v => !v)}
+            >{showDetails ? 'Hide Status' : 'Status'}</button>
+            {showDetails && (
+              <div className="hud-details-panel">
+                <div className="hud-row"><span className="hud-label">EXPOSURE</span><span className="hud-value" title="Probes that escaped. Permanent.">{exposure}</span></div>
+                <div className="hud-row"><span className="hud-label">VIABLE LINES</span><span className="hud-value">{geneLines}</span></div>
+                <div className="hud-row"><span className="hud-label">ALIEN MATTER</span><span className="hud-value">{alienMatter}</span><CivilizationButton /></div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="hud-cargo-section">

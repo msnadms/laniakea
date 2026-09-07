@@ -136,6 +136,9 @@ function OriginsView() {
             who built her. Her manifest holds 873 names, and as far as any instrument can tell, that manifest is now the whole of the human race. There is nothing to go back to
             and no safe way to call out. There is only the dark, and the hope that whatever lives in does not see you.
           </p>
+          <p>The object near Venus was a census probe. These probes replicate as they travel and follow repeated drive signatures. The railgun can kill them, but a probe that completes its scan and escapes cannot be recalled. The Cannon acts on its report.</p>
+          <p>The Peregrine was built for colonization before the strike. Twenty-four viable genetic lines remain in her vault. They cannot be mined or manufactured. Founding a colony uses that stock; only a living colony can restore it.</p>
+          <p>Stellar infrastructure cannot stay hidden. Galactic infrastructure sends our own probes across the galaxy. The civilization that destroyed Earth operates at supercluster scale. We may eventually reach it, but we cannot know whether we will be strong enough.</p>
         </div>
       </div>
     </>

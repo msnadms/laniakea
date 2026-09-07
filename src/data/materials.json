@@ -4,7 +4,7 @@
       "id": "graphene_lattice",
       "name": "Graphene Lattice",
       "tier": 1,
-      "desc": "Carbon reduced out of harvested biomass and rolled into single-atom sheeting.",
+      "desc": "Single-atom carbon sheeting made from biomass. Used as reinforcement and a conductor in higher-tier systems.",
       "cost": { "alloys": 400, "nutrients": 250 },
       "materials": {},
       "outputs": 2
@@ -13,7 +13,7 @@
       "id": "graphene_lattice_carbide",
       "name": "Graphene Lattice (Carbide Route)",
       "tier": 1,
-      "desc": "Where nothing grows, the carbon comes out of the hull alloys instead, and the sheeting costs a little of the ship each time.",
+      "desc": "Single-atom carbon sheeting made by reducing hull alloys instead of biomass. Higher yield and alloy cost; useful where nothing grows.",
       "cost": { "alloys": 700, "helium": 300 },
       "materials": {},
       "outputs": 3,
@@ -23,7 +23,7 @@
       "id": "boron_ceramic",
       "name": "Boron Nitride Ceramic",
       "tier": 1,
-      "desc": "Hexagonal boron nitride. It insulates against current and carries heat away from a drill face.",
+      "desc": "Hexagonal boron nitride. Insulates against current and transfers heat from drill faces and reactor walls.",
       "cost": { "alloys": 500, "helium": 150 },
       "materials": {},
       "outputs": 2
@@ -32,7 +32,7 @@
       "id": "deuterium_slush",
       "name": "Deuterium Slush",
       "tier": 1,
-      "desc": "Heavy hydrogen distilled from the metallic phase and frozen to a slurry that still pumps. The distillation leaves tritium behind, and the tritium has to go somewhere.",
+      "desc": "Heavy hydrogen distilled from the metallic phase and chilled into a pumpable slurry. Fusion fuel; leaves tritium as a byproduct.",
       "cost": { "metallicHydrogen": 300, "helium": 200 },
       "materials": {},
       "outputs": 2,
@@ -42,7 +42,7 @@
       "id": "silica_aerogel",
       "name": "Silica Aerogel",
       "tier": 1,
-      "desc": "Almost entirely vacuum by volume, and still rigid enough to machine.",
+      "desc": "Silica foam that is over 99% void by volume. Used for thermal insulation and low-mass structural filler.",
       "cost": { "alloys": 300, "nutrients": 150 },
       "materials": {},
       "outputs": 2
@@ -51,7 +51,7 @@
       "id": "silica_aerogel_vacuum",
       "name": "Silica Aerogel (Vacuum Route)",
       "tier": 1,
-      "desc": "The gel is dried against open space rather than against heat, and comes out lighter than the process that made it deserved.",
+      "desc": "Aerogel dried in open vacuum instead of heat. Higher yield and lower alloy cost, with an exotic-matter cost.",
       "cost": { "alloys": 200, "exotic": 180 },
       "materials": {},
       "outputs": 3,
@@ -61,7 +61,7 @@
       "id": "tritium_residue",
       "name": "Tritium Residue",
       "tier": 1,
-      "desc": "What is left in the still after the deuterium is drawn off. It decays on its own schedule and cannot be stored politely.",
+      "desc": "Radioactive hydrogen isotope left after deuterium distillation. Decays continuously and must be captured in a getter bed.",
       "cost": {},
       "materials": {},
       "byproductOnly": true
@@ -70,7 +70,7 @@
       "id": "hea_billet",
       "name": "High-Entropy Alloy Billet",
       "tier": 2,
-      "desc": "Five principal elements in solid solution, with no host lattice left to fatigue.",
+      "desc": "Five principal elements in a solid solution with high fatigue resistance. Structural stock for high-load frames.",
       "cost": { "alloys": 900, "metallicHydrogen": 200 },
       "materials": { "graphene_lattice": 2, "boron_ceramic": 1 },
       "outputs": 2
@@ -79,7 +79,7 @@
       "id": "ybco_tape",
       "name": "YBCO Tape",
       "tier": 2,
-      "desc": "Yttrium barium copper oxide, superconducting well above the boiling point of its own coolant.",
+      "desc": "Yttrium barium copper oxide on metal tape. Superconducts above liquid-nitrogen temperature for magnet windings and power runs.",
       "cost": { "helium": 400 },
       "materials": { "boron_ceramic": 3, "silica_aerogel": 1 },
       "outputs": 2
@@ -88,7 +88,7 @@
       "id": "metamaterial_film",
       "name": "Metamaterial Film",
       "tier": 2,
-      "desc": "A lattice finer than the light it bends, so light leaves it going the wrong way.",
+      "desc": "Sub-wavelength lattice with a negative refractive index. Bends light backward for sensor optics and signal masking.",
       "cost": { "exotic": 200 },
       "materials": { "graphene_lattice": 3, "silica_aerogel": 2 },
       "outputs": 2
@@ -97,7 +97,7 @@
       "id": "bec_cell",
       "name": "Bose-Einstein Condensate Cell",
       "tier": 2,
-      "desc": "A few million atoms held microkelvins above absolute zero, sharing a single wavefunction.",
+      "desc": "A few million atoms held near absolute zero in one quantum state. Timing and inertial reference for precision instruments.",
       "cost": { "helium": 600 },
       "materials": { "deuterium_slush": 2, "silica_aerogel": 2, "ybco_tape": 1 },
       "outputs": 1
@@ -106,7 +106,7 @@
       "id": "tritium_getter",
       "name": "Tritium Getter Bed",
       "tier": 2,
-      "desc": "A bed of hot metal that swallows the residue and holds it until someone has a use for it, which is the closest thing to disposal out here.",
+      "desc": "Heated metal bed that absorbs tritium into a stable hydride. Stores the residue from deuterium distillation as fuel.",
       "cost": { "alloys": 400 },
       "materials": { "tritium_residue": 3, "boron_ceramic": 1, "silica_aerogel": 1 },
       "outputs": 1
@@ -115,7 +115,7 @@
       "id": "casimir_plate",
       "name": "Casimir Plate Stack",
       "tier": 3,
-      "desc": "Plates spaced nanometres apart. The vacuum between them presses them together.",
+      "desc": "Conductive plates held nanometres apart. Vacuum fluctuation pressure forces them together and produces usable force.",
       "cost": { "exotic": 400 },
       "materials": { "metamaterial_film": 2, "hea_billet": 1 },
       "outputs": 1
@@ -124,7 +124,7 @@
       "id": "positron_trap",
       "name": "Penning Positron Trap",
       "tier": 3,
-      "desc": "Crossed magnetic and electrostatic fields hold antimatter away from the walls, and mostly succeed.",
+      "desc": "Crossed magnetic and electrostatic fields confine positrons away from the chamber walls. Stores antimatter for power and cutting tools.",
       "cost": { "exotic": 500 },
       "materials": { "ybco_tape": 2, "metamaterial_film": 1 },
       "outputs": 1
@@ -133,7 +133,7 @@
       "id": "degenerate_core",
       "name": "Degenerate Matter Core",
       "tier": 3,
-      "desc": "A splinter of neutron star, held at pressure by nothing but the refusal of its own electrons.",
+      "desc": "Compressed neutron-star matter held by electron degeneracy pressure. Used for dense ballast and inertial masses.",
       "cost": { "neutronStarMatter": 400 },
       "materials": { "hea_billet": 2, "boron_ceramic": 2 },
       "outputs": 1
@@ -142,10 +142,35 @@
       "id": "muon_cell",
       "name": "Muon-Catalysed Fusion Cell",
       "tier": 3,
-      "desc": "Muons draw deuterium nuclei close enough to fuse at room temperature, and last two microseconds doing it.",
+      "desc": "Muons replace electrons in deuterium-tritium molecules and catalyse fusion at ambient temperature. Each lasts about two microseconds and drives several hundred reactions.",
       "cost": { "helium": 900, "metallicHydrogen": 400 },
       "materials": { "deuterium_slush": 2, "tritium_getter": 1, "positron_trap": 1 },
       "outputs": 1
+    },
+    {
+      "id": "sentinel_ammo", "name": "Sentinel Ammunition", "tier": 2,
+      "desc": "Five rounds for colony defense. Costs the same fifteen units of helium-3 as one Peregrine shot.",
+      "cost": { "helium": 15 }, "materials": {}, "outputs": 5
+    },
+    {
+      "id": "statite_mirror", "name": "Statite Mirror", "tier": 4,
+      "desc": "Field hardware that holds a mirror against a star's gravity.",
+      "cost": { "alienMatter": 1, "alloys": 1200 }, "materials": { "metamaterial_film": 2, "casimir_plate": 1 }
+    },
+    {
+      "id": "tpv_film", "name": "Thermophotovoltaic Film", "tier": 4,
+      "desc": "Converts waste light from a star into power for a Dyson swarm.",
+      "cost": { "alienMatter": 1, "exotic": 800 }, "materials": { "graphene_lattice": 4, "bec_cell": 1 }
+    },
+    {
+      "id": "momentum_tether", "name": "Momentum Tether", "tier": 4,
+      "desc": "Alien inertial coupling for carrying a swarm's orbital loads.",
+      "cost": { "alienMatter": 2, "neutronStarMatter": 600 }, "materials": { "degenerate_core": 2, "ybco_tape": 2 }
+    },
+    {
+      "id": "replicator_probe", "name": "Self-Replicating Probe", "tier": 4,
+      "desc": "Warp-equipped census probe built by humanity. Its purpose is up to us.",
+      "cost": { "alienMatter": 5, "exotic": 1800, "helium": 1800 }, "materials": { "momentum_tether": 1, "bec_cell": 2, "positron_trap": 2 }
     }
   ]
 }

@@ -32,6 +32,9 @@ export function useSettingsPersist() {
         const s = useUIStore.getState();
         const g = useGameStore.getState();
         saveUserSettings(user.uid, {
+          geneLines: s.geneLines, exposure: s.exposure, lastProbeEscapeAt: s.lastProbeEscapeAt,
+          alienMatter: s.alienMatter, kardashevTier: s.kardashevTier, strike: s.strike,
+          nextStrikeExposure: s.nextStrikeExposure, evacuatedPopulation: s.evacuatedPopulation,
           showOrbitRings: s.showOrbitRings,
           showAttractorLabels: s.showAttractorLabels,
           showHUD: s.showHUD,

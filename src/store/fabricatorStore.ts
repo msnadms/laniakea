@@ -21,8 +21,8 @@ export function orderedSlotIndices(slots: FabricatorProductionSlot[]): number[] 
     .map((entry) => entry.index);
 }
 
-export function fabricatorCanCraft(tier: FabricatorTier | undefined, category: CraftCategory): boolean {
-  return category !== 'rare' || (tier ?? 1) >= 2;
+export function fabricatorCanCraft(tier: FabricatorTier | undefined, category: CraftCategory, minimumTier = 1): boolean {
+  return (tier ?? 1) >= Math.max(minimumTier, category === 'rare' ? 2 : 1);
 }
 
 export interface MaterialBudget { remaining: number }
@@ -180,7 +180,7 @@ export function processFabricator(
   const byproductCapacity: MaterialCost = {};
   for (const slot of slots) {
     const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
-    if (!recipe || !fabricatorCanCraft(tier, recipe.category)) continue;
+    if (!recipe || !fabricatorCanCraft(tier, recipe.category, recipe.minimumFabricatorTier)) continue;
     for (const [id, amount] of Object.entries(recipe.byproducts)) addAmount(byproductCapacity, id, amount * depth);
   }
   const byproductHasExit = new Map<string, boolean>();
@@ -198,7 +198,7 @@ export function processFabricator(
     for (const { slot, index } of ordered) {
       const result = slotResults[index];
       const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
-      if (!recipe || !fabricatorCanCraft(tier, recipe.category)) continue;
+      if (!recipe || !fabricatorCanCraft(tier, recipe.category, recipe.minimumFabricatorTier)) continue;
 
       for (const [type, perBatch] of resourceEntries(recipe)) {
         const need = Math.max(0, perBatch * quota - (slot.pendingResources[type] ?? 0));
@@ -299,7 +299,7 @@ export function processFabricator(
   for (const { slot, index } of ordered) {
     const result = slotResults[index];
     const recipe = slot.targetUpgradeId ? getCraftable(slot.targetUpgradeId) : undefined;
-    if (!recipe || !fabricatorCanCraft(tier, recipe.category)) {
+    if (!recipe || !fabricatorCanCraft(tier, recipe.category, recipe.minimumFabricatorTier)) {
       result.status = 'idle';
       continue;
     }
@@ -364,7 +364,7 @@ export function slotMaterialDemand(slot: FabricatorProductionSlot, recipe: Craft
   return demand;
 }
 
-const HOLD_RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter'];
+const HOLD_RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter', 'alienMatter'];
 
 export interface HoldFeedSource {
   exoticMatter: number;
@@ -373,6 +373,7 @@ export interface HoldFeedSource {
   nutrients: number;
   metallicHydrogen: number;
   neutronStarMatter: number;
+  alienMatter?: number;
   fuelReserveExotic: number;
   fuelReserveHelium3: number;
   logisticsA: number;
@@ -486,7 +487,7 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
     setSlotTarget: (key, slotIdx, upgradeId) => {
       const fabricator = get().fabricators[key];
       const recipe = upgradeId ? getCraftable(upgradeId) : undefined;
-      if (recipe && !fabricatorCanCraft(fabricator?.tier, recipe.category)) return;
+      if (recipe && !fabricatorCanCraft(fabricator?.tier, recipe.category, recipe.minimumFabricatorTier)) return;
       const state = normalizeFabricatorState(get().fabricatorStates[key], fabricator?.tier);
       const current = state.slots[slotIdx];
       if (!current || current.targetUpgradeId === (upgradeId ?? null)) return;

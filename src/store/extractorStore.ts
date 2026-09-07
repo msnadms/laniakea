@@ -4,7 +4,8 @@ import type { CraftCategory, Extractor, FabricatorProductionItem } from '../game
 import { EXTRACTOR_UPGRADES, getCraftable } from '../data/upgrades';
 import { materialName } from '../data/materials';
 import { useStockpileStore } from './stockpileStore';
-import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE, computeLogisticsCap } from './uiStore';
+import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE } from './uiStore';
+import { canBuildExtractor } from './colonyStore';
 import { useQuestStore } from './questStore';
 
 export const ACCUMULATION_RATE_PER_MS = 1 / (1000) // 1 unit per hour
@@ -48,7 +49,7 @@ export interface FabricatorDelivery {
 interface ExtractorState {
   extractors: Record<string, Extractor>;
   placeExtractor: (extractor: Extractor) => void;
-  collectExtractor: (key: string, maxAmount?: number) => number;
+  collectExtractor: (key: string, maxAmount?: number, now?: number) => number;
   removeExtractor: (key: string) => void;
   setExtractorReserve: (key: string, reserve: number) => void;
   restoreExtractors: (list: Extractor[]) => void;
@@ -65,17 +66,15 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
 
   placeExtractor: (extractor) => {
     if (useUIStore.getState().checkDetectionLethal()) return;
-    const maxStations = computeLogisticsCap(useUIStore.getState().logisticsA);
-    if (Object.keys(get().extractors).length >= maxStations) return;
+    if (extractor.resourceType === 'alienMatter' || !canBuildExtractor(extractor.galaxySeed, extractor.systemId)) return;
     set((s) => ({ extractors: { ...s.extractors, [extractor.key]: extractor } }));
     useQuestStore.getState().completeQuest('first_extractor');
   },
 
-  collectExtractor: (key, maxAmount?) => {
+  collectExtractor: (key, maxAmount?, now = Date.now()) => {
     if (useUIStore.getState().checkDetectionLethal()) return 0;
     const extractor = get().extractors[key];
     if (!extractor) return 0;
-    const now = Date.now();
     const { storageB, logisticsB } = useUIStore.getState();
     const { rateMultiplier, storageMultiplier } = getExtractorMultipliers(key, get().nodeEquipped);
     const extractorMax = Math.floor(EXTRACTOR_HOLD_CAPS[storageB] * storageMultiplier);

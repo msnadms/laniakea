@@ -1,6 +1,7 @@
 import { peekAccumulated, getExtractorMultipliers } from '../store/extractorStore';
-import { RESOURCE_LABELS, extractorNodeId, fabricatorNodeId } from '../game/types';
-import type { Extractor, Fabricator } from '../game/types';
+import { RESOURCE_LABELS, extractorNodeId, fabricatorNodeId, colonyNodeId } from '../game/types';
+import type { Extractor, Fabricator, Colony } from '../game/types';
+import { colonyPopCap } from '../store/colonyStore';
 import { GALAXY_RADIUS, SC_WORLD_HALF } from '../game/constants';
 
 export function getSystemKey(ext: Extractor): string {
@@ -19,7 +20,7 @@ const VISUAL_R = MAP_CENTER - NODE_R - 18;
 // Ratio for mixing galaxy-space and system-space offsets in multi-galaxy projection
 const SYS_TO_SC = GALAXY_RADIUS / SC_WORLD_HALF;
 
-export type NodeType = 'extractor' | 'fabricator';
+export type NodeType = 'extractor' | 'fabricator' | 'colony';
 
 export interface RawMapNode {
   nodeId: string;
@@ -35,6 +36,8 @@ export interface RawMapNode {
   resources?: Array<{ label: string; type: string; accumulated: number; rate: number }>;
   totalAccumulated?: number;
   advanced?: boolean;
+  populationFill?: number;
+  supplied?: boolean;
 }
 
 export interface ProjectedMapNode extends RawMapNode {
@@ -43,6 +46,24 @@ export interface ProjectedMapNode extends RawMapNode {
 }
 
 const MIN_NODE_DIST = NODE_R * 2 + 16;
+const TARGET_NODE_SEP = NODE_R * 5;
+const MAX_LAYOUT_R = MAP_SIZE * 3;
+
+function layoutOffsets(offsets: { x: number; y: number }[]): { x: number; y: number }[] {
+  let maxDist = 0;
+  for (const o of offsets) maxDist = Math.max(maxDist, Math.hypot(o.x, o.y));
+  let minSep = Infinity;
+  for (let i = 1; i < offsets.length; i++) {
+    for (let j = 0; j < i; j++) {
+      const d = Math.hypot(offsets[i].x - offsets[j].x, offsets[i].y - offsets[j].y);
+      if (d > 1e-6 && d < minSep) minSep = d;
+    }
+  }
+  const bySep = Number.isFinite(minSep) ? TARGET_NODE_SEP / minSep : VISUAL_R / (maxDist || 1);
+  const byRadius = maxDist > 0 ? MAX_LAYOUT_R / maxDist : bySep;
+  const scale = Math.min(bySep, byRadius);
+  return offsets.map((o) => ({ x: MAP_CENTER + o.x * scale, y: MAP_CENTER - o.y * scale }));
+}
 
 function resolveOverlaps<T extends { svgX: number; svgY: number }>(nodes: T[]): T[] {
   const placed = [...nodes].sort(
@@ -83,6 +104,7 @@ function buildRawNodes(
   fabricators: Fabricator[],
   nodeEquipped: Record<string, [string | null, string | null]>,
   now: number,
+  colonies: Colony[],
 ): RawMapNode[] {
   const nodes: RawMapNode[] = [];
 
@@ -142,6 +164,20 @@ function buildRawNodes(
     });
   }
 
+  const colonyGroups = new Map<string, Colony[]>();
+  for (const c of colonies) {
+    const id = colonyNodeId(c.galaxySeed, c.systemId);
+    colonyGroups.set(id, [...(colonyGroups.get(id) ?? []), c]);
+  }
+  for (const [nodeId, members] of colonyGroups) {
+    const c = members[0];
+    nodes.push({ nodeId, nodeType: 'colony', name: `${c.systemName} · ${members.some(x => x.foundedAt) ? 'Colony' : 'Charter'}`,
+      keys: members.map(x => x.key), galaxySeed: c.galaxySeed, superclusSeed: c.superclusSeed,
+      sysX: c.systemX, sysY: c.systemY, galX: c.galaxyX, galY: c.galaxyY,
+      populationFill: members.reduce((n,x) => n+x.population, 0) / Math.max(1, members.reduce((n,x) => n+colonyPopCap(x), 0)),
+      supplied: members.every(x => (x.supplies.nutrients ?? 0) > 0 && x.ammo >= 5),
+    });
+  }
   return nodes;
 }
 
@@ -150,8 +186,9 @@ export function projectNodes(
   fabricators: Fabricator[],
   nodeEquipped: Record<string, [string | null, string | null]>,
   now: number = Date.now(),
+  colonies: Colony[] = [],
 ): ProjectedMapNode[] {
-  const rawNodes = buildRawNodes(extractors, fabricators, nodeEquipped, now);
+  const rawNodes = buildRawNodes(extractors, fabricators, nodeEquipped, now, colonies);
   if (rawNodes.length === 0) return [];
   if (rawNodes.length === 1) {
     return [{ ...rawNodes[0], svgX: MAP_CENTER, svgY: MAP_CENTER }];
@@ -163,27 +200,10 @@ export function projectNodes(
   if (galaxySeeds.size <= 1) {
     const cx = rawNodes.reduce((s, p) => s + p.sysX, 0) / rawNodes.length;
     const cy = rawNodes.reduce((s, p) => s + p.sysY, 0) / rawNodes.length;
-    const dists = rawNodes.map((p) => Math.hypot(p.sysX - cx, p.sysY - cy));
-    const sorted = [...dists].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] ?? 1;
-    const normDist = Math.max(Math.min(sorted[sorted.length - 1], median * 3), 1);
-    const scale = VISUAL_R / normDist;
-    rawPoints = rawNodes.map((p) => {
-      const dx = (p.sysX - cx) * scale;
-      const dy = (p.sysY - cy) * scale;
-      const dist = Math.hypot(dx, dy);
-      const f = dist > VISUAL_R ? VISUAL_R / dist : 1;
-      return { x: MAP_CENTER + dx * f, y: MAP_CENTER - dy * f };
-    });
+    rawPoints = layoutOffsets(rawNodes.map((p) => ({ x: p.sysX - cx, y: p.sysY - cy })));
   } else {
     const gcx = rawNodes.reduce((s, p) => s + p.galX, 0) / rawNodes.length;
     const gcy = rawNodes.reduce((s, p) => s + p.galY, 0) / rawNodes.length;
-    const gDists = rawNodes.map((p) => Math.hypot(p.galX - gcx, p.galY - gcy));
-    const gSorted = [...gDists].sort((a, b) => a - b);
-    const gMedian = gSorted[Math.floor(gSorted.length / 2)] ?? 1;
-    const gNorm = Math.max(Math.min(gSorted[gSorted.length - 1], gMedian * 3), 1);
-    const gScale = VISUAL_R / gNorm;
-    const sysScale = gScale * SYS_TO_SC;
 
     const sysCenter = new Map<number, { mx: number; my: number }>();
     for (const seed of galaxySeeds) {
@@ -194,14 +214,15 @@ export function projectNodes(
       });
     }
 
-    rawPoints = rawNodes.map((p) => {
-      const c = sysCenter.get(p.galaxySeed)!;
-      const dx = (p.galX - gcx) * gScale + (p.sysX - c.mx) * sysScale;
-      const dy = (p.galY - gcy) * gScale + (p.sysY - c.my) * sysScale;
-      const dist = Math.hypot(dx, dy);
-      const f = dist > VISUAL_R ? VISUAL_R / dist : 1;
-      return { x: MAP_CENTER + dx * f, y: MAP_CENTER - dy * f };
-    });
+    rawPoints = layoutOffsets(
+      rawNodes.map((p) => {
+        const c = sysCenter.get(p.galaxySeed)!;
+        return {
+          x: (p.galX - gcx) + (p.sysX - c.mx) * SYS_TO_SC,
+          y: (p.galY - gcy) + (p.sysY - c.my) * SYS_TO_SC,
+        };
+      }),
+    );
   }
 
   return resolveOverlaps(

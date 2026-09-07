@@ -2,9 +2,17 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { type User } from 'firebase/auth';
 import { db } from './firebase';
 import { MILKY_WAY_SEED, LANIAKEA_SEED, DEFAULT_ADDRESS } from '../game/hardcoded';
-import type { AddressComponent } from '../game/types';
+import type { AddressComponent, CannonStrike } from '../game/types';
 
 export interface UserSettings {
+  geneLines: number;
+  exposure: number;
+  lastProbeEscapeAt: number;
+  alienMatter: number;
+  kardashevTier: number;
+  strike: CannonStrike | null;
+  nextStrikeExposure: number;
+  evacuatedPopulation: number;
   showOrbitRings: boolean;
   showAttractorLabels: boolean;
   showHUD: boolean;
@@ -40,6 +48,8 @@ export interface UserSettings {
 }
 
 export const defaultSettings: UserSettings = {
+  geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0,
+  kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0,
   showOrbitRings: false,
   showAttractorLabels: true,
   showHUD: true,
@@ -107,4 +117,10 @@ export async function saveUserSettings(uid: string, settings: UserSettings): Pro
   } catch (err) {
     console.error('saveUserSettings failed:', err);
   }
+}
+
+export type CampaignProgress = Pick<UserSettings, 'geneLines' | 'exposure' | 'lastProbeEscapeAt' | 'alienMatter' | 'kardashevTier' | 'strike' | 'nextStrikeExposure' | 'evacuatedPopulation'>;
+
+export async function saveCampaignProgress(uid: string, settings: CampaignProgress): Promise<void> {
+  await setDoc(doc(db, 'users', uid), { settings }, { merge: true });
 }

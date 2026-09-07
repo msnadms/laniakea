@@ -11,6 +11,7 @@ export interface Craftable {
   cost: ResourceCost;
   materials: MaterialCost;
   category: CraftCategory;
+  minimumFabricatorTier?: number;
   outputs: number;
   byproducts: MaterialCost;
   produces: string;
@@ -23,6 +24,7 @@ export const ALL_CRAFTABLES: Craftable[] = [
     cost: m.cost,
     materials: m.materials,
     category: 'material' as const,
+    minimumFabricatorTier: m.tier >= 4 ? 2 : 1,
     outputs: m.outputs ?? 1,
     byproducts: m.byproducts ?? {},
     produces: m.produces ?? m.id,
@@ -52,7 +54,7 @@ export const ALL_CRAFTABLES: Craftable[] = [
 const BY_ID = new Map(ALL_CRAFTABLES.map((c) => [c.id, c]));
 
 export function describeUpgradeEffect(effect: ExtractorUpgrade['effect']): string {
-  if (effect.upgType === 'detection') return 'Masks drone warp signatures at this station';
+  if (effect.upgType === 'detection') return 'Baffles traffic signatures that attract passing probes';
   return `${effect.multiplier}x to ${effect.upgType}`;
 }
 

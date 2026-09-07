@@ -16,6 +16,8 @@ import { saveStockpile } from '../firebase/stockpile';
 import { RESOURCE_MAX_RATE } from '../game/planetGen';
 import { saveExtractor, updateExtractorCollected, deleteExtractor } from '../firebase/extractors';
 import './PlanetPanel.css';
+import { ColonyDetails } from './ColonyPanel';
+import { useColonyStore, canBuildExtractor } from '../store/colonyStore';
 
 const TIERS = [
   { min: 0.80, label: 'S' },
@@ -95,12 +97,18 @@ export function PlanetPanel() {
   const supercluster = useGameStore((s) => s.supercluster);
   const extractor = useExtractorStore((s) => selectedKey ? s.extractors[selectedKey] : undefined);
   const fabricator = useFabricatorStore((s) => selectedKey ? s.fabricators[selectedKey] : undefined);
+  const colony = useColonyStore(s => selectedKey ? s.colonies[selectedKey] : undefined);
   const spendNutrients = useUIStore((s) => s.spendNutrients);
   const spendMetallicHydrogen = useUIStore((s) => s.spendMetallicHydrogen);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
   const maxStations = computeLogisticsCap(logisticsA);
-  const atMax = useExtractorStore((s) => Object.keys(s.extractors).length >= maxStations);
+  const extractorRoster = useExtractorStore(s => s.extractors);
+  const colonyRoster = useColonyStore(s => s.colonies);
+  const atMax = useMemo(() => {
+    void extractorRoster; void colonyRoster; void logisticsA;
+    return !canBuildExtractor(galaxySeed, system?.id ?? -1);
+  }, [extractorRoster, colonyRoster, galaxySeed, system?.id, logisticsA]);
   const placeExtractor = useExtractorStore((s) => s.placeExtractor);
   const collectExtractor = useExtractorStore((s) => s.collectExtractor);
   const removeExtractor = useExtractorStore((s) => s.removeExtractor);
@@ -159,14 +167,15 @@ export function PlanetPanel() {
     alloys,
     nutrients,
     metallicHydrogen,
-    neutronStarMatter: neutronMatter
+    neutronStarMatter: neutronMatter,
+    alienMatter: useUIStore.getState().alienMatter,
   };
   const cargoSpace = extractor ? Math.max(0, cap - currentCargo[extractor.resourceType]) : 0;
   const collectable = Math.min(accumulated, cargoSpace);
 
   function handlePlace(resource: { type: Resource['type']; count: number }) {
     if (useUIStore.getState().checkDetectionLethal()) return;
-    if (!system || alloys < STATION_COST) return;
+    if (!system || alloys < STATION_COST || !canBuildExtractor(galaxySeed, system.id)) return;
     spendAlloys(STATION_COST);
     const now = Date.now();
     const key = makeExtractorKey(galaxySeed, system.id, planet!.name);
@@ -259,6 +268,7 @@ export function PlanetPanel() {
 
   function handleAbandon() {
     if (!selectedKey) return;
+    if (colony) return;
     useFabricatorStore.getState().removeFabricator(selectedKey);
     if (user) deleteFabricator(user.uid, selectedKey);
   }
@@ -358,7 +368,9 @@ export function PlanetPanel() {
                 </span>
               </div>
             )}
-            <button className="planet-panel-btn planet-panel-btn--abandon" onClick={handleAbandon}>
+            {fabricator.tier === 2 && !colony && <button className="planet-panel-btn" onClick={() => useColonyStore.getState().planCharter(fabricator.key)}>Stage colony charter · open delivery demand</button>}
+            {colony && <ColonyDetails colonyKey={colony.key} />}
+            <button className="planet-panel-btn planet-panel-btn--abandon" disabled={!!colony} onClick={handleAbandon}>
               Abandon {FABRICATOR_TIER_LABELS[fabricator.tier ?? 1]}
             </button>
           </div>

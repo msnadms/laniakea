@@ -89,7 +89,7 @@ export interface SuperclusterData {
 }
 
 export interface Resource {
-  type: 'exotic' | 'alloys' | 'nutrients' | 'helium-3' | 'metallicHydrogen' | 'neutronStarMatter'
+  type: 'exotic' | 'alloys' | 'nutrients' | 'helium-3' | 'metallicHydrogen' | 'neutronStarMatter' | 'alienMatter'
   count: number;
 }
 
@@ -192,6 +192,42 @@ export function makeExtractorKey(galaxySeed: number, systemId: number, planetNam
 }
 
 export type FabricatorKey = string;
+
+export type ColonyKey = string;
+export interface Colony {
+  key: ColonyKey;
+  fabricatorKey: FabricatorKey;
+  galaxySeed: number; systemId: number; systemName: string; planetName: string;
+  systemX: number; systemY: number; galaxyX: number; galaxyY: number; superclusSeed: number;
+  /** Zero while the charter's delivered demand is being assembled. */
+  foundedAt: number;
+  population: number;
+  installed: Record<string, number>;
+  supplies: Partial<Record<Resource['type'], number>>;
+  assemblies: MaterialCost;
+  /** Standing per-assembly order the colony advertises to routes and keeps back from export. */
+  requested: MaterialCost;
+  lastTickAt: number; lastFireAt: number; lastProbeEscapeAt: number;
+  ammo: number; localHeat: number; exportedLines: number;
+  fedMs: number; starvationMs: number; lostPeople: number; labor: number;
+  populationTier: number;
+  selfSufficientMs: number;
+  lastShipmentAt: number;
+  project: 'dyson' | 'probes' | null;
+  projectDelivered: MaterialCost;
+  swarmComplete: boolean;
+  probeCoverage: number;
+}
+
+export const makeColonyKey = makeFabricatorKey;
+export function colonyNodeId(galaxySeed: number, systemId: number): string {
+  return `colony:${galaxySeed}|${systemId}`;
+}
+export interface CannonStrike {
+  superclusSeed: number;
+  targetName: string;
+  arrivesAt: number;
+}
 
 export type FabricatorTier = 1 | 2;
 
@@ -296,6 +332,7 @@ export const COST_KEY_TO_RESOURCE: Record<string, Resource['type']> = {
   nutrients: 'nutrients',
   metallicHydrogen: 'metallicHydrogen',
   neutronStarMatter: 'neutronStarMatter',
+  alienMatter: 'alienMatter',
 };
 
 export const RESOURCE_LABELS: Record<Resource['type'], string> = {
@@ -304,10 +341,11 @@ export const RESOURCE_LABELS: Record<Resource['type'], string> = {
   nutrients: 'Nutrients',
   'helium-3': 'Helium-3',
   metallicHydrogen: 'Metallic Hydrogen',
-  neutronStarMatter: 'Neutron Star Matter'
+  neutronStarMatter: 'Neutron Star Matter',
+  alienMatter: 'Alien Matter',
 };
 
-export const RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter'];
+export const RAW_TYPES: Resource['type'][] = ['exotic', 'alloys', 'nutrients', 'helium-3', 'metallicHydrogen', 'neutronStarMatter', 'alienMatter'];
 
 export type UpgradeType = 'rate' | 'storage' | 'detection';
 
@@ -322,7 +360,8 @@ export type ResourceCostKey =
   | 'helium'
   | 'nutrients'
   | 'metallicHydrogen'
-  | 'neutronStarMatter';
+  | 'neutronStarMatter'
+  | 'alienMatter';
 
 export type ResourceCost = Partial<Record<ResourceCostKey, number>>;
 
@@ -356,6 +395,7 @@ export interface RareResource {
   desc: string;
   cost: ResourceCost;
   materials: MaterialCost;
+  effect?: { stat: 'popCap' | 'growth' | 'defense' | 'autonomy' | 'ectogenesis'; value: number };
 }
 
 export const RARE_ROLE_LABELS: Record<string, string> = {
@@ -364,10 +404,12 @@ export const RARE_ROLE_LABELS: Record<string, string> = {
   fuel: 'Fuel',
   field: 'Field Systems',
   life: 'Life Support',
+  population: 'Ectogenesis',
 };
 
 export const MATERIAL_TIER_LABELS: Record<number, string> = {
   1: 'Refined',
   2: 'Engineered',
   3: 'Exotic',
+  4: 'Alien',
 };

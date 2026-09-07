@@ -1,18 +1,11 @@
 {
   "rareResources": [
     {
-      "id": "neutronium_keel",
-      "name": "Neutronium Keel",
-      "role": "structure",
-      "desc": "A spine of degenerate matter laid down first, so that everything built above it has something that will not bend.",
-      "cost": { "alloys": 2500, "neutronStarMatter": 900 },
-      "materials": { "degenerate_core": 2, "hea_billet": 4 }
-    },
-    {
       "id": "zero_point_capacitor",
       "name": "Zero-Point Capacitor",
       "role": "power",
-      "desc": "It draws on the vacuum itself and gives back a little less than it takes, which is enough.",
+      "desc": "Vacuum power source. Each capacitor increases population growth by 0.25 per hour.",
+      "effect": { "stat": "growth", "value": 0.25 },
       "cost": { "exotic": 800 },
       "materials": { "casimir_plate": 2, "bec_cell": 1 }
     },
@@ -20,15 +13,17 @@
       "id": "antihydrogen_reservoir",
       "name": "Antihydrogen Reservoir",
       "role": "fuel",
-      "desc": "A gram of antihydrogen suspended in nothing, waiting a very long time to touch something.",
+      "desc": "Colony dispatch reserve. Stores 2000 units of each warp fuel so its network can operate without the Peregrine.",
+      "effect": { "stat": "autonomy", "value": 2000 },
       "cost": { "helium": 2200, "metallicHydrogen": 800 },
       "materials": { "positron_trap": 2, "deuterium_slush": 4 }
     },
     {
       "id": "frame_dragging_gyro",
-      "name": "Frame-Dragging Gyroscope",
+      "name": "Sentinel Battery",
       "role": "field",
-      "desc": "It measures how a station's own turning drags spacetime along behind it, and corrects the drift before anyone aboard can feel it.",
+      "desc": "Superconducting fire-control mount for census probes. Holds 40 rounds and reduces the firing interval.",
+      "effect": { "stat": "defense", "value": 40 },
       "cost": { "alloys": 1800, "exotic": 1200 },
       "materials": { "ybco_tape": 3, "degenerate_core": 1 }
     },
@@ -36,9 +31,19 @@
       "id": "closed_ecology_column",
       "name": "Closed Ecology Column",
       "role": "life",
-      "desc": "Algae, water and light in a loop that has to close perfectly, because out here there is nothing left to top it up with.",
+      "desc": "Recycles air, water and waste for 1000 people. Food still requires local production or supply ships.",
+      "effect": { "stat": "popCap", "value": 1000 },
       "cost": { "nutrients": 3200, "alloys": 1200 },
       "materials": { "silica_aerogel": 6, "graphene_lattice": 4, "muon_cell": 1 }
+    },
+    {
+      "id": "ectogenesis_bank",
+      "name": "Ectogenesis Bank",
+      "role": "population",
+      "desc": "Produces people from stored genetic lines. One bank is consumed at founding and at each population tier.",
+      "effect": { "stat": "ectogenesis", "value": 1000 },
+      "cost": { "nutrients": 3000, "alloys": 2000 },
+      "materials": { "bec_cell": 2, "muon_cell": 2, "silica_aerogel": 6 }
     }
   ]
 }

@@ -60,6 +60,8 @@ import { useNow } from './useNow';
 import { TutorialPanel } from './TutorialPanel';
 import './LogisticsModal.css';
 import './LogisticsPolicies.css';
+import { useColonyStore } from '../store/colonyStore';
+import { ColonyDetails } from './ColonyPanel';
 
 type AnimLine = { text: string; isCost: boolean; revealStep: number };
 type DispatchAnim = {
@@ -70,7 +72,7 @@ type DispatchAnim = {
 };
 
 
-const ROUTABLE_MATERIALS = [...new Set(STOCKED_MATERIALS.map((material) => material.id))];
+const ROUTABLE_MATERIALS = [...new Set([...STOCKED_MATERIALS, ...RARE_RESOURCES].map((material) => material.id))];
 const DETAIL_POP_HEIGHT = 210;
 
 function costParts(exotic: number, helium: number): Array<[string, number]> {
@@ -119,6 +121,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const stockpileMaterials = useStockpileStore((s) => s.materials);
   const stockpileRares = useStockpileStore((s) => s.rares);
   const fabricators = useFabricatorStore((s) => s.fabricators);
+  const colonies = useColonyStore(s => s.colonies);
   const fabricatorStates = useFabricatorStore((s) => s.fabricatorStates);
   const lastFabricatorRun = useFabricatorStore((s) => s.lastRun);
   const setSlotTarget = useFabricatorStore((s) => s.setSlotTarget);
@@ -139,7 +142,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const driveA = useUIStore((s) => s.driveA);
   const driveB = useUIStore((s) => s.driveB);
   const previewWorldKey = useUIStore((s) => [
-    s.storageA, s.detectionHeat, s.alloys, s.nutrients, s.metallicHydrogen, s.neutronStarMatter,
+    s.storageA, s.detectionHeat, s.alloys, s.nutrients, s.metallicHydrogen, s.neutronStarMatter, s.alienMatter,
   ].join('|'));
 
   const bandwidth = computeMaterialBandwidth(logisticsA, logisticsB);
@@ -235,8 +238,8 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const allFabricators = useMemo(() => Object.values(fabricators), [fabricators]);
 
   const projected = useMemo(
-    () => projectNodes(allExtractors, allFabricators, nodeEquipped, now),
-    [allExtractors, allFabricators, nodeEquipped, now],
+    () => projectNodes(allExtractors, allFabricators, nodeEquipped, now, Object.values(colonies)),
+    [allExtractors, allFabricators, nodeEquipped, now, colonies],
   );
   const lastHoveredNode = lastHoveredNodeId
     ? projected.find((p) => p.nodeId === lastHoveredNodeId) ?? null
@@ -370,6 +373,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
         persistFabricatorRun(user.uid, {
           extractorKeys: collected.map(({ key }) => key),
           fabricatorKeys,
+          colonyKeys: result.colonyKeys,
         });
       }
 
@@ -472,7 +476,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   }, [projected, fabricatorStates, fabricators]);
 
   const routeSummaries = useMemo(() => {
-    void fabricatorStates; void stockpileMaterials; void logisticsA; void logisticsB;
+    void fabricatorStates; void stockpileMaterials; void logisticsA; void logisticsB; void colonies; void stockpileRares;
     void exoticMatter; void helium3; void fuelReserveExotic; void fuelReserveHelium3;
     void driveA; void driveB; void previewWorldKey; void nodeEquipped;
     return new Map(routes.map((route) => {
@@ -482,7 +486,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     }));
   }, [routes, previewRoute, extractors, fabricators, fabricatorStates, stockpileMaterials,
     logisticsA, logisticsB, exoticMatter, helium3, fuelReserveExotic, fuelReserveHelium3,
-    driveA, driveB, previewWorldKey, nodeEquipped]);
+    driveA, driveB, previewWorldKey, nodeEquipped, colonies, stockpileRares]);
 
   const heldByNode = useMemo(() => {
     const result: Record<string, { routeIds: string[]; raw: Partial<Record<Resource['type'], number>>; materials: MaterialCost }> = {};
@@ -903,6 +907,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
           )}
           {/* ── Right panel ── */}
           <div className="logistics-resources-panel">
+            {lastHoveredNode?.nodeType === 'colony' && lastHoveredNode.keys.map(key => <ColonyDetails key={key} colonyKey={key} />)}
             {lastHoveredNode && heldByNode[lastHoveredNode.nodeId] && (
               <HeldCargoNotice
                 cargo={heldByNode[lastHoveredNode.nodeId]}
@@ -1203,7 +1208,7 @@ function SlotPickerMenu({
         <button className="lm-slot-menu-row lm-slot-menu-row--none" onClick={() => onPick(null)}>
           — None —
         </button>
-        {MATERIAL_TIERS.map((tier) => (
+        {MATERIAL_TIERS.filter(tier => tier < 4 || state.advanced).map((tier) => (
           <Section
             key={tier}
             title={`${MATERIAL_TIER_LABELS[tier] ?? `Tier ${tier}`} Materials`}
@@ -1476,6 +1481,7 @@ function FabricatorSidebar({
     nutrients: s.nutrients,
     metallicHydrogen: s.metallicHydrogen,
     neutronStarMatter: s.neutronStarMatter,
+    alienMatter: s.alienMatter,
     fuelReserveExotic: s.fuelReserveExotic,
     fuelReserveHelium3: s.fuelReserveHelium3,
     logisticsA: s.logisticsA,

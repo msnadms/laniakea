@@ -171,7 +171,8 @@ export const RESOURCE_MAX_RATE: Record<Resource['type'], number> = {
   'helium-3': rcMax(RC.gasHelium3) + getZoneConfig('gas').maxMoons * rcMax(RC.gasMoonHelium3),
   exotic: rcMax(RC.bdExotic),
   metallicHydrogen: rcMax(RC.iceHydrogen) + getZoneConfig('ice').maxMoons * rcMax(RC.iceMoonHydrogen),
-  neutronStarMatter: rcMax(RC.nsmHot) * 4
+  neutronStarMatter: rcMax(RC.nsmHot) * 4,
+  alienMatter: 0, // Salvaged from probes only; never included in planet generation.
 };
 
 function resourcesForZone(rng: () => number, zone: ZoneType, isBrownDwarf = false, isNeutronStar = false): Resource[] | null {
