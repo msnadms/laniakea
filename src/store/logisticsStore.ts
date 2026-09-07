@@ -14,7 +14,7 @@ import {
 } from './fabricatorStore';
 import type { FeedResult, MaterialBudget, SlotRunResult } from './fabricatorStore';
 import { useStockpileStore } from './stockpileStore';
-import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR } from './uiStore';
+import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR, decayDetectionHeat, computeDetectionDecayPerMs } from './uiStore';
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 import { getSuperclusterCoords } from '../game/superclusters';
 import { OBS_UNIVERSE_RADIUS } from '../game/constants';
@@ -23,18 +23,37 @@ import { RARE_RESOURCES } from '../data/rareResources';
 const rareIds = new Set(RARE_RESOURCES.map(r => r.id));
 
 const FABRICATOR_PREFIX = 'fabricator:';
-export const AUTOMATION_POLL_MS = 15_000;
+export const AUTOMATION_POLL_MS = 60_000;
+
+export const ROUTE_DISPATCH_EXOTIC = 10;
+export const ROUTE_DISPATCH_HELIUM = 5;
+export const ROUTE_EXOTIC_PER_UNIT = 0.05;
+export const ROUTE_HELIUM_PER_UNIT = 0.05;
+// Drones fly the DAG one way, so a hop is not priced as the ship's round trip.
+export const ROUTE_HOP_DISCOUNT = 0.25;
+export const ROUTE_HELIUM_PER_HOP = 4;
+export const MIN_DISPATCH_UNITS = 25;
+export const AUTOMATION_CATCHUP_PASSES = 50;
+export const AUTOMATION_CATCHUP_CREDIT_CAP = 12;
+export const MAX_DETECTION_CEILING = 4;
+
+let catchUpDetectionCredit = 0;
+
+export function detectionCatchUpCredit(): number {
+  return catchUpDetectionCredit;
+}
 
 export const DEFAULT_AUTOMATION_POLICY: RouteAutomationPolicy = {
   dispatchMode: 'fill',
-  sourceFillPercent: 50,
+  sourceFillPercent: 70,
   fillAggregate: 'weighted',
   detectionCeiling: 4,
   pauseOnJam: true,
 };
 
 export function resolveAutomationPolicy(route: LogisticsRoute): RouteAutomationPolicy {
-  return { ...DEFAULT_AUTOMATION_POLICY, ...(route.automation ?? {}) };
+  const policy = { ...DEFAULT_AUTOMATION_POLICY, ...(route.automation ?? {}) };
+  return { ...policy, detectionCeiling: Math.max(0, Math.min(MAX_DETECTION_CEILING, policy.detectionCeiling)) };
 }
 
 export interface NodeGroup {
@@ -94,14 +113,18 @@ export function resolveNodeGroups(
   return groups;
 }
 
-function hopCost(a: NodeGroup, b: NodeGroup): { exotic: number; helium: number } {
-  if (a.galaxySeed === b.galaxySeed && a.systemId === b.systemId) return { exotic: 0, helium: 0 };
-  if (a.galaxySeed === b.galaxySeed) return galaxyTravelCost(Math.hypot(a.systemX - b.systemX, a.systemY - b.systemY));
-  if (a.superclusSeed === b.superclusSeed) return superclusterTravelCost(Math.hypot(a.galaxyX - b.galaxyX, a.galaxyY - b.galaxyY));
+function sameSystem(a: NodeGroup, b: NodeGroup): boolean {
+  return a.galaxySeed === b.galaxySeed && a.systemId === b.systemId;
+}
+
+function hopExotic(a: NodeGroup, b: NodeGroup): number {
+  if (sameSystem(a, b)) return 0;
+  if (a.galaxySeed === b.galaxySeed) return galaxyTravelCost(Math.hypot(a.systemX - b.systemX, a.systemY - b.systemY)).exotic;
+  if (a.superclusSeed === b.superclusSeed) return superclusterTravelCost(Math.hypot(a.galaxyX - b.galaxyX, a.galaxyY - b.galaxyY)).exotic;
   const from = getSuperclusterCoords(a.superclusSeed);
   const to = getSuperclusterCoords(b.superclusSeed);
   const distance = Math.hypot(from[0] - to[0], from[1] - to[1], from[2] - to[2]);
-  return flatTravelCost(100 + Math.round(100 * Math.min(1, distance / (2 * OBS_UNIVERSE_RADIUS))));
+  return flatTravelCost(100 + Math.round(100 * Math.min(1, distance / (2 * OBS_UNIVERSE_RADIUS)))).exotic;
 }
 
 export function successors(edges: RouteEdge[], nodeId: string): string[] {
@@ -214,9 +237,14 @@ function edgeCapacity(edge: RouteEdge, bandwidth: number): number {
 
 export const DETECTION_DENSITY_DIVISOR = 60;
 export const DETECTION_CROSSING_POINTS = 0.05;
+export const DETECTION_DAMPENED_HOP_WEIGHT = 0.5;
 
 function localHopRisk(hops: number): number {
-  return hops * (hops - 1) / DETECTION_DENSITY_DIVISOR;
+  return Math.max(0, hops * (hops - 1)) / DETECTION_DENSITY_DIVISOR;
+}
+
+function edgeHopWeight(fromDampened: boolean, toDampened: boolean): number {
+  return (fromDampened ? DETECTION_DAMPENED_HOP_WEIGHT : 1) * (toDampened ? DETECTION_DAMPENED_HOP_WEIGHT : 1);
 }
 
 function nodeIsDampened(group: NodeGroup, equipped: Record<string, [string | null, string | null]>): boolean {
@@ -236,9 +264,9 @@ export function routeDetectionRisk(
     const from = groups.get(edge.from);
     const to = groups.get(edge.to);
     if (!from || !to) continue;
-    if (dampened.get(edge.from) || dampened.get(edge.to)) continue;
-    if (from.superclusSeed !== to.superclusSeed) crossings += DETECTION_CROSSING_POINTS;
-    else localHops.set(from.superclusSeed, (localHops.get(from.superclusSeed) ?? 0) + 1);
+    const weight = edgeHopWeight(!!dampened.get(edge.from), !!dampened.get(edge.to));
+    if (from.superclusSeed !== to.superclusSeed) crossings += DETECTION_CROSSING_POINTS * weight;
+    else localHops.set(from.superclusSeed, (localHops.get(from.superclusSeed) ?? 0) + weight);
   }
   const density = [...localHops.values()].reduce((sum, hops) => sum + localHopRisk(hops), 0);
   return Math.max(0, density + crossings);
@@ -262,17 +290,23 @@ export function computeRouteCost(
   if (groups.size === 0) return { exotic: 0, helium: 0 };
   const { driveA, driveB } = useUIStore.getState();
   const [exoticMultiplier, heliumMultiplier] = computeDriveMultiplier(driveA, driveB);
-  let exotic = Math.max(1, Math.round((10 + throughputUnits * 0.02) * exoticMultiplier));
-  let helium = Math.max(1, Math.round((5 + throughputUnits * 0.01) * heliumMultiplier));
+  let hopExoticTotal = 0;
+  let billableHops = 0;
   for (const edge of [...edges].sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)))) {
     const from = groups.get(edge.from);
     const to = groups.get(edge.to);
-    if (!from || !to) continue;
-    const cost = hopCost(from, to);
-    exotic += cost.exotic;
-    helium += cost.helium;
+    if (!from || !to || sameSystem(from, to)) continue;
+    hopExoticTotal += hopExotic(from, to);
+    billableHops += 1;
   }
-  return { exotic, helium };
+  return {
+    exotic: Math.max(1, Math.round(
+      (ROUTE_DISPATCH_EXOTIC + throughputUnits * ROUTE_EXOTIC_PER_UNIT) * exoticMultiplier
+      + hopExoticTotal * ROUTE_HOP_DISCOUNT)),
+    helium: Math.max(1, Math.round(
+      (ROUTE_DISPATCH_HELIUM + throughputUnits * ROUTE_HELIUM_PER_UNIT
+        + billableHops * ROUTE_HELIUM_PER_HOP) * heliumMultiplier)),
+  };
 }
 
 interface Cargo { raw: Partial<Record<Resource['type'], number>>; materials: MaterialCost }
@@ -907,19 +941,24 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const islands = routeIslandNodes(route.edges);
   const valid = routeIsValid(route.edges) && groups.size === nodes.length;
   const policy = resolveAutomationPolicy(route);
-  const risk = routeDetectionRisk(route.edges, groups);
+  const risk = Math.max(0, routeDetectionRisk(route.edges, groups) - catchUpDetectionCredit);
   const ui = useUIStore.getState();
   const cost = computeRouteCost(route.edges, extractors, fabricators, traversal.throughputUnits);
   const affordable = !!routeSponsor(groups, cost) || (ui.exoticMatter - cost.exotic >= ui.fuelReserveExotic
     && ui.helium3Reserves - cost.helium >= ui.fuelReserveHelium3);
   let reason = 'Ready';
-  const effectiveHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
+  const storedHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
     ? ui.detectionHeat
     : ui.detectionRating * DETECTION_HEAT_PER_BAR;
+  const effectiveHeat = decayDetectionHeat(
+    storedHeat, ui.lastDetectionChangeAt, Date.now(), computeDetectionDecayPerMs(ui.logisticsA),
+  ).detectionHeat;
   const hasConfiguredRecipe = routeFabricatorKeys(groups).some((key) =>
     (useFabricatorStore.getState().fabricatorStates[key]?.slots ?? []).some((slot) => !!slot.targetUpgradeId));
+  const tank = computeStorageCap(ui.storageA);
+  const exceedsTank = cost.exotic > tank || cost.helium > tank;
   if (!valid) reason = islands.length > 0 ? 'Disconnected route islands' : 'Incomplete or cyclic route';
-  else if (!affordable) reason = 'Insufficient route fuel';
+  else if (!affordable) reason = exceedsTank ? 'Route costs more fuel than the hold can carry' : 'Insufficient route fuel';
   else if (effectiveHeat + risk > policy.detectionCeiling * DETECTION_HEAT_PER_BAR) reason = 'Detection ceiling would be exceeded';
   else if (!traversal.didWork) reason = 'Waiting for useful cargo';
   else if (policy.dispatchMode === 'batch' && traversal.expectedBatches === 0 && hasConfiguredRecipe) reason = 'Waiting for a complete recipe batch';
@@ -1052,6 +1091,7 @@ function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | 
     ? useExtractorStore.getState().receiveFabricatorItems(traversal.endItems)
     : [];
   if (preview.detectionRisk > 0) useUIStore.getState().raiseDetectionHeat(preview.detectionRisk);
+  catchUpDetectionCredit = Math.max(0, catchUpDetectionCredit - routeDetectionRisk(route.edges, groups));
   const result: DispatchResult = {
     colonyKeys: [...groups.values()].flatMap(g => g.colonyKeys ?? []),
     order: traversal.order,
@@ -1092,6 +1132,7 @@ interface LogisticsState {
   previewRoute: (id: string) => RoutePreview | null;
   dispatchRoute: (id: string, automatic?: boolean) => DispatchResult | false;
   runAutomation: () => DispatchResult[];
+  catchUpAutomation: (offlineMs?: number) => DispatchResult[];
   restoreRoutes: (routes: LogisticsRoute[]) => void;
 }
 
@@ -1178,11 +1219,31 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
         }
         continue;
       }
+      if (preview.throughputUnits < MIN_DISPATCH_UNITS && preview.expectedBatches === 0) continue;
       const result = get().dispatchRoute(route.id, true);
       if (result) {
         results.push(result);
         set((state) => ({ automationNotices: { ...state.automationNotices, [route.id]: '' } }));
       }
+    }
+    return results;
+  },
+
+  catchUpAutomation: (offlineMs = 0) => {
+    const ui = useUIStore.getState();
+    catchUpDetectionCredit = Math.min(
+      AUTOMATION_CATCHUP_CREDIT_CAP,
+      Math.max(0, offlineMs) * computeDetectionDecayPerMs(ui.logisticsA),
+    );
+    const results: DispatchResult[] = [];
+    try {
+      for (let pass = 0; pass < AUTOMATION_CATCHUP_PASSES; pass += 1) {
+        const batch = get().runAutomation();
+        if (batch.length === 0) break;
+        results.push(...batch);
+      }
+    } finally {
+      catchUpDetectionCredit = 0;
     }
     return results;
   },

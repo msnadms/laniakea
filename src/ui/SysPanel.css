@@ -164,11 +164,46 @@
 
 .sys-district-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
 }
 
-.sys-district-grid article,
+.sys-district-grid article {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  aspect-ratio: 1 / 1;
+  padding: 12px 10px 10px;
+  background: #0b1d28;
+  border: 1px solid #294b5b;
+}
+
+.sys-district-art {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin-top: 4px;
+  color: #6fb9d4;
+}
+
+.sys-district-art svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sys-district-grid article.built .sys-district-art {
+  color: #91e3c3;
+}
+
+.sys-district-grid article strong {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .sys-research-branches article,
 .sys-threat-list article {
   display: flex;
@@ -187,21 +222,33 @@
 }
 
 .sys-district-grid article b {
+  position: absolute;
+  top: 6px;
+  right: 8px;
   color: #91e3c3;
   font-size: 11px;
   letter-spacing: 0.08em;
 }
 
-.sys-district-grid article span.sys-district-cost {
-  margin-top: auto;
+.sys-district-grid article ul.sys-district-cost {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin: auto 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: center;
   color: #d3b77b;
+  font-size: 10px;
 }
 
-.sys-district-grid article span.sys-district-cost.short {
+.sys-district-grid article ul.sys-district-cost.short {
   color: #c87a7a;
 }
 
 .sys-district-actions {
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 6px;
@@ -227,7 +274,7 @@
 
 .sys-jobs > div {
   display: grid;
-  grid-template-columns: 1.2fr 55px 55px 1.4fr 1fr;
+  grid-template-columns: 1.2fr 96px 55px 55px 1.4fr 1fr;
   gap: 8px;
   align-items: center;
   padding: 5px;
@@ -237,6 +284,21 @@
 .sys-jobs button {
   width: 22px;
   margin-right: 3px;
+}
+
+.sys-job-weight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sys-job-weight input {
+  width: 68px;
+  accent-color: #4fd0e0;
+}
+
+.sys-job-weight b {
+  color: #7ab0c8;
 }
 
 .sys-table-head {
@@ -315,6 +377,6 @@
   }
 
   .sys-district-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   }
 }

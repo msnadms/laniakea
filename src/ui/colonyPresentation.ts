@@ -16,7 +16,7 @@ export function districtUpkeepShortfall(colony: Colony, district: DistrictDefini
   const raw = Object.entries(district.upkeep.raw ?? {}).flatMap(([type, rate]) =>
     (colony.supplies[type as Resource['type']] ?? 0) < (rate ?? 0) * count ? [RESOURCE_LABELS[type as Resource['type']]] : []);
   const materials = Object.entries(district.upkeep.materials ?? {}).flatMap(([id, rate]) =>
-    ((id === 'sentinel_ammo' ? colony.ammo : colony.assemblies[id]) ?? 0) < rate * count ? [materialName(id)] : []);
+    (colony.assemblies[id] ?? 0) < rate * count ? [materialName(id)] : []);
   return [...raw, ...materials];
 }
 

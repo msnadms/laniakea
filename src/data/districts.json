@@ -30,13 +30,25 @@
       "id": "research_district",
       "name": "Research District",
       "description": "Quiet halls where researchers add what they learn to humanity's shared understanding.",
-      "builtWith": { "zero_point_capacitor": 1, "frame_dragging_gyro": 1 },
+      "builtWith": { "zero_point_capacitor": 1, "closed_ecology_column": 1 },
       "jobs": 300,
       "job": "researcher",
       "output": { "research": 0.01 },
       "upkeep": { "raw": { "helium-3": 8, "nutrients": 30 } },
       "anchor": "zero_point_capacitor",
       "heat": 0.8
+    },
+    {
+      "id": "defense_district",
+      "name": "Defense District",
+      "description": "Sentinel batteries under a hardened crust, crewed by gunners who shoot down census probes and keep the colony quiet.",
+      "builtWith": { "frame_dragging_gyro": 2 },
+      "jobs": 200,
+      "job": "sentinel",
+      "output": {},
+      "upkeep": { "raw": { "helium-3": 12 } },
+      "anchor": "frame_dragging_gyro",
+      "heat": -1
     }
   ]
 }

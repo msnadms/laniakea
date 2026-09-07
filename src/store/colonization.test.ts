@@ -13,15 +13,17 @@ import { useLogisticsStore } from './logisticsStore';
 import { evaluateKardashev, tickCivilization, STRIKE_WARNING_MS } from './civStore';
 import { cancelDeathSequence } from './resetGame';
 import { generatePlanets, generateSystemLayout } from '../game/planetGen';
+import { getCraftable } from '../data/upgrades';
 
 const NOW = 10 * HOUR;
 const f: Fabricator = { key: '1|1|Haven', tier: 2, galaxySeed: 1, systemId: 1, systemName: 'Home', planetName: 'Haven',
   builtAt: 1, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1 };
 type LivingColony = Colony & Partial<Pick<LegacyColony, 'installed' | 'exportedLines' | 'labor' | 'populationTier' | 'selfSufficientMs'>>;
 const legacy = (colony: Colony): LivingColony => colony;
+const UNARMED = { installed: { ...CHARTER_ASSEMBLIES, frame_dragging_gyro: 0 } };
 const makeLiving = (patch: Partial<LivingColony> = {}): LivingColony => ({ ...charterSite(f, NOW),
   foundedAt: NOW, population: 100, populationTier: 1, installed: { ...CHARTER_ASSEMBLIES },
-  supplies: { nutrients: 100_000 }, ammo: 40, ...patch,
+  supplies: { nutrients: 100_000 }, ...patch,
 });
 
 /** Feeds a colony hour by hour, since a single long call is clamped as unattended time. */
@@ -90,16 +92,15 @@ describe('colony population arithmetic', () => {
   });
   it('resolves a long unattended interval without simulating every weapon step', () => {
     const started = performance.now();
-    const quiet = tickColony(makeLiving({ localHeat: 0, ammo: 40, supplies: { nutrients: 1e9 } }), NOW + 365 * 24 * HOUR);
+    const quiet = tickColony(makeLiving({ localHeat: 0, supplies: { nutrients: 1e9 } }), NOW + 365 * 24 * HOUR);
     expect(quiet.escapes).toBe(0);
     expect(performance.now() - started).toBeLessThan(50);
   });
-  it('exports everything it holds no standing order for, sparing an unfilled magazine', () => {
+  it('exports everything it holds no standing order for', () => {
     const c = makeLiving({ assemblies: { zero_point_capacitor: 1 } });
     expect(colonyExport(c)).toEqual({ zero_point_capacitor: 1 });
     expect(colonyExport({ ...c, requested: { zero_point_capacitor: 1 } })).toEqual({});
     expect(colonyExport({ ...c, assemblies: { zero_point_capacitor: 3 }, requested: { zero_point_capacitor: 1 } })).toEqual({ zero_point_capacitor: 2 });
-    expect(colonyExport({ ...c, assemblies: { sentinel_ammo: 8 }, ammo: 35 })).toEqual({ sentinel_ammo: 3 });
   });
   it('returns one line per population tier after six fed hours at maturity', () => {
     const c = makeLiving({ population: 600 });
@@ -116,33 +117,33 @@ describe('colony population arithmetic', () => {
     expect(feed(makeLiving({ population: 100 }), 6).lines).toBe(0);
   });
   it('bounds an unattended catch-up so a closed tab cannot flood exposure', () => {
-    const abandoned = tickColony(makeLiving({ localHeat: 3, ammo: 0 }), NOW + 24 * HOUR);
+    const abandoned = tickColony(makeLiving({ localHeat: 3, ...UNARMED }), NOW + 24 * HOUR);
     expect(abandoned.escapes).toBe(MAX_UNATTENDED_ESCAPES);
     expect(abandoned.colony.lastTickAt).toBe(NOW + 24 * HOUR);
   });
   it('lets probes through above saturation even with a loaded magazine', () => {
-    const swarmed = tickColony(makeLiving({ localHeat: 5, ammo: 40 }), NOW + 30_000);
+    const swarmed = tickColony(makeLiving({ localHeat: 5 }), NOW + 30_000);
     expect(swarmed.kills).toBe(1);
     expect(swarmed.escapes).toBe(1);
-    const engaged = tickColony(makeLiving({ localHeat: 3, ammo: 40 }), NOW + 30_000);
+    const engaged = tickColony(makeLiving({ localHeat: 3 }), NOW + 30_000);
     expect(engaged.escapes).toBe(0);
   });
   it('salvages nothing from a probe killed short of observation range', () => {
-    expect(tickColony(makeLiving({ localHeat: 1.5, ammo: 40 }), NOW + 30_000).kills).toBe(0);
+    expect(tickColony(makeLiving({ localHeat: 1.5 }), NOW + 30_000).kills).toBe(0);
   });
   it('raises local attention smoothly with every industry a colony runs', () => {
-    const heat = (industries: number) => tickColony(makeLiving({ localHeat: 0, ammo: 0 }), NOW + HOUR / 4, 0, industries).colony.localHeat;
+    const heat = (industries: number) => tickColony(makeLiving({ localHeat: 0, ...UNARMED }), NOW + HOUR / 4, 0, industries).colony.localHeat;
     expect(heat(0)).toBe(0);
     expect(heat(1)).toBeCloseTo(0.5);
     expect(heat(2)).toBeCloseTo(1.5);
     expect(heat(3)).toBeCloseTo(2.5);
     expect(heat(4)).toBeCloseTo(3.5);
   });
-  it('uses delivered ammunition to kill probes and salvages only actual kills', () => {
-    const defended = tickColony(makeLiving({ localHeat: 3, ammo: 5 }), NOW + 30_000);
-    expect(defended.kills).toBe(1); expect(defended.colony.ammo).toBe(0);
+  it('kills probes while a sentinel battery stands and leaks once it is gone', () => {
+    const defended = tickColony(makeLiving({ localHeat: 3 }), NOW + 30_000);
+    expect(defended.kills).toBe(1);
     expect(defended.escapes).toBe(0);
-    const exposed = tickColony(makeLiving({ localHeat: 3, ammo: 0 }), NOW + 30_000);
+    const exposed = tickColony(makeLiving({ localHeat: 3, ...UNARMED }), NOW + 30_000);
     expect(exposed.escapes).toBe(1); expect(exposed.kills).toBe(0);
   });
 });
@@ -239,7 +240,7 @@ describe('probe exposure and alien matter', () => {
 
 describe('colony routes', () => {
   function routeSetup(branch = false) {
-    const e: Extractor = { ...f, key: 'food', resourceType: 'nutrients', rate: 1, placedAt: NOW - 100_000, lastCollectedAt: NOW - 100_000 };
+    const e: Extractor = { ...f, key: 'food', resourceType: 'nutrients', rate: 1, placedAt: NOW - 100 * HOUR, lastCollectedAt: NOW - 100 * HOUR };
     useExtractorStore.setState({ extractors: { food: e } });
     useFabricatorStore.setState({ fabricators: { [f.key]: f }, fabricatorStates: { [f.key]: { slots: [{ ...makeEmptyFabricatorSlot(), targetUpgradeId: 'graphene_lattice' }] } } });
     useColonyStore.setState({ colonies: { [f.key]: charterSite(f, NOW) } });
@@ -272,13 +273,13 @@ describe('colony routes', () => {
     expect(colonyFood).toBe(50); expect(fabFood).toBe(50);
     expect(colonyFood + fabFood).toBe(100);
   });
-  it('honors filters on rare assemblies and ammunition', () => {
-    routeSetup(); useStockpileStore.setState({ rares: { ...CHARTER_ASSEMBLIES }, materials: { sentinel_ammo: 20 } });
-    useLogisticsStore.getState().updateRoute('supply', { edges: [{ from: extractorNodeId(1,1), to: colonyNodeId(1,1), allowedMaterials: ['sentinel_ammo'], materialDraw: 3 }] });
+  it('honors filters on the assemblies a colony has standing orders for', () => {
+    routeSetup(); useStockpileStore.setState({ rares: { ...CHARTER_ASSEMBLIES }, materials: { graphene_lattice: 20 } });
+    useColonyStore.setState({ colonies: { [f.key]: makeLiving({ requested: { graphene_lattice: 10 } }) } });
+    useLogisticsStore.getState().updateRoute('supply', { edges: [{ from: extractorNodeId(1,1), to: colonyNodeId(1,1), allowedMaterials: ['graphene_lattice'], materialDraw: 3 }] });
     useLogisticsStore.getState().dispatchRoute('supply');
-    expect(useColonyStore.getState().colonies[f.key].ammo).toBe(3);
-    expect(useColonyStore.getState().colonies[f.key].assemblies).toEqual({});
-    expect(useStockpileStore.getState().materials.sentinel_ammo).toBe(17);
+    expect(useColonyStore.getState().colonies[f.key].assemblies).toEqual({ graphene_lattice: 3 });
+    expect(useStockpileStore.getState().materials.graphene_lattice).toBe(17);
   });
   it('charges a supplied colony instead of the ship for its route', () => {
     routeSetup();
@@ -308,8 +309,9 @@ describe('civilization and strikes', () => {
     expect(useUIStore.getState().geneLines).toBe(24);
   });
   it('runs local industry while the Peregrine is in another system and retains output locally', () => {
-    const c = makeLiving({ population: 600, supplies: { nutrients: 100_000, alloys: 800 } });
-    const food: Extractor = { ...f, key: 'food', rate: 8, resourceType: 'nutrients', placedAt: NOW, lastCollectedAt: NOW };
+    const grapheneAlloys = (getCraftable('graphene_lattice')?.cost as Record<string, number>).alloys;
+    const c = makeLiving({ population: 600, supplies: { nutrients: 100_000, alloys: 2 * grapheneAlloys } });
+    const food: Extractor = { ...f, key: 'food', rate: 28_800, resourceType: 'nutrients', placedAt: NOW, lastCollectedAt: NOW };
     useColonyStore.setState({ colonies: { [f.key]: c } });
     useExtractorStore.setState({ extractors: { food } });
     useFabricatorStore.setState({ fabricators: { [f.key]: f }, fabricatorStates: { [f.key]: { slots: [{ ...makeEmptyFabricatorSlot(), targetUpgradeId: 'graphene_lattice' }] } } });
@@ -396,8 +398,8 @@ describe('civilization and strikes', () => {
     expect(colonyDemand(stocked).raw.nutrients).toBe(100);
   });
   it('asks for no assembly it has no standing order for, and stops food when its store is full', () => {
-    const c = makeLiving({ population: 1000, ammo: 10 });
-    expect(Object.entries(colonyDemand(c).materials).filter(([, n]) => n > 0)).toEqual([['sentinel_ammo', 30]]);
+    const c = makeLiving({ population: 1000 });
+    expect(Object.entries(colonyDemand(c).materials).filter(([, n]) => n > 0)).toEqual([]);
     expect(colonyDemand({ ...c, requested: { zero_point_capacitor: 2 } }).materials.zero_point_capacitor).toBe(2);
     const full = { ...c, supplies: { nutrients: colonyFoodCapacity(c) } };
     expect(colonyDemand(full).raw.nutrients).toBe(0);

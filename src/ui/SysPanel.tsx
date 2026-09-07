@@ -5,21 +5,18 @@ import { CIVILIZATION_RESEARCH, researchThreshold } from '../data/research';
 import { materialName } from '../data/materials';
 import type { DistrictId, JobType, Resource } from '../game/types';
 import { RESOURCE_LABELS } from '../game/types';
-import { colonyAmenityDemand, colonyAmenityRatio, colonyContentment, colonyDefense, colonyDemand, colonyDistrictCapacity, colonyDistrictsUsed, colonyFoodCapacity, colonyJobSlots, DYSON_COST, DYSON_LABOR, filledJobs, HOUR, NUTRIENTS_PER_PERSON_HOUR, PROBE_COST, PROBE_LABOR, useColonyStore } from '../store/colonyStore';
+import { colonyAmenityDemand, colonyAmenityRatio, colonyContentment, colonyDefense, colonyDemand, colonyDistrictCapacity, colonyDistrictsUsed, colonyFoodCapacity, colonyJobSlots, DEFAULT_JOB_WEIGHT, DYSON_COST, DYSON_LABOR, filledJobs, HOUR, JOB_WEIGHT_MAX, NUTRIENTS_PER_PERSON_HOUR, PROBE_COST, PROBE_LABOR, useColonyStore } from '../store/colonyStore';
 import { useResearchStore } from '../store/researchStore';
 import { useStockpileStore } from '../store/stockpileStore';
 import { detectionFloor, useUIStore } from '../store/uiStore';
 import { districtBuildCost } from '../store/travelCosts';
 import { civilizationMilestoneMet } from '../store/civStore';
+import { DistrictIcon } from './DistrictIcons';
 import { colonyNextAction, colonyRunwayHours, districtBuildBlockers, districtUpkeepShortfall } from './colonyPresentation';
 import './SysPanel.css';
 
 type Tab = 'worlds' | 'civilization' | 'threat' | 'vault' | 'status';
 const TABS: Tab[] = ['worlds', 'civilization', 'threat', 'vault', 'status'];
-
-function costLabel(cost: Record<string, number>): string {
-  return Object.entries(cost).map(([id, amount]) => `${amount} ${materialName(id)}`).join(' · ');
-}
 
 function WorldsTab() {
   const colonies = useColonyStore(state => state.colonies);
@@ -66,15 +63,17 @@ function WorldsTab() {
       <div className="sys-district-grid">{DISTRICTS.map(district => {
         const count = colony.districts[district.id] ?? 0;
         const blockers = districtBuildBlockers(colony, district, capacity - used, hold, fuel);
-        return <article key={district.id} className={count ? 'built' : ''}><strong>{district.name}</strong><b>{count} built</b><span>{district.description}</span><span className={blockers.length ? 'sys-district-cost short' : 'sys-district-cost'}>{costLabel(district.builtWith)} · {cost.exotic} exotic · {cost.helium} He-3</span><div className="sys-district-actions"><span className="sys-build" title={blockers.length ? `Needs ${blockers.join(', ')}` : `Build one ${district.name}`}><button disabled={blockers.length > 0} onClick={() => useColonyStore.getState().buildDistrict(colony.key, district.id)}>BUILD</button></span><button className={razing === district.id ? 'sys-raze armed' : 'sys-raze'} disabled={!count} title={razing === district.id ? `Confirm razing one ${district.name}` : `Raze one ${district.name}`} aria-label={razing === district.id ? `Confirm razing one ${district.name}` : `Raze one ${district.name}`} onClick={() => { if (razing !== district.id) { setRazing(district.id); return; } useColonyStore.getState().demolishDistrict(colony.key, district.id); setRazing(null); }}>{razing === district.id ? '✓' : '✕'}</button></div></article>;
+        const costLines = [...Object.entries(district.builtWith).map(([id, amount]) => `${amount} ${materialName(id)}`), `${cost.exotic} exotic`, `${cost.helium} He-3`];
+        return <article key={district.id} className={count ? 'built' : ''}><b>{count}</b><i className="sys-district-art" aria-hidden="true"><DistrictIcon id={district.id} /></i><strong title={district.description}>{district.name.replace(' District', '')}</strong><ul className={blockers.length ? 'sys-district-cost short' : 'sys-district-cost'}>{costLines.map(line => <li key={line}>{line}</li>)}</ul><div className="sys-district-actions"><span className="sys-build" title={blockers.length ? `Needs ${blockers.join(', ')}` : `Build one ${district.name} — ${costLines.join(' · ')}`}><button disabled={blockers.length > 0} onClick={() => useColonyStore.getState().buildDistrict(colony.key, district.id)}>BUILD</button></span><button className={razing === district.id ? 'sys-raze armed' : 'sys-raze'} disabled={!count} title={razing === district.id ? `Confirm razing one ${district.name}` : `Raze one ${district.name}`} aria-label={razing === district.id ? `Confirm razing one ${district.name}` : `Raze one ${district.name}`} onClick={() => { if (razing !== district.id) { setRazing(district.id); return; } useColonyStore.getState().demolishDistrict(colony.key, district.id); setRazing(null); }}>{razing === district.id ? '✓' : '✕'}</button></div></article>;
       })}</div>
-      <h4>JOBS</h4>
-      <div className="sys-jobs"><div className="sys-table-head"><span>PRIORITY / JOB</span><span>SLOTS</span><span>FILLED</span><span>OUTPUT / HOUR</span><span>UPKEEP / HOUR</span></div>{orderedJobs.map(job => {
+      <h4>JOBS · {Math.round(Object.values(filled).reduce((sum, amount) => sum + amount, 0)).toLocaleString()} OF {Math.floor(colony.population).toLocaleString()} ASSIGNED</h4>
+      <div className="sys-jobs"><div className="sys-table-head"><span>PRIORITY / JOB</span><span>SHARE</span><span>SLOTS</span><span>FILLED</span><span>OUTPUT / HOUR</span><span>UPKEEP / HOUR</span></div>{orderedJobs.map(job => {
         const district = DISTRICTS.find(item => item.job === job)!;
         const output = [...Object.entries(district.output.raw ?? {}), ...Object.entries(district.output.materials ?? {})].map(([id, rate]) => `${((rate ?? 0) * filled[job]).toFixed(1)} ${RESOURCE_LABELS[id as Resource['type']] ?? materialName(id)}`).concat(district.output.research ? [`${(district.output.research * filled[job]).toFixed(1)} research`] : [], district.output.amenities ? [`${(district.output.amenities * filled[job]).toFixed(0)} amenities`] : []).join(', ') || 'none';
         const upkeep = [...Object.entries(district.upkeep.raw ?? {}), ...Object.entries(district.upkeep.materials ?? {})].map(([id, rate]) => `${rate} ${RESOURCE_LABELS[id as Resource['type']] ?? materialName(id)}`).join(', ') || 'none';
         const shortfall = districtUpkeepShortfall(colony, district);
-        return <div key={job}><span><button onClick={() => moveJob(job, -1)}>↑</button><button onClick={() => moveJob(job, 1)}>↓</button>{job.toUpperCase()}</span><span>{slots[job].toLocaleString()}</span><span>{Math.round(filled[job]).toLocaleString()}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? 'STALLED' : output}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? `NO ${shortfall.join(', ').toUpperCase()}` : upkeep}</span></div>;
+        const weight = colony.jobWeights?.[job] ?? DEFAULT_JOB_WEIGHT;
+        return <div key={job}><span><button onClick={() => moveJob(job, -1)}>↑</button><button onClick={() => moveJob(job, 1)}>↓</button>{job.toUpperCase()}</span><span className="sys-job-weight"><input type="range" min={0} max={JOB_WEIGHT_MAX} step={1} value={weight} aria-label={`${job} staffing share`} title={weight ? `Share ${weight} of ${JOB_WEIGHT_MAX}` : 'Unstaffed'} onChange={event => useColonyStore.getState().setJobWeight(colony.key, job, Number(event.target.value))} /><b>{weight}</b></span><span>{slots[job].toLocaleString()}</span><span>{Math.round(filled[job]).toLocaleString()}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? 'STALLED' : output}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? `NO ${shortfall.join(', ').toUpperCase()}` : upkeep}</span></div>;
       })}</div>
       <h4>DELIVERY</h4>
       <div className="sys-delivery">{Object.entries(demand.raw).filter(([, amount]) => (amount ?? 0) > 0).map(([id, amount]) => <span key={id}>{RESOURCE_LABELS[id as Resource['type']]} · {Math.ceil(amount ?? 0)}</span>)}{Object.entries(demand.materials).filter(([, amount]) => amount > 0).map(([id, amount]) => <span key={id}>{materialName(id)} · {Math.ceil(amount)}</span>)}{Object.values(demand.raw).every(amount => !amount) && Object.values(demand.materials).every(amount => !amount) && <span>No inbound cargo needed.</span>}</div>
@@ -106,7 +105,7 @@ function ThreatTab() {
   const exposure = useUIStore(state => state.exposure);
   const nextStrike = useUIStore(state => state.nextStrikeExposure);
   const strike = useUIStore(state => state.strike);
-  return <div><div className="sys-strip"><span>EXPOSURE</span><div><i style={{ width: `${Math.min(100, exposure / nextStrike * 100)}%` }} /></div><b>{exposure} / {nextStrike}</b></div>{strike && <p className="colony-warning">Cannon transit to {strike.targetName}.</p>}<div className="sys-threat-list">{Object.values(colonies).map(colony => <article key={colony.key}><strong>{colony.planetName}</strong><span>local heat {colony.localHeat.toFixed(1)} · sentinel coverage {colonyDefense(colony).ammoCap} rounds</span><button disabled={colony.population <= 0} onClick={() => useColonyStore.getState().evacuate(colony.key)}>Evacuate {Math.floor(colony.population)} people</button></article>)}</div></div>;
+  return <div><div className="sys-strip"><span>EXPOSURE</span><div><i style={{ width: `${Math.min(100, exposure / nextStrike * 100)}%` }} /></div><b>{exposure} / {nextStrike}</b></div>{strike && <p className="colony-warning">Cannon transit to {strike.targetName}.</p>}<div className="sys-threat-list">{Object.values(colonies).map(colony => <article key={colony.key}><strong>{colony.planetName}</strong><span>local heat {colony.localHeat.toFixed(1)} · {colonyDefense(colony).batteries} defense districts</span><button disabled={colony.population <= 0} onClick={() => useColonyStore.getState().evacuate(colony.key)}>Evacuate {Math.floor(colony.population)} people</button></article>)}</div></div>;
 }
 
 function VaultTab() {

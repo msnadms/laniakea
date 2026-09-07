@@ -10,16 +10,21 @@ export type AppView = 'system' | 'galaxy' | 'supercluster';
 
 export const DETECTION_HEAT_PER_BAR = 1;
 export const DETECTION_HEAT_DECAY_PER_MS = DETECTION_HEAT_PER_BAR / (2 * 60 * 1000);
+export const DETECTION_DECAY_LOGISTICS_MULT = [1, 1.5, 2, 2.5, 3];
 export const PURGE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+export function computeDetectionDecayPerMs(logisticsA: number): number {
+  return DETECTION_HEAT_DECAY_PER_MS * (DETECTION_DECAY_LOGISTICS_MULT[logisticsA] ?? 1);
+}
 
 export function detectionRatingFromHeat(heat: number): number {
   return Math.min(5, Math.floor(Math.max(0, heat) / DETECTION_HEAT_PER_BAR));
 }
 
-export function decayDetectionHeat(heat: number, lastChangeAt: number, now: number): { detectionHeat: number; detectionRating: number; lastDetectionChangeAt: number } {
+export function decayDetectionHeat(heat: number, lastChangeAt: number, now: number, ratePerMs = DETECTION_HEAT_DECAY_PER_MS): { detectionHeat: number; detectionRating: number; lastDetectionChangeAt: number } {
   if (heat <= 0) return { detectionHeat: 0, detectionRating: 0, lastDetectionChangeAt: lastChangeAt };
   if (lastChangeAt <= 0) return { detectionHeat: heat, detectionRating: detectionRatingFromHeat(heat), lastDetectionChangeAt: now };
-  const detectionHeat = Math.max(0, heat - Math.max(0, now - lastChangeAt) * DETECTION_HEAT_DECAY_PER_MS);
+  const detectionHeat = Math.max(0, heat - Math.max(0, now - lastChangeAt) * ratePerMs);
   return { detectionHeat, detectionRating: detectionRatingFromHeat(detectionHeat), lastDetectionChangeAt: now };
 }
 
@@ -47,7 +52,7 @@ export function computeStorageCap(a: number): number {
   return STORAGE_BASE + STORAGE_A_BONUS[a];
 }
 
-export const EXTRACTOR_HOLD_CAPS = [200, 300, 450, 600, 750];
+export const EXTRACTOR_HOLD_CAPS = [300, 500, 800, 1200, 1800];
 
 export const DRIVE_A_REDUCTION = [0.0, 0.15, 0.30, 0.45, 0.60];
 export const DRIVE_B_REDUCTION = [0.0, 0.15, 0.30, 0.45, 0.60];
@@ -283,7 +288,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     const heat = detectionRatingFromHeat(s.detectionHeat) === s.detectionRating
       ? s.detectionHeat
       : s.detectionRating * DETECTION_HEAT_PER_BAR;
-    const next = decayDetectionHeat(heat, s.lastDetectionChangeAt, now);
+    const next = decayDetectionHeat(heat, s.lastDetectionChangeAt, now, computeDetectionDecayPerMs(s.logisticsA));
     next.detectionHeat = Math.max(detectionFloor(s.kardashevTier), next.detectionHeat);
     next.detectionRating = detectionRatingFromHeat(next.detectionHeat);
     if (next.detectionHeat !== s.detectionHeat || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {

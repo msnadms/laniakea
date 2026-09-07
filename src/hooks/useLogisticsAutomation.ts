@@ -52,11 +52,15 @@ export function useLogisticsAutomation() {
       }, 5000);
     });
 
+    let caughtUp = false;
+
     const run = async () => {
       try {
       const { user, settingsLoaded } = useAuthStore.getState();
       if (!cancelled && user && settingsLoaded) {
         const campaignBefore = campaignSignature();
+        const lastHeatChangeAt = useUIStore.getState().lastDetectionChangeAt;
+        const offlineMs = caughtUp || lastHeatChangeAt <= 0 ? 0 : Date.now() - lastHeatChangeAt;
         useUIStore.getState().tickRailgunSuppression();
         const colonyTick = useColonyStore.getState().tickColonies(Date.now());
         tickCivilization(Date.now());
@@ -64,7 +68,10 @@ export function useLogisticsAutomation() {
           return;
         }
         const holdFed = useFabricatorStore.getState().runHoldFeeds();
-        const results = useLogisticsStore.getState().runAutomation();
+        const results = caughtUp
+          ? useLogisticsStore.getState().runAutomation()
+          : useLogisticsStore.getState().catchUpAutomation(offlineMs);
+        caughtUp = true;
         // Colony documents are written by the store subscription above, which sees every
         // mutation; passing their keys here as well would double every colony write.
         const extractorKeys = new Set([...colonyTick.extractorKeys, ...results.flatMap((result) => result.collected.map((entry) => entry.key))]);

@@ -8,7 +8,7 @@ import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE } from './uiStore';
 import { canBuildExtractor } from './colonyStore';
 import { useQuestStore } from './questStore';
 
-export const ACCUMULATION_RATE_PER_MS = 1 / (1000) // 1 unit per hour
+export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
 
 export function getExtractorMultipliers(
   extractorKey: string,

@@ -1,7 +1,7 @@
 import { peekAccumulated, getExtractorMultipliers } from '../store/extractorStore';
 import { RESOURCE_LABELS, extractorNodeId, fabricatorNodeId, colonyNodeId } from '../game/types';
 import type { Extractor, Fabricator, Colony } from '../game/types';
-import { colonyPopCap } from '../store/colonyStore';
+import { colonyDefense, colonyPopCap } from '../store/colonyStore';
 import { GALAXY_RADIUS, SC_WORLD_HALF } from '../game/constants';
 
 export function getSystemKey(ext: Extractor): string {
@@ -175,7 +175,7 @@ function buildRawNodes(
       keys: members.map(x => x.key), galaxySeed: c.galaxySeed, superclusSeed: c.superclusSeed,
       sysX: c.systemX, sysY: c.systemY, galX: c.galaxyX, galY: c.galaxyY,
       populationFill: members.reduce((n,x) => n+x.population, 0) / Math.max(1, members.reduce((n,x) => n+colonyPopCap(x), 0)),
-      supplied: members.every(x => (x.supplies.nutrients ?? 0) > 0 && x.ammo >= 5),
+      supplied: members.every(x => (x.supplies.nutrients ?? 0) > 0 && colonyDefense(x).batteries > 0),
     });
   }
   return nodes;

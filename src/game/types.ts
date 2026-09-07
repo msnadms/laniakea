@@ -194,8 +194,8 @@ export function makeExtractorKey(galaxySeed: number, systemId: number, planetNam
 export type FabricatorKey = string;
 
 export type ColonyKey = string;
-export type DistrictId = 'farm_district' | 'research_district' | 'civilian_district';
-export type JobType = 'farmer' | 'researcher' | 'steward';
+export type DistrictId = 'farm_district' | 'research_district' | 'civilian_district' | 'defense_district';
+export type JobType = 'farmer' | 'researcher' | 'steward' | 'sentinel';
 export interface Colony {
   key: ColonyKey;
   fabricatorKey: FabricatorKey;
@@ -206,13 +206,15 @@ export interface Colony {
   population: number;
   districts: Record<DistrictId, number>;
   jobPriority: JobType[];
+  /** Relative pull each job exerts on unassigned residents; absent means an even split. */
+  jobWeights?: Partial<Record<JobType, number>>;
   produced: MaterialCost;
   supplies: Partial<Record<Resource['type'], number>>;
   assemblies: MaterialCost;
   /** Standing per-assembly order the colony advertises to routes and keeps back from export. */
   requested: MaterialCost;
   lastTickAt: number; lastFireAt: number; lastProbeEscapeAt: number;
-  ammo: number; localHeat: number;
+  localHeat: number;
   fedMs: number; starvationMs: number; lostPeople: number;
   planetaryProgressMs: number;
   project: 'dyson' | 'probes' | null;

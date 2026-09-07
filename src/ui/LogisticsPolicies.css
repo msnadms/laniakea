@@ -1,12 +1,25 @@
 .lroute-auto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  flex-shrink: 0;
   background: rgba(30, 90, 70, 0.2);
   border: 1px solid rgba(80, 190, 130, 0.4);
   color: rgba(130, 225, 175, 0.8);
-  font: 9px monospace;
-  text-transform: uppercase;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-.lroute-auto--active { background: rgba(40, 150, 90, 0.35); color: #aaffc8; }
+.lroute-auto:hover:not(:disabled) {
+  background: rgba(40, 130, 85, 0.32);
+  border-color: rgba(110, 225, 160, 0.7);
+  color: #d6ffe6;
+}
+.lroute-auto--active {
+  background: rgba(40, 150, 90, 0.35);
+  color: #aaffc8;
+  border-color: rgba(110, 225, 160, 0.65);
+}
 .lroute-auto:disabled { opacity: 0.3; cursor: default; }
 .lroute-preview { margin-top: 6px; color: rgba(130, 195, 220, 0.6); font-size: 9px; }
 .lroute-warn--preview { color: #d4b878; border-left-color: rgba(210, 175, 90, 0.65); }

@@ -5,7 +5,7 @@ import { materialName } from '../data/materials';
 import { ANCHOR_DISTRICT, DEFAULT_JOB_PRIORITY, DISTRICTS, DISTRICT_BY_ID, LEGACY_DISTRICT_ID } from '../data/districts';
 import { generateGalaxy } from '../game/galaxyGen';
 import { generatePlanets, generateSystemLayout } from '../game/planetGen';
-import { useUIStore, FIRE_COST, FIRE_COOLDOWN_MS, WRECK_HEAT_PER_KILL, probeEscapes, probeEscapeThreshold, detectionFloor, LOGISTICS_B_RATE, EXTRACTOR_HOLD_CAPS, computeLogisticsCap } from './uiStore';
+import { useUIStore, FIRE_COOLDOWN_MS, WRECK_HEAT_PER_KILL, probeEscapes, probeEscapeThreshold, detectionFloor, LOGISTICS_B_RATE, EXTRACTOR_HOLD_CAPS, computeLogisticsCap } from './uiStore';
 import { useFabricatorStore } from './fabricatorStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers, ACCUMULATION_RATE_PER_MS } from './extractorStore';
@@ -46,6 +46,8 @@ export const DYSON_LABOR = 100;
 export const PROBE_LABOR = 50;
 // Extraction currently runs in real seconds: a mature 1000-person colony draws 5/s.
 export const NUTRIENTS_PER_PERSON_HOUR = 18;
+export const JOB_WEIGHT_MAX = 10;
+export const DEFAULT_JOB_WEIGHT = 5;
 export const MATURITY_POPULATION = 500;
 export const MATURITY_INTERVAL = 6 * HOUR;
 // Nothing simulates a closed tab, so an unattended gap is capped at the food a colony can hold.
@@ -62,7 +64,6 @@ export const AMENITIES_PER_PERSON = 1.5;
 export const AMENITIES_PER_WORKING_DISTRICT = 200;
 export const AMENITY_GROWTH_FLOOR = 0.8;
 export const COLONY_FUEL_CAP = 2000;
-export const COLONY_AMMO_CAP = 40;
 export const PROJECT_LABOR_PER_PERSON_HOUR = 0.01;
 
 type LegacyFields = Pick<LegacyColony, 'installed' | 'exportedLines' | 'labor' | 'populationTier' | 'selfSufficientMs' | 'lastShipmentAt'>;
@@ -99,8 +100,8 @@ export const colonyContentment = (c: Colony) => Math.max(0, Math.min(1, (colonyA
 export const colonyGrowthRate = (c: Colony) => usesDistrictModel(c) ? 0.1 * colonyContentment(c) : 0.1 + stat(c, 'growth') + stat(c, 'research');
 export const colonyFuelCap = (c: Colony) => usesDistrictModel(c) ? COLONY_FUEL_CAP : stat(c, 'autonomy');
 export function colonyDefense(c: Colony) {
-  const ammoCap = usesDistrictModel(c) ? COLONY_AMMO_CAP : stat(c, 'defense');
-  return { ammoCap, cooldownMs: 30_000 / Math.max(1, ammoCap / 40) };
+  const batteries = usesDistrictModel(c) ? (c.districts?.defense_district ?? 0) : (stat(c, 'defense') > 0 ? 1 : 0);
+  return { batteries, cooldownMs: 30_000 / Math.max(1, batteries) };
 }
 
 export function colonyFoodCapacity(c: Colony): number {
@@ -141,15 +142,31 @@ export function colonyDistrictCapacity(c: Colony): number {
   return capacity;
 }
 
+export const jobWeight = (c: Colony, job: JobType) =>
+  Math.max(0, Math.min(JOB_WEIGHT_MAX, c.jobWeights?.[job] ?? DEFAULT_JOB_WEIGHT));
+
+/**
+ * Weights split the residents proportionally, so a colony can staff three half-crewed districts
+ * rather than filling one before the next sees anybody. Priority only orders the spill left over
+ * when a job runs out of slots, and a job weighted to zero is never spilled into.
+ */
 export function filledJobs(c: Colony): Record<JobType, number> {
-  const slots = Object.fromEntries(DEFAULT_JOB_PRIORITY.map(job => [job, 0])) as Record<JobType, number>;
-  for (const district of DISTRICTS) if (district.job) slots[district.job] += (c.districts?.[district.id] ?? 0) * district.jobs;
+  const slots = colonyJobSlots(c);
   const result = Object.fromEntries(DEFAULT_JOB_PRIORITY.map(job => [job, 0])) as Record<JobType, number>;
-  let available = Math.max(0, c.population);
-  const priority = [...new Set([...(c.jobPriority ?? []), ...DEFAULT_JOB_PRIORITY])];
-  for (const job of priority) {
-    const amount = Math.min(available, slots[job] ?? 0);
+  const order = [...new Set([...(c.jobPriority ?? []), ...DEFAULT_JOB_PRIORITY])];
+  const population = Math.max(0, c.population);
+  const total = order.reduce((sum, job) => sum + (slots[job] > 0 ? jobWeight(c, job) : 0), 0);
+  let available = population;
+  if (total > 0) for (const job of order) {
+    const amount = Math.min(available, slots[job], population * jobWeight(c, job) / total);
     result[job] = amount;
+    available -= amount;
+  }
+  for (const job of order) {
+    if (available <= 0) break;
+    if (jobWeight(c, job) <= 0) continue;
+    const amount = Math.min(available, slots[job] - result[job]);
+    result[job] += amount;
     available -= amount;
   }
   return result;
@@ -164,8 +181,7 @@ export function colonyJobSlots(c: Colony): Record<JobType, number> {
 /** Local factory output may leave by route; a colony keeps only what it has standing orders for. */
 export function colonyExport(c: Colony): MaterialCost {
   if (!c.foundedAt || c.population <= 0) return {};
-  const keep = (id: string) => (c.requested?.[id] ?? 0)
-    + (id === 'sentinel_ammo' ? Math.max(0, colonyDefense(c).ammoCap - c.ammo) : 0);
+  const keep = (id: string) => c.requested?.[id] ?? 0;
   const source = usesDistrictModel(c) ? c.produced : c.assemblies;
   return Object.fromEntries(Object.entries(source).map(([id, amount]) => [id,
     Math.max(0, amount - keep(id)),
@@ -201,10 +217,10 @@ export function charterSite(fabricator: Fabricator, now: number): Colony {
   const districts = Object.fromEntries(DISTRICTS.map(district => [district.id, 0])) as Record<DistrictId, number>;
   return {
     ...fabricator, fabricatorKey: fabricator.key, foundedAt: 0, population: 0,
-    districts, jobPriority: [...DEFAULT_JOB_PRIORITY], produced: {},
+    districts, jobPriority: [...DEFAULT_JOB_PRIORITY], jobWeights: {}, produced: {},
     supplies: {}, assemblies: {}, requested: {},
     lastTickAt: now, lastFireAt: now,
-    lastProbeEscapeAt: now, ammo: 0, localHeat: 0,
+    lastProbeEscapeAt: now, localHeat: 0,
     fedMs: 0, starvationMs: 0, lostPeople: 0, planetaryProgressMs: 0,
     project: null, projectDelivered: {},
     swarmComplete: false, probeCoverage: 0, amenityRatio: 1,
@@ -226,8 +242,6 @@ export function colonyDemand(c: Colony): { raw: Partial<Record<Resource['type'],
       materials[id] = (materials[id] ?? 0) + Math.max(0, count - (c.projectDelivered[id] ?? 0));
     }
   }
-  const ammoCap = c.foundedAt ? colonyDefense(c).ammoCap : COLONY_AMMO_CAP;
-  materials.sentinel_ammo = Math.max(0, ammoCap - c.ammo);
   const fuelCap = c.foundedAt ? colonyFuelCap(c) : COLONY_FUEL_CAP;
   const foodWindow = Math.max(500, c.population * NUTRIENTS_PER_PERSON_HOUR * COLONY_SUPPLY_WINDOW_MS / HOUR);
   const fuelWindow = Math.max(1, fuelCap / 4);
@@ -263,8 +277,7 @@ export function deliverColony(c: Colony, raw: Partial<Record<Resource['type'], n
       next.projectDelivered[id] = (next.projectDelivered[id] ?? 0) + take;
       remaining -= take;
     }
-    if (remaining > 0 && id === 'sentinel_ammo') next.ammo += remaining;
-    else if (remaining > 0) next.assemblies[id] = (next.assemblies[id] ?? 0) + remaining;
+    if (remaining > 0) next.assemblies[id] = (next.assemblies[id] ?? 0) + remaining;
   }
   const changed = Object.keys(consumedRaw).length + Object.keys(consumedMaterials).length > 0;
   if (changed) next.localHeat += c.foundedAt ? COLONY_ARRIVAL_HEAT : 0;
@@ -285,7 +298,7 @@ function growth(population: number, cap: number, rate: number, hours: number) {
 }
 
 /** Pure elapsed-time colony simulation; no clock, stores, or side effects. */
-function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industryCount = 0, floor = 0) {
+function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industryCount = 0, floor = 0, armed = colonyDefense(c).batteries > 0) {
   const currentLegacy = legacyFields(c);
   const next = { ...c, supplies: { ...c.supplies } } as Colony & Partial<LegacyFields>;
   let escapes = 0;
@@ -331,7 +344,6 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
   const defense = colonyDefense(c);
   const stepMs = defense.cooldownMs;
   let heat = c.localHeat;
-  let ammo = c.ammo;
   // Every industry advertises, so the cost of defense rises smoothly with what the colony runs.
   const heatPerMs = (industryCount * COLONY_HEAT_PER_INDUSTRY_HOUR - COLONY_HEAT_DECAY_PER_HOUR) / HOUR;
   const escapeThreshold = probeEscapeThreshold(floor);
@@ -339,19 +351,17 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
   let fireAt = Math.max(c.lastFireAt + stepMs, simStart);
   while (fireAt <= now) {
     heat = Math.max(floor, heat + (fireAt - cursor) * heatPerMs);
-    const available = defense.ammoCap > 0 && ammo >= FIRE_COST;
-    if (heat >= 1 && available) {
+    if (heat >= 1 && armed) {
       const salvaged = heat >= escapeThreshold;
       heat = Math.min(heat, Math.max(floor, heat - 1) + (salvaged ? WRECK_HEAT_PER_KILL : 0));
-      ammo -= FIRE_COST;
       if (salvaged) kills++;
     }
-    if (probeEscapes(heat, available, next.lastProbeEscapeAt, fireAt, floor)) { escapes++; next.lastProbeEscapeAt = fireAt; }
+    if (probeEscapes(heat, armed, next.lastProbeEscapeAt, fireAt, floor)) { escapes++; next.lastProbeEscapeAt = fireAt; }
     cursor = fireAt;
     next.lastFireAt = fireAt;
     fireAt += stepMs;
     // Once unarmed, aggregate the identical escape intervals instead of stepping through them.
-    if (ammo < FIRE_COST && heat >= escapeThreshold) {
+    if (!armed && heat >= escapeThreshold) {
       const first = Math.max(fireAt, next.lastProbeEscapeAt + FIRE_COOLDOWN_MS);
       if (first <= now) {
         const count = Math.floor((now - first) / FIRE_COOLDOWN_MS) + 1;
@@ -360,12 +370,11 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
       next.lastFireAt = now; break;
     }
     // With heat pinned at the floor and no shot or escape possible, later steps are identical.
-    if (heatPerMs <= 0 && heat < escapeThreshold && (heat < 1 || ammo < FIRE_COST)) {
+    if (heatPerMs <= 0 && heat < escapeThreshold && (heat < 1 || !armed)) {
       next.lastFireAt = now; break;
     }
   }
   next.localHeat = Math.min(5, Math.max(floor, heat + (now - cursor) * heatPerMs));
-  next.ammo = ammo;
   next.lastTickAt = now;
   return { colony: next, escapes: Math.min(escapes, MAX_UNATTENDED_ESCAPES), kills, lines, research: 0 };
 }
@@ -385,12 +394,12 @@ function tickDistrictColony(c: Colony, now: number, industryCount = 0, floor = 0
   let nutrientOutputPerHour = 0;
   let nutrientUpkeepPerHour = 0;
   let districtHeat = 0;
+  let defenseCoverage = 0;
   let research = 0;
   let amenities = 0;
   for (const district of DISTRICTS) {
     const count = c.districts[district.id] ?? 0;
     if (count <= 0) continue;
-    districtHeat += count * (district.heat ?? 0);
     const rawUpkeep = district.upkeep.raw ?? {};
     const materialUpkeep = district.upkeep.materials ?? {};
     let efficiency = 1;
@@ -401,8 +410,7 @@ function tickDistrictColony(c: Colony, now: number, industryCount = 0, floor = 0
     }
     for (const [id, rate] of Object.entries(materialUpkeep)) {
       const required = rate * count * hours;
-      const available = id === 'sentinel_ammo' ? next.ammo : (next.assemblies[id] ?? 0);
-      if (required > 0) efficiency = Math.min(efficiency, available / required);
+      if (required > 0) efficiency = Math.min(efficiency, (next.assemblies[id] ?? 0) / required);
     }
     efficiency = Math.max(0, Math.min(1, efficiency));
     for (const [type, rate] of Object.entries(rawUpkeep)) {
@@ -411,14 +419,17 @@ function tickDistrictColony(c: Colony, now: number, industryCount = 0, floor = 0
     }
     for (const [id, rate] of Object.entries(materialUpkeep)) {
       const used = rate * count * hours * efficiency;
-      if (id === 'sentinel_ammo') next.ammo = Math.max(0, next.ammo - used);
-      else next.assemblies[id] = Math.max(0, (next.assemblies[id] ?? 0) - used);
+      next.assemblies[id] = Math.max(0, (next.assemblies[id] ?? 0) - used);
     }
     const workers = district.job ? assignments[district.job] : 0;
     const anchorEffect = district.anchor ? RARE_RESOURCES.find(resource => resource.id === district.anchor)?.effect : undefined;
     const modifier = anchorEffect?.stat === 'research' ? 1 + anchorEffect.value
       : anchorEffect?.stat === 'ectogenesis' ? 1 + anchorEffect.value / ECTOGENESIS_TIER_SIZE : 1;
     const active = workers * efficiency * modifier;
+    const crewed = district.jobs > 0 ? Math.min(1, workers / (count * district.jobs)) * efficiency : efficiency;
+    // An idle district still advertises; only a crewed one can quiet the sky or fire back.
+    districtHeat += count * (district.heat ?? 0) * ((district.heat ?? 0) < 0 ? crewed : 1);
+    if (district.id === 'defense_district') defenseCoverage = crewed;
     for (const [type, rate] of Object.entries(district.output.raw ?? {})) {
       const amount = (rate ?? 0) * active * hours;
       next.supplies[type as Resource['type']] = (next.supplies[type as Resource['type']] ?? 0) + amount;
@@ -437,7 +448,7 @@ function tickDistrictColony(c: Colony, now: number, industryCount = 0, floor = 0
   const allFilled = allSlots > 0 && Object.values(assignments).reduce((sum, amount) => sum + amount, 0) >= allSlots;
   const foodPositive = nutrientOutputPerHour >= c.population * NUTRIENTS_PER_PERSON_HOUR + nutrientUpkeepPerHour;
   next.planetaryProgressMs = allFilled && foodPositive ? (c.planetaryProgressMs ?? 0) + (now - simStart) : 0;
-  const result = tickLegacyColony(next, now, 0, industryCount + districtHeat, floor);
+  const result = tickLegacyColony(next, now, 0, industryCount + districtHeat, floor, defenseCoverage > 0);
   result.colony.planetaryProgressMs = next.planetaryProgressMs;
   result.colony.produced = next.produced;
   result.colony.projectDelivered = next.projectDelivered;
@@ -461,6 +472,7 @@ interface ColonyState {
   buildDistrict: (key: string, id: DistrictId) => boolean;
   demolishDistrict: (key: string, id: DistrictId, roll?: number) => boolean;
   setJobPriority: (key: string, priority: JobType[]) => void;
+  setJobWeight: (key: string, job: JobType, weight: number) => void;
   startProject: (key: string, project: 'dyson' | 'probes') => boolean;
   tickColonies: (now: number) => { colonyKeys: string[]; extractorKeys: string[]; fabricatorKeys: string[] };
   evacuate: (key: string) => boolean;
@@ -565,6 +577,12 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
     const normalized = [...new Set([...priority.filter(job => DEFAULT_JOB_PRIORITY.includes(job)), ...DEFAULT_JOB_PRIORITY])];
     return { colonies: { ...state.colonies, [key]: { ...c, jobPriority: normalized } } };
   }),
+  setJobWeight: (key, job, weight) => set(state => {
+    const c = state.colonies[key];
+    if (!c || !DEFAULT_JOB_PRIORITY.includes(job)) return {};
+    const clamped = Math.round(Math.max(0, Math.min(JOB_WEIGHT_MAX, weight)));
+    return { colonies: { ...state.colonies, [key]: { ...c, jobWeights: { ...c.jobWeights, [job]: clamped } } } };
+  }),
   startProject: (key, project) => {
     const c = get().colonies[key];
     const research = useResearchStore.getState().points;
@@ -632,9 +650,6 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
         }
         if (result.changed) touched.fabricatorKeys.push(f.key);
       }
-      const rounds = Math.min(c.assemblies.sentinel_ammo ?? 0, Math.max(0, colonyDefense(c).ammoCap - c.ammo));
-      c.ammo += rounds;
-      if (rounds) c.assemblies.sentinel_ammo -= rounds;
       if (c.project && c.population > 0) {
         const cost = c.project === 'dyson' ? DYSON_COST : PROBE_COST;
         const labor = c.project === 'dyson' ? DYSON_LABOR : PROBE_LABOR;
@@ -681,7 +696,7 @@ function foldDistricts(saved: Record<string, number>): Record<DistrictId, number
 
 export function migrateColony(saved: Colony | LegacyColony): Colony {
   const legacy = legacyFields(saved);
-  const { installed: _installed, exportedLines: _exportedLines, labor: _labor, populationTier: _populationTier, selfSufficientMs: _selfSufficientMs, lastShipmentAt: _lastShipmentAt, ...current } = saved as Colony & Partial<LegacyFields>;
+  const { installed: _installed, exportedLines: _exportedLines, labor: _labor, populationTier: _populationTier, selfSufficientMs: _selfSufficientMs, lastShipmentAt: _lastShipmentAt, ammo: _ammo, ...current } = saved as Colony & Partial<LegacyFields> & { ammo?: number };
   if ('districts' in saved && saved.districts && saved.jobPriority && saved.produced) {
     return {
       ...current, districtModel: true, requested: saved.requested ?? {},

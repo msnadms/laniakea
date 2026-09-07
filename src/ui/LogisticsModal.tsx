@@ -15,6 +15,7 @@ import {
   edgeKey,
   DEFAULT_AUTOMATION_POLICY,
   AUTOMATION_POLL_MS,
+  MAX_DETECTION_CEILING,
 } from '../store/logisticsStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import {
@@ -674,9 +675,20 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           <button
                             className={`lroute-auto${route.active ? ' lroute-auto--active' : ''}`}
                             disabled={!valid}
+                            title={route.active ? 'Pause automation' : 'Activate automation'}
+                            aria-label={route.active ? 'Pause automation' : 'Activate automation'}
                             onClick={() => handleToggleActive(route.id, !route.active)}
                           >
-                            {route.active ? 'Pause' : 'Activate'}
+                            {route.active ? (
+                              <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+                                <rect x="2.5" y="2" width="2.5" height="8" fill="currentColor" />
+                                <rect x="7" y="2" width="2.5" height="8" fill="currentColor" />
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+                                <path d="M3 2 L10 6 L3 10 Z" fill="currentColor" />
+                              </svg>
+                            )}
                           </button>
                           <button
                             className="lroute-delete"
@@ -822,8 +834,8 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                         )}
                         <label className="logistics-policy-field">
                           Detection ceiling
-                          <input type="number" min="0" max="5" value={draftAutomation.detectionCeiling}
-                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(5, Number(event.target.value))) }))} />
+                          <input type="number" min="0" max={MAX_DETECTION_CEILING} value={draftAutomation.detectionCeiling}
+                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(MAX_DETECTION_CEILING, Number(event.target.value))) }))} />
                         </label>
                         <label className="logistics-policy-field logistics-policy-check">
                           <input type="checkbox" checked={draftAutomation.pauseOnJam}

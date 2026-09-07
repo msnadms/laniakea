@@ -1,15 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../firebase/firebase', () => ({ db: {}, auth: {}, googleProvider: {} }));
-import type { Extractor, Fabricator, FabricatorProductionSlot, LogisticsRoute } from '../game/types';
+import type { Extractor, Fabricator, FabricatorProductionSlot, LogisticsRoute, Resource } from '../game/types';
 import type { NodeGroup } from './logisticsStore';
-import { extractorNodeId, fabricatorNodeId, makeEmptyFabricatorSlot } from '../game/types';
+import { COST_KEY_TO_RESOURCE, extractorNodeId, fabricatorNodeId, makeEmptyFabricatorSlot } from '../game/types';
 import { processFabricator, useFabricatorStore } from './fabricatorStore';
+import { HOUR } from './colonyStore';
 import { DETECTION_CROSSING_POINTS, allocateEdgeCargo, cargoReaches, computeRouteCost, routeDetectionRisk, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
-import { computeStorageCap, decayDetectionHeat, DETECTION_HEAT_DECAY_PER_MS } from './uiStore';
+import { computeDetectionDecayPerMs, computeStorageCap, decayDetectionHeat, DETECTION_HEAT_DECAY_PER_MS } from './uiStore';
 import { generatePlanets, generateSystemLayout } from '../game/planetGen';
 import { useExtractorStore } from './extractorStore';
 import { useStockpileStore } from './stockpileStore';
+import { getCraftable } from '../data/upgrades';
 import { useUIStore } from './uiStore';
 import { migrateSavedFabricatorSlots } from '../firebase/fabricators';
 import { migratePendingUpgrades } from '../firebase/extractorUpgrades';
@@ -22,9 +24,24 @@ function output(result: ReturnType<typeof processFabricator>, id: string): numbe
   return result.readyItems.filter((item) => item.upgradeId === id).reduce((sum, item) => sum + item.count, 0);
 }
 
+function feed(...recipes: [string, number][]): Partial<Record<Resource['type'], number>> {
+  const raw: Partial<Record<Resource['type'], number>> = {};
+  for (const [id, batches] of recipes) {
+    for (const [key, amount] of Object.entries(getCraftable(id)?.cost ?? {})) {
+      const type = COST_KEY_TO_RESOURCE[key];
+      raw[type] = (raw[type] ?? 0) + amount * batches;
+    }
+  }
+  return raw;
+}
+
+function unitCost(id: string, key: string): number {
+  return (getCraftable(id)?.cost as Record<string, number>)[key];
+}
+
 describe('instant fixed-point production', () => {
   it('processes every feasible batch and is inert without new input', () => {
-    const first = processFabricator([slot('graphene_lattice')], 1, { alloys: 800, nutrients: 500 }, {});
+    const first = processFabricator([slot('graphene_lattice')], 1, feed(['graphene_lattice', 2]), {});
     expect(first.slotResults[0].batches).toBe(2);
     expect(output(first, 'graphene_lattice')).toBe(4);
 
@@ -34,20 +51,22 @@ describe('instant fixed-point production', () => {
   });
 
   it('retains an insufficient partial batch', () => {
-    const result = processFabricator([slot('graphene_lattice')], 1, { alloys: 399, nutrients: 250 }, {});
+    const short = unitCost('graphene_lattice', 'alloys') - 1;
+    const result = processFabricator([slot('graphene_lattice')], 1,
+      { ...feed(['graphene_lattice', 1]), alloys: short }, {});
     expect(result.slotResults[0].batches).toBe(0);
-    expect(result.slots[0].pendingResources.alloys).toBe(399);
+    expect(result.slots[0].pendingResources.alloys).toBe(short);
     expect(result.slotResults[0].missingResources.alloys).toBe(1);
   });
 
   it('maps alternate recipes to their canonical output', () => {
-    const result = processFabricator([slot('graphene_lattice_carbide')], 1, { alloys: 700, 'helium-3': 300 }, {});
+    const result = processFabricator([slot('graphene_lattice_carbide')], 1, feed(['graphene_lattice_carbide', 1]), {});
     expect(output(result, 'graphene_lattice')).toBe(3);
     expect(output(result, 'graphene_lattice_carbide')).toBe(0);
   });
 
   it('completes a multi-tier chain in one ordered traversal', () => {
-    const tierOne = processFabricator([slot('graphene_lattice')], 1, { alloys: 400, nutrients: 250 }, {});
+    const tierOne = processFabricator([slot('graphene_lattice')], 1, feed(['graphene_lattice', 1]), {});
     const tierTwo = processFabricator(
       [slot('hea_billet')], 1,
       { alloys: 900, metallicHydrogen: 200 },
@@ -61,9 +80,7 @@ describe('instant fixed-point production', () => {
     const result = processFabricator([
       slot('deuterium_slush', 0), slot('boron_ceramic', 1),
       slot('silica_aerogel', 2), slot('tritium_getter', 3),
-    ], 1, {
-      metallicHydrogen: 900, 'helium-3': 1050, alloys: 3600, nutrients: 450,
-    }, {});
+    ], 1, feed(['deuterium_slush', 3], ['boron_ceramic', 3], ['silica_aerogel', 3], ['tritium_getter', 1]), {});
     expect(result.slotResults[3].batches).toBe(1);
     expect(output(result, 'tritium_getter')).toBe(1);
     expect(result.slots.every((entry) => (entry.byproducts.tritium_residue ?? 0) === 0)).toBe(true);
@@ -72,7 +89,7 @@ describe('instant fixed-point production', () => {
   it('jams when a full byproduct buffer has no valid route', () => {
     const result = processFabricator(
       [slot('deuterium_slush')], 1,
-      { metallicHydrogen: 1200, 'helium-3': 800 }, {},
+      feed(['deuterium_slush', 4]), {},
       { canRouteByproduct: () => false },
     );
     expect(result.slotResults[0].batches).toBe(3);
@@ -83,7 +100,7 @@ describe('instant fixed-point production', () => {
   it('routes an unconsumed byproduct when an eligible destination exists', () => {
     const result = processFabricator(
       [slot('deuterium_slush')], 1,
-      { metallicHydrogen: 300, 'helium-3': 200 }, {},
+      feed(['deuterium_slush', 1]), {},
       { canRouteByproduct: () => true },
     );
     expect(output(result, 'tritium_residue')).toBe(1);
@@ -93,12 +110,12 @@ describe('instant fixed-point production', () => {
   it('processes past the local buffer once the byproduct has somewhere to go', () => {
     const routed = processFabricator(
       [slot('deuterium_slush')], 1,
-      { metallicHydrogen: 3_000, 'helium-3': 2_000 }, {},
+      feed(['deuterium_slush', 10]), {},
       { canRouteByproduct: () => true },
     );
     const trapped = processFabricator(
       [slot('deuterium_slush')], 1,
-      { metallicHydrogen: 3_000, 'helium-3': 2_000 }, {},
+      feed(['deuterium_slush', 10]), {},
       { canRouteByproduct: () => false },
     );
     expect(routed.slotResults[0].batches).toBe(10);
@@ -153,13 +170,14 @@ describe('instant fixed-point production', () => {
   });
 
   it('uses stable priorities when slots compete for one input', () => {
+    const scarce = { alloys: 3 * unitCost('graphene_lattice', 'alloys'), nutrients: 1000 };
     const grapheneFirst = processFabricator([
       slot('graphene_lattice', 0), slot('silica_aerogel', 1),
-    ], 1, { alloys: 900, nutrients: 1000 }, {});
+    ], 1, scarce, {});
     const silicaFirst = processFabricator([
       slot('graphene_lattice', 1), slot('silica_aerogel', 0),
-    ], 1, { alloys: 900, nutrients: 1000 }, {});
-    expect(output(grapheneFirst, 'graphene_lattice')).toBe(4);
+    ], 1, scarce, {});
+    expect(output(grapheneFirst, 'graphene_lattice')).toBe(6);
     expect(output(grapheneFirst, 'silica_aerogel')).toBe(0);
     expect(output(silicaFirst, 'silica_aerogel')).toBe(6);
     expect(output(silicaFirst, 'graphene_lattice')).toBe(0);
@@ -167,7 +185,7 @@ describe('instant fixed-point production', () => {
 
   it('spreads a scarce input across slots in shared fill mode', () => {
     const slots = [slot('graphene_lattice', 0), slot('silica_aerogel', 1)];
-    const shared = processFabricator(slots, 1, { alloys: 900, nutrients: 1000 }, {}, { fillMode: 'shared' });
+    const shared = processFabricator(slots, 1, { alloys: 3 * unitCost('graphene_lattice', 'alloys'), nutrients: 1000 }, {}, { fillMode: 'shared' });
     expect(output(shared, 'graphene_lattice')).toBeGreaterThan(0);
     expect(output(shared, 'silica_aerogel')).toBeGreaterThan(0);
   });
@@ -340,6 +358,69 @@ describe('route dispatch integration', () => {
     expect(useUIStore.getState().detectionRating).toBe(1);
   });
 
+  it('sheds heat faster as the logistics fleet grows', () => {
+    const start = 2_000_000;
+    const base = decayDetectionHeat(3, start, start + 60_000, computeDetectionDecayPerMs(0));
+    const fleet = decayDetectionHeat(3, start, start + 60_000, computeDetectionDecayPerMs(4));
+    expect(base.detectionHeat).toBeCloseTo(2.5);
+    expect(fleet.detectionHeat).toBeCloseTo(1.5);
+
+    useUIStore.setState({ detectionHeat: 3, detectionRating: 3, lastDetectionChangeAt: start, logisticsA: 4 });
+    vi.useFakeTimers();
+    vi.setSystemTime(start + 60_000);
+    useUIStore.getState().tickDetectionDecay();
+    expect(useUIStore.getState().detectionHeat).toBeCloseTo(1.5);
+    useUIStore.setState({ logisticsA: 0 });
+  });
+
+  it('spends banked offline decay as catch-up detection credit', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-02-01T00:00:00Z'));
+    const now = Date.now();
+    const extractor: Extractor = {
+      key: 'credit-source', galaxySeed: 85, systemId: 1, systemName: 'Source', planetName: 'Mine',
+      resourceType: 'alloys', rate: 1, placedAt: now - 50 * HOUR, lastCollectedAt: now - 50 * HOUR,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    const fabricators = Object.fromEntries([2, 3, 4, 5].map((id) => {
+      const fab: Fabricator = {
+        key: `credit-fab-${id}`, tier: 1, galaxySeed: 85, systemId: id,
+        systemName: `Credit ${id}`, planetName: `Credit ${id}`, builtAt: 1,
+        systemX: id, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+      };
+      return [fab.key, fab];
+    }));
+    useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
+    useFabricatorStore.setState({
+      fabricators,
+      fabricatorStates: Object.fromEntries(Object.keys(fabricators).map((key) => [key, { slots: [] }])),
+      lastRun: {},
+    });
+    const nodes = [extractorNodeId(85, 1), ...[2, 3, 4, 5].map((id) => fabricatorNodeId(85, id))];
+    const edges = nodes.slice(1).map((to, index) => ({ from: nodes[index], to }));
+    useUIStore.setState({
+      exoticMatter: 10_000, helium3Reserves: 10_000, logisticsA: 4, logisticsB: 0, storageA: 4, storageB: 4,
+      detectionHeat: 0, detectionRating: 0, lastDetectionChangeAt: now,
+    });
+    const route: LogisticsRoute = {
+      id: 'credit', name: 'Credit', edges, active: true,
+      automation: { dispatchMode: 'fill', sourceFillPercent: 1, fillAggregate: 'any', detectionCeiling: 4, pauseOnJam: false },
+    };
+    useLogisticsStore.setState({ routes: [route], lastRuns: {}, automationNotices: {} });
+    expect(useLogisticsStore.getState().previewRoute('credit')?.detectionRisk).toBeCloseTo(0.2);
+
+    useLogisticsStore.getState().catchUpAutomation(30 * 60_000);
+    expect(useUIStore.getState().detectionHeat).toBe(0);
+
+    useExtractorStore.setState({
+      extractors: { [extractor.key]: { ...extractor, lastCollectedAt: now - 50 * HOUR } },
+    });
+    useUIStore.setState({ lastDetectionChangeAt: Date.now() });
+    useLogisticsStore.getState().catchUpAutomation(0);
+    expect(useUIStore.getState().detectionHeat).toBeCloseTo(0.2);
+    useUIStore.setState({ logisticsA: 0, logisticsB: 0, storageA: 0, storageB: 0 });
+  });
+
   it('purge clears the underlying detection heat', () => {
     useUIStore.setState({
       detectionHeat: 3.75, detectionRating: 3, lastDetectionChangeAt: Date.now(), lastPurgeAt: 0,
@@ -374,7 +455,7 @@ describe('route dispatch integration', () => {
     const now = Date.now();
     const extractor: Extractor = {
       key: 'hold-only-source', galaxySeed: 81, systemId: 1, systemName: 'Source', planetName: 'Mine',
-      resourceType: 'alloys', rate: 1, placedAt: now - 50_000, lastCollectedAt: now - 50_000,
+      resourceType: 'alloys', rate: 1, placedAt: now - 50 * HOUR, lastCollectedAt: now - 50 * HOUR,
       systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
     };
     const sink: Fabricator = {
@@ -404,8 +485,8 @@ describe('route dispatch integration', () => {
       resourceType: type, rate: 1, placedAt: now - age, lastCollectedAt: now - age,
       systemX: systemId, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
     });
-    const relevant = source('relevant', 1, 'alloys', 10_000);
-    const irrelevant = source('irrelevant', 2, 'exotic', 300_000);
+    const relevant = source('relevant', 1, 'alloys', 100 * HOUR);
+    const irrelevant = source('irrelevant', 2, 'exotic', 300 * HOUR);
     const fab: Fabricator = {
       key: 'weighted-fab', tier: 1, galaxySeed: 82, systemId: 3, systemName: 'Factory', planetName: 'Forge',
       builtAt: 1, systemX: 3, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
@@ -523,7 +604,10 @@ describe('route dispatch integration', () => {
     useFabricatorStore.setState({
       fabricators: { [first.key]: first, [second.key]: second },
       fabricatorStates: {
-        [first.key]: { slots: [{ ...slot('graphene_lattice'), pendingResources: { alloys: 400, nutrients: 250 } }] },
+        [first.key]: { slots: [{ ...slot('graphene_lattice'), pendingResources: {
+          alloys: unitCost('graphene_lattice', 'alloys'),
+          nutrients: unitCost('graphene_lattice', 'nutrients'),
+        } }] },
         [second.key]: { slots: [{
           ...slot('hea_billet'), pendingResources: { alloys: 900, metallicHydrogen: 200 },
           pendingMaterials: { boron_ceramic: 1 },
@@ -586,7 +670,7 @@ describe('route dispatch integration', () => {
     const now = Date.now();
     const makeExtractor = (key: string, planetName: string): Extractor => ({
       key, galaxySeed: 12, systemId: 1, systemName: 'Mines', planetName,
-      resourceType: 'alloys', rate: 1, placedAt: now - 200_000, lastCollectedAt: now - 200_000,
+      resourceType: 'alloys', rate: 1, placedAt: now - 200 * HOUR, lastCollectedAt: now - 200 * HOUR,
       systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
     });
     const first = makeExtractor('mine-a', 'A');
@@ -599,7 +683,11 @@ describe('route dispatch integration', () => {
     useFabricatorStore.setState({
       fabricators: { [fabricator.key]: fabricator },
       fabricatorStates: { [fabricator.key]: { slots: [{
-        ...slot('graphene_lattice'), pendingResources: { alloys: 1100, nutrients: 750 },
+        ...slot('graphene_lattice'),
+        pendingResources: {
+          alloys: 3 * unitCost('graphene_lattice', 'alloys') - 100,
+          nutrients: 3 * unitCost('graphene_lattice', 'nutrients'),
+        },
       }] } },
       lastRun: {},
     });
@@ -658,6 +746,41 @@ describe('route dispatch integration', () => {
     expect(routeDetectionRisk(spread.edges, spread.groups)).toBeCloseTo(0.1 + 0.1 + DETECTION_CROSSING_POINTS);
   });
 
+  it('floors a fully dampened route at a residual rather than at zero', () => {
+    const node = (nodeId: string, systemId: number, extractors: Extractor[]): NodeGroup => ({
+      nodeId, extractors, fabricatorKeys: [], galaxySeed: 91,
+      systemId, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 9,
+    });
+    const source = (index: number): Extractor => ({
+      key: `masked-${index}`, galaxySeed: 91, systemId: index, systemName: `S${index}`, planetName: 'Mine',
+      resourceType: 'alloys', rate: 1, placedAt: 1, lastCollectedAt: 1,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 9,
+    });
+    const hub = fabricatorNodeId(91, 100);
+    const extractors = [1, 2, 3, 4].map(source);
+    const groups = new Map<string, NodeGroup>([[hub, node(hub, 100, [])]]);
+    for (const extractor of extractors) {
+      const id = extractorNodeId(91, extractor.systemId);
+      groups.set(id, node(id, extractor.systemId, [extractor]));
+    }
+    const edges = extractors.map((extractor) => ({ from: extractorNodeId(91, extractor.systemId), to: hub }));
+
+    useExtractorStore.setState({
+      extractors: Object.fromEntries(extractors.map((extractor) => [extractor.key, extractor])),
+      ownedUpgrades: [], nodeEquipped: {},
+    });
+    const bare = routeDetectionRisk(edges, groups);
+    expect(bare).toBeCloseTo(12 / 60);
+
+    useExtractorStore.setState({
+      nodeEquipped: Object.fromEntries(extractors.map((extractor) => [extractor.key, ['signal_dampener', null] as [string | null, string | null]])),
+    });
+    const masked = routeDetectionRisk(edges, groups);
+    expect(masked).toBeGreaterThan(0);
+    expect(masked).toBeCloseTo(2 * (2 - 1) / 60);
+    expect(masked).toBeLessThan(bare / 4);
+  });
+
   it('lets a signal dampener mask the hops incident to its station', () => {
     const extractor: Extractor = {
       key: 'quiet-source', galaxySeed: 71, systemId: 1, systemName: 'Source', planetName: 'Mine',
@@ -682,7 +805,9 @@ describe('route dispatch integration', () => {
     expect(routeDetectionRisk(edges, groups)).toBeCloseTo(2 / 60);
 
     useExtractorStore.setState({ nodeEquipped: { [extractor.key]: ['signal_dampener', null] } });
-    expect(routeDetectionRisk(edges, groups)).toBe(0);
+    const masked = 1.5;
+    expect(routeDetectionRisk(edges, groups)).toBeCloseTo(masked * (masked - 1) / 60);
+    expect(routeDetectionRisk(edges, groups)).toBeGreaterThan(0);
   });
 
   it('round-trips edge policies, automation and held cargo through a restore', () => {
@@ -736,7 +861,7 @@ describe('route dispatch integration', () => {
     const now = Date.now();
     const extractor: Extractor = {
       key: 'hold-source', galaxySeed: 41, systemId: 1, systemName: 'Source', planetName: 'Mine',
-      resourceType: 'alloys', rate: 1, placedAt: now - 900_000, lastCollectedAt: now - 900_000,
+      resourceType: 'alloys', rate: 1, placedAt: now - 900 * HOUR, lastCollectedAt: now - 900 * HOUR,
       systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
     };
     const fabricator: Fabricator = {
@@ -765,6 +890,40 @@ describe('route dispatch integration', () => {
 
     useUIStore.setState({ exoticMatter: 10_000, helium3Reserves: 10_000 });
     expect(useLogisticsStore.getState().runAutomation()).toHaveLength(1);
+  });
+
+  it('names the hold when a route costs more fuel than the ship can ever carry', () => {
+    const now = Date.now();
+    const far = (systemId: number, galaxyX: number): Extractor => ({
+      key: `far-${systemId}`, galaxySeed: 100 + systemId, systemId, systemName: `Far ${systemId}`,
+      planetName: `Rock ${systemId}`, resourceType: 'alloys', rate: 1,
+      placedAt: now - 900 * HOUR, lastCollectedAt: now - 900 * HOUR,
+      systemX: 0, systemY: 0, galaxyX, galaxyY: 0, superclusSeed: 1,
+    });
+    const sources = Array.from({ length: 24 }, (_, index) => far(index + 1, index * 1800));
+    useExtractorStore.setState({
+      extractors: Object.fromEntries(sources.map((source) => [source.key, source])),
+      ownedUpgrades: [], nodeEquipped: {},
+    });
+    useFabricatorStore.setState({ fabricators: {}, fabricatorStates: {}, lastRun: {} });
+    useStockpileStore.getState().restoreStockpile({}, {});
+    useUIStore.setState({
+      exoticMatter: 500, helium3Reserves: 500, alloys: 0,
+      detectionRating: 0, logisticsA: 1, logisticsB: 0, storageA: 0, driveA: 0, driveB: 0,
+      fuelReserveExotic: 0, fuelReserveHelium3: 0,
+    });
+    const edges = sources.slice(1).map((source) => ({
+      from: extractorNodeId(sources[0].galaxySeed, sources[0].systemId),
+      to: extractorNodeId(source.galaxySeed, source.systemId),
+    }));
+    useLogisticsStore.setState({ routes: [{ id: 'sprawl', name: 'Sprawl', active: true, edges }], lastRuns: {}, automationNotices: {} });
+
+    const preview = useLogisticsStore.getState().previewRoute('sprawl');
+    expect(preview!.cost.exotic).toBeGreaterThan(computeStorageCap(0));
+    expect(preview!.reason).toBe('Route costs more fuel than the hold can carry');
+
+    useUIStore.setState({ storageA: 4 });
+    expect(useLogisticsStore.getState().previewRoute('sprawl')!.reason).not.toBe('Route costs more fuel than the hold can carry');
   });
 
   it('converts legacy ordered route keys into a DAG path', () => {

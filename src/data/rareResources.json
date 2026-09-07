@@ -22,7 +22,7 @@
       "id": "frame_dragging_gyro",
       "name": "Sentinel Battery",
       "role": "field",
-      "desc": "Built into a Research District, where its superconducting mount steadies the instruments and carries the colony's 40-round fire-control battery.",
+      "desc": "Defense District anchor. Its superconducting mount slews a fire-control battery fast enough to engage a census probe before it can look twice.",
       "effect": { "stat": "defense", "value": 40 },
       "cost": { "alloys": 1800, "exotic": 1200 },
       "materials": { "ybco_tape": 3, "degenerate_core": 1 }

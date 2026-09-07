@@ -5,7 +5,7 @@
       "name": "Graphene Lattice",
       "tier": 1,
       "desc": "Single-atom carbon sheeting made from biomass. Used as reinforcement and a conductor in higher-tier systems.",
-      "cost": { "alloys": 400, "nutrients": 250 },
+      "cost": { "alloys": 160, "nutrients": 100 },
       "materials": {},
       "outputs": 2
     },
@@ -14,7 +14,7 @@
       "name": "Graphene Lattice (Carbide Route)",
       "tier": 1,
       "desc": "Single-atom carbon sheeting made by reducing hull alloys instead of biomass. Higher yield and alloy cost; useful where nothing grows.",
-      "cost": { "alloys": 700, "helium": 300 },
+      "cost": { "alloys": 280, "helium": 120 },
       "materials": {},
       "outputs": 3,
       "produces": "graphene_lattice"
@@ -24,7 +24,7 @@
       "name": "Boron Nitride Ceramic",
       "tier": 1,
       "desc": "Hexagonal boron nitride. Insulates against current and transfers heat from drill faces and reactor walls.",
-      "cost": { "alloys": 500, "helium": 150 },
+      "cost": { "alloys": 200, "helium": 60 },
       "materials": {},
       "outputs": 2
     },
@@ -33,7 +33,7 @@
       "name": "Deuterium Slush",
       "tier": 1,
       "desc": "Heavy hydrogen distilled from the metallic phase and chilled into a pumpable slurry. Fusion fuel; leaves tritium as a byproduct.",
-      "cost": { "metallicHydrogen": 300, "helium": 200 },
+      "cost": { "metallicHydrogen": 120, "helium": 80 },
       "materials": {},
       "outputs": 2,
       "byproducts": { "tritium_residue": 1 }
@@ -43,7 +43,7 @@
       "name": "Silica Aerogel",
       "tier": 1,
       "desc": "Silica foam that is over 99% void by volume. Used for thermal insulation and low-mass structural filler.",
-      "cost": { "alloys": 300, "nutrients": 150 },
+      "cost": { "alloys": 120, "nutrients": 60 },
       "materials": {},
       "outputs": 2
     },
@@ -52,7 +52,7 @@
       "name": "Silica Aerogel (Vacuum Route)",
       "tier": 1,
       "desc": "Aerogel dried in open vacuum instead of heat. Higher yield and lower alloy cost, with an exotic-matter cost.",
-      "cost": { "alloys": 200, "exotic": 180 },
+      "cost": { "alloys": 80, "exotic": 70 },
       "materials": {},
       "outputs": 3,
       "produces": "silica_aerogel"
@@ -146,11 +146,6 @@
       "cost": { "helium": 900, "metallicHydrogen": 400 },
       "materials": { "deuterium_slush": 2, "tritium_getter": 1, "positron_trap": 1 },
       "outputs": 1
-    },
-    {
-      "id": "sentinel_ammo", "name": "Sentinel Ammunition", "tier": 2,
-      "desc": "Five rounds for colony defense. Costs the same fifteen units of helium-3 as one Peregrine shot.",
-      "cost": { "helium": 15 }, "materials": {}, "outputs": 5
     },
     {
       "id": "viable_line", "name": "Viable Gene Line", "tier": 3,

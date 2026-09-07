@@ -3,7 +3,7 @@ import { db } from './firebase';
 import type { Colony, LegacyColony } from '../game/types';
 
 export async function saveColony(uid: string, colony: Colony): Promise<void> {
-  const { installed: _installed, exportedLines: _exportedLines, labor: _labor, populationTier: _populationTier, selfSufficientMs: _selfSufficientMs, lastShipmentAt: _lastShipmentAt, ...current } = colony as Colony & Partial<LegacyColony>;
+  const { installed: _installed, exportedLines: _exportedLines, labor: _labor, populationTier: _populationTier, selfSufficientMs: _selfSufficientMs, lastShipmentAt: _lastShipmentAt, ammo: _ammo, ...current } = colony as Colony & Partial<LegacyColony> & { ammo?: number };
   await setDoc(doc(db, 'users', uid, 'colonies', colony.key), current);
 }
 export async function loadAllColonies(uid: string): Promise<(Colony | LegacyColony)[]> {

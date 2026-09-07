@@ -137,9 +137,32 @@ at link time via `wouldCreateCycle`. In the UI this means clicking a node **open
 rather than toggling membership; you join a node to the route by dragging a link to it, and drop
 it by cutting its links (or clicking it in the Flow chain, which unlinks it entirely).
 
-`computeRouteCost` is a flat drive-tier-scaled dispatch fee plus `hopCost` summed **over edges**
-(free within a system, `galaxyTravelCost` within a galaxy, `superclusterTravelCost` across
-galaxies in a supercluster, flat fallback otherwise), so hub-and-spoke prices correctly.
+`computeRouteCost` is priced for a **drone tour, not a ship jump** — the distinction the whole
+automation loop rests on, since a route is dispatched over and over while the ship jumps once.
+Exotic is a dispatch fee plus `hopExotic` summed over edges (free within a system,
+`galaxyTravelCost` within a galaxy, `superclusterTravelCost` across galaxies in a supercluster,
+flat fallback otherwise) scaled by `ROUTE_HOP_DISCOUNT`, because drones fly the DAG one way rather
+than the ship's round trip. Helium is **not** the ship's flat `HELIUM_PER_JUMP` per edge: that
+made cost scale with topology while income did not, so every added node taxed every future
+dispatch and an eight-edge network cost more helium per run than its extractors made in a day.
+Instead it is a small `ROUTE_HELIUM_PER_HOP` plus `ROUTE_HELIUM_PER_UNIT` per unit moved, so the
+bill tracks cargo delivered rather than mere network size, and a large idle network is nearly free
+to keep running. Hub-and-spoke still prices correctly because hops are summed over edges.
+
+Exotic carries the same weighting for the same reason. Geography alone must never dominate the
+bill: a sprawling multi-galaxy network reached ~500 exotic per dispatch of which the throughput
+term was under 5%, leaving the player no lever but deleting nodes — the topology tax the helium
+change had just removed, surviving in the other resource. `ROUTE_HOP_DISCOUNT` and
+`ROUTE_EXOTIC_PER_UNIT` are therefore balanced against each other so that hauling more costs more
+and a wasteful route reads as wasteful. Exotic still leans harder on distance than helium does,
+because distance pressure is what pushes the player outward.
+
+A route can cost more fuel than the ship can physically hold (`computeStorageCap`), which is a
+wall rather than a price — no amount of extraction fixes it, only a storage upgrade or a colony
+sponsor. `optimizedRoutePreview` therefore separates that hold from ordinary poverty with its own
+reason string. The test is `cost > tank`, not `cost + reserve > tank`: breaching only the fuel
+floor is ordinary insufficiency and must stay manually dispatchable, since the modal's manual
+override keys off the `'Insufficient route fuel'` reason.
 
 `dispatchRoute` traverses in topological order carrying a per-node `Cargo` (`raw` + `materials`).
 At each node it collects from extractors, feeds fabricators, and **carries finished materials
@@ -167,15 +190,48 @@ Route risk is spent through `raiseDetectionBy` (detection points), not `raiseDet
 `useLogisticsAutomation` runs the same `dispatchRoute` path as manual operation and persists each
 completed run.
 
+**The intended cadence is a check-in every day or so, not a watched tab.** Three things carry that.
+`runAutomation` skips a route whose dry run moves less than `MIN_DISPATCH_UNITS` and expects no
+batch, so a trickle of demand cannot bleed a full dispatch fee. Extractors already accrue offline
+from `lastCollectedAt`, but routes do not, so the automation hook's **first** tick calls
+`catchUpAutomation` instead of `runAutomation` — it re-dispatches until a pass yields nothing
+(bounded by `AUTOMATION_CATCHUP_PASSES`), converting a day of banked extractor output in one go
+rather than over an hour of real time. Because detection heat is charged per dispatch and cannot
+decay during a synchronous catch-up, the hook hands `catchUpAutomation` the offline span and it
+opens a `catchUpDetectionCredit` — the heat the ship *would* have shed while away, capped at
+`AUTOMATION_CATCHUP_CREDIT_CAP` — that each dispatch spends before charging real heat. Without it
+the headroom for converting an absence would be the constant `detectionCeiling` no matter how long
+that absence was, so a week away would pay no better than an hour. The credit is cleared when the
+catch-up returns. It terminates on its own because each pass drains the
+extractors below `sourceFillPercent`, and it cannot run away because the detection ceiling holds
+the route once accumulated heat plus risk crosses it (and the credit is finite). `AUTOMATION_POLL_MS` is 60s: an extractor
+gains a fraction of a unit per tick at any realistic rate, so polling faster buys nothing and
+multiplies the Firestore fan-out.
+
 **Detection risk** (`routeDetectionRisk`) models warp-drive signatures from dispatched drones, so it
 is **route-scoped per dispatch** and prices *traffic concentration*, never distance — distance is
-already paid in fuel by `hopCost`. Risk is `Σ over superclusters m(m-1)/DETECTION_DENSITY_DIVISOR`
+already paid in fuel by `hopExotic`. Risk is `Σ over superclusters m(m-1)/DETECTION_DENSITY_DIVISOR`
 where `m` is the route's hops inside that supercluster, plus `DETECTION_CROSSING_POINTS` per
 supercluster-crossing edge. Working many hops through one region is what gets you found; a long jump
 to a fresh supercluster is nearly free, which is the point — the meter exists to push the player
-outward. `dispatchRoute` converts risk to bars with `Math.floor(risk / 5)`. A **Signal Dampener**
-masks the hops incident to its station (a node counts as dampened when it has extractors and all of
-them are dampened), rather than decrementing any per-extractor tally.
+outward. `dispatchRoute` charges the risk as **fractional heat** (`raiseDetectionHeat`), not as
+whole bars — with `DETECTION_HEAT_PER_BAR` at 1 that means every dispatch of a route larger than a
+few hops is visible on the meter, and the sustainable size of a single route is set by where its
+per-dispatch risk crosses the passive decay rate.
+
+A **Signal Dampener** *weights down* the hops incident to its station rather than erasing them: an
+edge counts as `DETECTION_DAMPENED_HOP_WEIGHT` per dampened endpoint (a node counts as dampened
+when it has extractors and all of them are dampened), so a fully masked route floors at a residual
+instead of zero. Zeroing was the wrong shape — in the usual extractor-leaves-into-a-fabricator-hub
+topology every edge is extractor-incident, so one module per extractor bought permanent immunity
+and the meter stopped existing.
+
+Passive decay scales with the drone fleet: `computeDetectionDecayPerMs(logisticsA)` multiplies the
+base rate by `DETECTION_DECAY_LOGISTICS_MULT`. Decay is global while `logisticsA` also raises the
+route cap, so without this a player who bought more routes got heat they could not shed and the
+whole network parked at its ceiling — the upgrade paid for throughput the detection budget could
+not fund. `resolveAutomationPolicy` clamps `detectionCeiling` to `MAX_DETECTION_CEILING` (4), one
+bar clear of the lethal 5, so no automated dispatch can land on death.
 
 ### Recipe data
 
