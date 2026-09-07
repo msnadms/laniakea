@@ -124,6 +124,7 @@
 }
 
 .colony-details button,
+.colony-summary button,
 .civilization-panel button,
 .strike-warning button {
   margin: 4px 4px 4px 0;
@@ -136,6 +137,7 @@
 }
 
 .colony-details button:disabled,
+.colony-summary button:disabled,
 .civilization-panel button:disabled {
   opacity: 0.4;
   cursor: default;

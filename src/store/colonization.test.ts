@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../firebase/firebase', () => ({ db: {}, auth: {}, googleProvider: {} }));
-import type { Colony, Fabricator, Extractor } from '../game/types';
+import type { Colony, Fabricator, Extractor, LegacyColony } from '../game/types';
 import { colonyNodeId, extractorNodeId, fabricatorNodeId, makeEmptyFabricatorSlot } from '../game/types';
 import { charterSite, CHARTER_ASSEMBLIES, colonyPopCap, colonyDemand, colonyExport, colonyFoodCapacity, tickColony, deliverColony, useColonyStore, HOUR, DYSON_COST, DYSON_LABOR, MAX_UNATTENDED_ESCAPES, canBuildExtractor } from './colonyStore';
 import { applyUserSettings, useUIStore, probeEscapes, FIRE_COOLDOWN_MS } from './uiStore';
@@ -17,13 +17,15 @@ import { generatePlanets, generateSystemLayout } from '../game/planetGen';
 const NOW = 10 * HOUR;
 const f: Fabricator = { key: '1|1|Haven', tier: 2, galaxySeed: 1, systemId: 1, systemName: 'Home', planetName: 'Haven',
   builtAt: 1, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1 };
-const makeLiving = (patch: Partial<Colony> = {}): Colony => ({ ...charterSite(f, NOW),
+type LivingColony = Colony & Partial<Pick<LegacyColony, 'installed' | 'exportedLines' | 'labor' | 'populationTier' | 'selfSufficientMs'>>;
+const legacy = (colony: Colony): LivingColony => colony;
+const makeLiving = (patch: Partial<LivingColony> = {}): LivingColony => ({ ...charterSite(f, NOW),
   foundedAt: NOW, population: 100, populationTier: 1, installed: { ...CHARTER_ASSEMBLIES },
   supplies: { nutrients: 100_000 }, ammo: 40, ...patch,
 });
 
 /** Feeds a colony hour by hour, since a single long call is clamped as unattended time. */
-function feed(colony: Colony, throughHour: number, fromHour = 1) {
+function feed(colony: LivingColony, throughHour: number, fromHour = 1) {
   let lines = 0;
   for (let h = fromHour; h <= throughHour; h++) {
     const run = tickColony({ ...colony, supplies: { ...colony.supplies, nutrients: 1e8 } }, NOW + h * HOUR);
@@ -59,7 +61,7 @@ describe('colony population arithmetic', () => {
     const half = tickColony(tickColony(c, NOW + HOUR / 2).colony, NOW + HOUR).colony;
     expect(whole.population).toBeCloseTo(half.population, 8);
     expect(whole.supplies.nutrients).toBeCloseTo(half.supplies.nutrients!, 7);
-    expect(whole.labor).toBeCloseTo(half.labor, 8);
+    expect(legacy(whole).labor!).toBeCloseTo(legacy(half).labor!, 8);
   });
   it('stops growth, grants half an hour grace, then loses real people permanently', () => {
     const c = makeLiving({ population: 200, supplies: {} });
@@ -67,7 +69,7 @@ describe('colony population arithmetic', () => {
     const next = tickColony(c, NOW + HOUR).colony;
     expect(next.population).toBeCloseTo(150);
     expect(next.lostPeople).toBeCloseTo(50);
-    expect(next.labor).toBeCloseTo(0);
+    expect(legacy(next).labor!).toBeCloseTo(0);
     // An unattended gap is capped, so a single long absence cannot empty a colony outright.
     const clamped = tickColony(c, NOW + 10 * HOUR).colony;
     expect(clamped.population).toBeCloseTo(50);
@@ -108,7 +110,7 @@ describe('colony population arithmetic', () => {
     expect(feed(six.colony, 18, 7).lines).toBe(0);
     const tiered = feed({ ...six.colony, populationTier: 2 }, 19, 7);
     expect(tiered.lines).toBe(1);
-    expect(tiered.colony.exportedLines).toBe(2);
+    expect(legacy(tiered.colony).exportedLines).toBe(2);
   });
   it('does not credit fed hours spent below the maturity population', () => {
     expect(feed(makeLiving({ population: 100 }), 6).lines).toBe(0);
@@ -182,7 +184,7 @@ describe('charter accounting', () => {
     expect(useColonyStore.getState().charterColony(f.key)).toBe(true);
     const c = useColonyStore.getState().colonies[f.key];
     expect(c.population).toBe(100); expect(c.assemblies.ectogenesis_bank).toBe(0);
-    expect(c.installed.closed_ecology_column).toBe(1);
+    expect(legacy(c).installed!.closed_ecology_column).toBe(1);
     expect(useUIStore.getState().geneLines).toBe(22);
     expect(useColonyStore.getState().charterColony(f.key)).toBe(false);
   });
@@ -190,12 +192,6 @@ describe('charter accounting', () => {
     prepare(); useUIStore.setState({ geneLines: 1 });
     expect(useColonyStore.getState().charterColony(f.key)).toBe(false);
     expect(useColonyStore.getState().colonies[f.key].assemblies).toEqual(CHARTER_ASSEMBLIES);
-  });
-  it('consumes an ectogenesis bank at the next population tier', () => {
-    useColonyStore.setState({ colonies: { [f.key]: makeLiving({ population: 900, assemblies: { ectogenesis_bank: 1 }, installed: { closed_ecology_column: 2 } }) } });
-    expect(useColonyStore.getState().installAssembly(f.key, 'ectogenesis_bank')).toBe(true);
-    expect(colonyPopCap(useColonyStore.getState().colonies[f.key])).toBe(2000);
-    expect(useColonyStore.getState().installAssembly(f.key, 'ectogenesis_bank')).toBe(false);
   });
 });
 
@@ -322,8 +318,8 @@ describe('civilization and strikes', () => {
     const next = useColonyStore.getState().colonies[f.key];
     expect(next.assemblies.graphene_lattice).toBe(4);
     expect(next.population).toBeGreaterThan(600);
-    expect(next.selfSufficientMs).toBe(HOUR);
-    expect(evaluateKardashev([next])).toBe(1);
+    expect(legacy(next).selfSufficientMs).toBe(HOUR);
+    expect(evaluateKardashev([next], 120)).toBe(1);
     expect(useStockpileStore.getState().materials.graphene_lattice).toBeUndefined();
   });
   it('exports colony factory output through the same bandwidth-limited routes', () => {
@@ -341,14 +337,14 @@ describe('civilization and strikes', () => {
     expect(useLogisticsStore.getState().routes[0].heldCargo?.[colonyNodeId(1,1)].materials.graphene_lattice).toBe(1);
   });
   it('requires sustained local output for Type I and distinct stars in one galaxy for III', () => {
-    expect(evaluateKardashev([makeLiving({ population: 500, selfSufficientMs: HOUR - 1 })])).toBe(0);
-    expect(evaluateKardashev([makeLiving({ population: 500, selfSufficientMs: HOUR })])).toBe(1);
-    expect(evaluateKardashev([makeLiving({ swarmComplete: true })])).toBe(2);
+    expect(evaluateKardashev([makeLiving({ population: 500, selfSufficientMs: HOUR - 1 })], 1120)).toBe(0);
+    expect(evaluateKardashev([makeLiving({ population: 500, selfSufficientMs: HOUR })], 120)).toBe(1);
+    expect(evaluateKardashev([makeLiving({ swarmComplete: true })], 420, 1)).toBe(2);
     const stars = [1,2,3].map(systemId => makeLiving({ systemId, swarmComplete: true, probeCoverage: 1 }));
-    expect(evaluateKardashev(stars)).toBe(3);
-    expect(evaluateKardashev(stars.map(c => ({ ...c, systemId: 1 })))).toBe(2);
-    expect(evaluateKardashev(stars.map(c => ({ ...c, galaxySeed: c.systemId })))).toBe(2);
-    expect(evaluateKardashev([], 3)).toBe(3);
+    expect(evaluateKardashev(stars, 1120, 2)).toBe(3);
+    expect(evaluateKardashev(stars.map(c => ({ ...c, systemId: 1 })), 1120, 2)).toBe(2);
+    expect(evaluateKardashev(stars.map(c => ({ ...c, galaxySeed: c.systemId })), 1120, 2)).toBe(2);
+    expect(evaluateKardashev([], 0, 3)).toBe(3);
   });
   it('keeps detection floors through decay and emergency purge', () => {
     useUIStore.setState({ kardashevTier: 3 });
@@ -366,7 +362,7 @@ describe('civilization and strikes', () => {
     useColonyStore.setState({ colonies: { [f.key]: deliverColony(current, {}, { statite_mirror: 1 }, NOW + 1).colony } });
     useColonyStore.getState().tickColonies(NOW + 2);
     expect(useColonyStore.getState().colonies[f.key].swarmComplete).toBe(true);
-    expect(useColonyStore.getState().colonies[f.key].labor).toBeLessThan(1);
+    expect(legacy(useColonyStore.getState().colonies[f.key]).labor!).toBeLessThan(1);
   });
   it('telegraphs a named strike, evacuates people and a line, and destroys only its target', () => {
     const other = makeLiving({ key: 'other', superclusSeed: 2 });

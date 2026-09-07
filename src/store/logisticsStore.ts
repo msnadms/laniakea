@@ -18,7 +18,7 @@ import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialB
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 import { getSuperclusterCoords } from '../game/superclusters';
 import { OBS_UNIVERSE_RADIUS } from '../game/constants';
-import { useColonyStore, colonyDemand, deliverColony, colonyFuelCap, colonyExport } from './colonyStore';
+import { useColonyStore, colonyDemand, deliverColony, colonyFuelCap, colonyExport, colonyRawExport, usesDistrictModel } from './colonyStore';
 import { RARE_RESOURCES } from '../data/rareResources';
 const rareIds = new Set(RARE_RESOURCES.map(r => r.id));
 
@@ -323,6 +323,7 @@ export interface RouteWorld {
   feedColony?(key: string, raw: Cargo['raw'], materials: MaterialCost): ReturnType<typeof deliverColony> | undefined;
   withdrawStockpile?(id: string, amount: number): void;
   collectColonyOutput?(key: string): MaterialCost;
+  collectColonyRawOutput?(key: string): Cargo['raw'];
   peekExtractor(key: ExtractorKey): number;
   collectExtractor(key: ExtractorKey, max: number): number;
   fabricator(key: string): { fabricator?: Fabricator; state?: FabricatorState };
@@ -372,8 +373,17 @@ class ShadowWorld implements RouteWorld {
     const c = this.colonies[key];
     if (!c) return {};
     const output = colonyExport(c);
-    this.colonies[key] = { ...c, assemblies: { ...c.assemblies } };
-    for (const [id, n] of Object.entries(output)) this.colonies[key].assemblies[id] -= n;
+    const field = usesDistrictModel(c) ? 'produced' : 'assemblies';
+    this.colonies[key] = { ...c, [field]: { ...c[field] } };
+    for (const [id, n] of Object.entries(output)) this.colonies[key][field][id] -= n;
+    return output;
+  }
+  collectColonyRawOutput(key: string) {
+    const c = this.colonies[key];
+    if (!c) return {};
+    const output = colonyRawExport(c);
+    this.colonies[key] = { ...c, supplies: { ...c.supplies } };
+    for (const [type, amount] of Object.entries(output)) this.colonies[key].supplies[type as Resource['type']] = (this.colonies[key].supplies[type as Resource['type']] ?? 0) - (amount ?? 0);
     return output;
   }
   feedColony(key: string, raw: Cargo['raw'], materials: MaterialCost) {
@@ -440,9 +450,19 @@ class LiveWorld implements RouteWorld {
     const c = this.colony(key);
     if (!c) return {};
     const output = colonyExport(c);
-    const assemblies = { ...c.assemblies };
-    for (const [id, n] of Object.entries(output)) assemblies[id] -= n;
-    if (Object.keys(output).length) useColonyStore.setState(s => ({ colonies: { ...s.colonies, [key]: { ...c, assemblies } } }));
+    const field = usesDistrictModel(c) ? 'produced' : 'assemblies';
+    const remaining = { ...c[field] };
+    for (const [id, n] of Object.entries(output)) remaining[id] -= n;
+    if (Object.keys(output).length) useColonyStore.setState(s => ({ colonies: { ...s.colonies, [key]: { ...c, [field]: remaining } } }));
+    return output;
+  }
+  collectColonyRawOutput(key: string) {
+    const c = this.colony(key);
+    if (!c) return {};
+    const output = colonyRawExport(c);
+    const supplies = { ...c.supplies };
+    for (const [type, amount] of Object.entries(output)) supplies[type as Resource['type']] = (supplies[type as Resource['type']] ?? 0) - (amount ?? 0);
+    if (Object.keys(output).length) useColonyStore.setState(state => ({ colonies: { ...state.colonies, [key]: { ...c, supplies } } }));
     return output;
   }
   feedColony(key: string, raw: Cargo['raw'], materials: MaterialCost) {
@@ -477,6 +497,14 @@ class LiveWorld implements RouteWorld {
   }
   depositRaw(type: Resource['type'], amount: number) { return useUIStore.getState().depositCargo(type, amount); }
   depositMaterial(id: string, amount: number) {
+    if (id === 'viable_line') {
+      const stockpile = useStockpileStore.getState();
+      const total = (stockpile.materials.viable_line ?? 0) + amount;
+      const returned = Math.floor(total);
+      useStockpileStore.setState({ materials: { ...stockpile.materials, viable_line: total - returned } });
+      if (returned > 0) useUIStore.getState().receiveGeneLine(returned);
+      return;
+    }
     if (rareIds.has(id)) useStockpileStore.getState().addRare(id, amount);
     else useStockpileStore.getState().addMaterial(id, amount);
   }
@@ -635,6 +663,11 @@ export function runRouteTraversal(
     const beganWithHeldCargo = !!restoredHeld && cargoHasValues(restoredHeld);
     const outgoing = outgoingByNode.get(nodeId) ?? [];
     if (outgoing.length > 0) for (const key of group.colonyKeys ?? []) {
+      const rawOutput = world.collectColonyRawOutput?.(key) ?? {};
+      for (const [type, amount] of Object.entries(rawOutput)) {
+        cargo.raw[type as Resource['type']] = (cargo.raw[type as Resource['type']] ?? 0) + (amount ?? 0);
+        didWork = true;
+      }
       const output = world.collectColonyOutput?.(key) ?? {};
       for (const [id, n] of Object.entries(output)) {
         cargo.materials[id] = (cargo.materials[id] ?? 0) + n;

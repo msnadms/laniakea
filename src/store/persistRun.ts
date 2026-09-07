@@ -9,6 +9,8 @@ import { saveColony, deleteColony } from '../firebase/colonies';
 import { useColonyStore } from './colonyStore';
 import { useUIStore } from './uiStore';
 import { saveCampaignProgress } from '../firebase/userDoc';
+import { saveResearch } from '../firebase/research';
+import { useResearchStore } from './researchStore';
 
 const runWrites = new Map<string, Promise<unknown>>();
 export function flushRunPersistence(uid: string): Promise<unknown> {
@@ -17,7 +19,7 @@ export function flushRunPersistence(uid: string): Promise<unknown> {
 
 export function persistFabricatorRun(
   uid: string,
-  touched: { fabricatorKeys?: Iterable<string>; extractorKeys?: Iterable<string>; colonyKeys?: Iterable<string>; campaign?: boolean },
+  touched: { fabricatorKeys?: Iterable<string>; extractorKeys?: Iterable<string>; colonyKeys?: Iterable<string>; campaign?: boolean; research?: boolean },
 ): Promise<unknown> {
   // Snapshot keys, but read state when the write begins. A queued old tick must
   // never resurrect a colony that a later action has evacuated or destroyed.
@@ -26,6 +28,7 @@ export function persistFabricatorRun(
     fabricatorKeys: [...(touched.fabricatorKeys ?? [])],
     colonyKeys: [...(touched.colonyKeys ?? [])],
     campaign: touched.campaign ?? false,
+    research: touched.research ?? false,
   };
   const next = (runWrites.get(uid) ?? Promise.resolve()).catch(() => undefined)
     .then(() => writeRun(uid, keys));
@@ -36,11 +39,12 @@ export function persistFabricatorRun(
 interface WrittenSnapshot { materials: unknown; rares: unknown; ownedUpgrades: unknown; nodeEquipped: unknown }
 const lastWritten = new Map<string, WrittenSnapshot>();
 
-function writeRun(uid: string, touched: { extractorKeys: string[]; fabricatorKeys: string[]; colonyKeys: string[]; campaign: boolean }): Promise<unknown> {
+function writeRun(uid: string, touched: { extractorKeys: string[]; fabricatorKeys: string[]; colonyKeys: string[]; campaign: boolean; research: boolean }): Promise<unknown> {
   const extractors = useExtractorStore.getState();
   const { fabricatorStates } = useFabricatorStore.getState();
   const stockpile = useStockpileStore.getState();
   const writes: Promise<unknown>[] = [];
+  if (touched.research) writes.push(saveResearch(uid, { points: useResearchStore.getState().points }));
   if (touched.campaign || touched.colonyKeys.length > 0) {
     const s = useUIStore.getState();
     writes.push(saveCampaignProgress(uid, {

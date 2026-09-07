@@ -25,8 +25,8 @@ extractors -> fabricators -> advanced materials
                             JOBS filled by pops
                                    |
                 research . gene lines . materials . food
-                                   |  (logistics, homebound)
-                      the Peregrine and the tech tree
+                     |                 |  (logistics, homebound)
+          civilization ladder         Peregrine stockpile
 ```
 
 Two consequences carry the design:
@@ -35,9 +35,9 @@ Two consequences carry the design:
 what kind of society they can build. The tier-3 and tier-4 tree stops being a scoreboard.
 
 **Colonies become sources in the DAG.** Today every route edge points at a colony. A mature colony
-emits data cores, food surplus, tier-1 and tier-2 materials, and gene lines, all as real cargo that
-routes must carry home. The late-game logistics map inverts, which is the visible payoff for having
-built one.
+emits food surplus, tier-1 and tier-2 materials, and gene lines as real cargo that routes can carry
+home. Research is the exception: it joins a civilization-wide pool immediately, so scientific
+progress continues wherever humanity has staffed research districts.
 
 ## Districts
 
@@ -56,10 +56,10 @@ habitable planet the player settled matters beyond its zone type.
 | Habitat Block | `hea_billet`, `closed_ecology_column` | - (raises population cap) | - | nutrients |
 | Foundry | `hea_billet`, `boron_ceramic` | 3 Metallurgists | alloys, tier-1 materials | helium-3 |
 | Fabrication Yard | `metamaterial_film`, `ybco_tape` | 3 Technicians | tier-2 materials | alloys |
-| Research Campus | `bec_cell`, `casimir_plate` | 3 Researchers | data cores | helium-3, nutrients |
+| Research Campus | `bec_cell`, `casimir_plate` | 3 Researchers | abstract research | helium-3, nutrients |
 | Gene Clinic | `ectogenesis_bank`, `muon_cell` | 2 Geneticists | viable lines | nutrients |
 | Sentinel Array | `frame_dragging_gyro`, `degenerate_core` | 2 Gunners | ammunition capacity, fire rate, local heat suppression | `sentinel_ammo` |
-| Deep Survey Array | `positron_trap`, `momentum_tether` | 2 Astronomers | data cores, probe coverage | exotic |
+| Deep Survey Array | `positron_trap`, `momentum_tether` | 2 Astronomers | abstract research | exotic |
 | Orbital Assembly | `statite_mirror`, `tpv_film` | 4 Engineers | project labor | alloys |
 
 The five existing rare assemblies survive as **district anchors** rather than scalar installs. Their
@@ -89,44 +89,36 @@ Deliberately one step simpler than the genre reference: no strata, no happiness,
 - Unmet upkeep degrades that district's output proportionally rather than killing anyone.
   Starvation stays reserved for food, where it already reads well and is already reported in people.
 
-## Research is cargo
+## Research is shared knowledge
 
-Research is **not** a global counter that ticks up. It is a material - **data cores** - produced by
-Researcher jobs into colony stores, carried home by routes, and spent at the Peregrine.
+Research is an abstract, civilization-wide resource. Staffed Research Campuses and Deep Survey
+Arrays add research directly to a persistent global total. It is never placed in colony stores,
+carried by routes, or represented as an inventory item.
 
-This is the load-bearing decision of the refactor:
+That boundary keeps the roles legible:
 
-- research pressure becomes a logistics problem, consistent with everything else in the game;
-- a colony the player cannot reach produces nothing usable, so distance and detection keep mattering;
-- `computeMaterialBandwidth`, edge filters, material draw caps and surplus routing all apply with no
-  new code;
-- routes begin running in both directions, which is a legible change on the map that already exists.
+- logistics moves physical inputs, construction materials, food, ammunition, and manufactured goods;
+- researchers create knowledge, so their output cannot be stranded in a warehouse;
+- upkeep still ties science to the physical economy, because an unsupplied campus loses output;
+- the running total makes progress toward the next civilization type visible at all times.
 
-Three branches spend data cores:
-
-- **Stellar** - Kardashev capstones, exotic yields, megastructure costs.
-- **Genetic** - population growth, population cap, gene-line yield, ectogenesis efficiency.
-- **Engineering** - route bandwidth, extractor rates, fabricator throughput, storage and weapon caps.
-
-The Engineering branch retrofits the existing `storageA/B`, `driveA/B`, `weaponA/B` and
-`logisticsA/B` tiers as research nodes, so the ship's upgrade path becomes powered by the player's
-colonies rather than sitting in a separate workshop. The existing workshop remains as the interface
-for spending; only the currency and the gating change.
+Research is cumulative rather than spent. Thresholds are 120 for Type I theory, 420 for Type II,
+and 1120 for Type III. Ship workshop upgrades keep their physical resource costs and do not drain
+civilization progress.
 
 ## The Kardashev ladder, rebuilt
 
-`evaluateKardashev`'s hidden predicates are deleted: `selfSufficientMs`, `lastShipmentAt`, and the
-invisible one-hour no-delivery clock that the rest of the game actively teaches the player to break.
-A tier becomes a **research capstone plus one visible project**.
+`evaluateKardashev` combines the shared research total with one visible proof at each scale. Neither
+knowledge nor infrastructure is sufficient alone.
 
-| Tier | Capstone | Project |
+| Tier | Research threshold | Physical milestone |
 | --- | --- | --- |
-| I Planetary | Planetary Integration | One colony with every job slot filled and food-positive for an hour, shown as a live meter rather than inferred |
-| II Stellar | Stellar Engineering | A Dyson swarm built by Engineer jobs over time, replacing the instant labor-threshold completion |
-| III Galactic | Von Neumann Doctrine | Replication networks at three stars in one galaxy |
+| I Planetary | 120 | One colony with every job slot filled and food-positive for an hour, shown as a live meter |
+| II Stellar | 420 | A Dyson swarm built by Engineer jobs over time |
+| III Galactic | 1120 | Replication networks at three stars in one galaxy |
 
-Each capstone renders as a card stating its data-core cost and its permanent detection-floor price
-before the player commits. The floor is the cost of the tier and should read that way.
+Each rung renders as a card showing cumulative research, the physical milestone, and what the type
+unlocks. Reaching the rung still raises its permanent detection floor.
 
 ## The SYS panel
 
@@ -138,7 +130,8 @@ Four tabs:
 - **WORLDS** - roster on the left; the selected colony fills the frame with a district grid of built
   and empty slots, a jobs table (job, slots, filled, output per hour, upkeep), a food-runway strip,
   and a delivery strip generated from `colonyDemand` that says plainly what routes must bring.
-- **CIVILIZATION** - the data-core stockpile, the three branches as a tree, the Kardashev capstones.
+- **CIVILIZATION** - the shared research total, progress toward the next theory threshold, and the
+  three Kardashev rungs with separate research and infrastructure status.
 - **THREAT** - exposure against the next strike threshold, per-colony local heat, Sentinel coverage,
   evacuation.
 - **VAULT** - gene lines spent and returned, evacuated population, the running count against the 873.
@@ -188,8 +181,8 @@ materials only. No panel work yet; districts are built from the existing colony 
 **2. The SYS panel.** The four-tab view. Colony detail is stripped out of `PlanetPanel` and the
 logistics sidebar and replaced with summary cards.
 
-**3. Data cores and the tech tree.** Research Campus, `researchStore`, the Engineering branch
-retrofitting the existing ship upgrade tiers.
+**3. Abstract research.** Research Campus, Deep Survey Array, `researchStore`, persistence, and the
+cumulative civilization thresholds.
 
 **4. Ladder rebuild.** Capstones replace `evaluateKardashev`; the Dyson swarm becomes an
 Engineer-job project rather than a labor threshold.
@@ -205,9 +198,9 @@ already has the right shape for; the Sentinel Array scales colony defense.
 - Output integration over elapsed time, including the clamped unattended catch-up.
 - Upkeep shortfall degrading output proportionally without population loss.
 - District delivery competing with a fabricator on the same route for the same materials.
-- Data cores produced into `produced`, exported by `colonyExport`, and carried home under
-  `computeMaterialBandwidth`.
-- Capstone boundary conditions, and old-save migration from `installed` to `districts`.
+- Abstract research integrated over elapsed time without entering `produced` or route cargo.
+- Research and physical-milestone boundary conditions, and old-save migration from `installed` to
+  `districts` and from data cores to the shared research total.
 
 ## Open questions
 

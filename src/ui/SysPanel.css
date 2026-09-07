@@ -1,0 +1,320 @@
+.sys-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 8, 18, 0.9);
+}
+
+.sys-panel {
+  position: relative;
+  width: min(1180px, 96vw);
+  height: min(800px, 90vh);
+  overflow: hidden;
+  color: #c5e5ed;
+  background: #07121d;
+  border: 1px solid #346679;
+  font: 12px/1.5 var(--font-mono);
+}
+
+.sys-panel button {
+  color: inherit;
+  background: #102936;
+  border: 1px solid #315f70;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sys-panel button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.sys-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+}
+
+.sys-tabs {
+  display: flex;
+  height: 52px;
+  padding: 10px 54px 0 14px;
+  border-bottom: 1px solid #294b5b;
+}
+
+.sys-tabs button {
+  min-width: 150px;
+  border-bottom: 0;
+}
+
+.sys-tabs button.sys-tab-right {
+  margin-left: auto;
+}
+
+.sys-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+}
+
+.sys-status div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border: 1px solid #294b5b;
+  background: #0e2733;
+}
+
+.sys-status small {
+  grid-column: 1 / -1;
+  color: #7ea2b4;
+  line-height: 1.45;
+}
+
+.sys-tabs button.active {
+  color: #70d9b1;
+  background: #163949;
+}
+
+.sys-panel > main {
+  height: calc(100% - 52px);
+  overflow: auto;
+  padding: 18px;
+}
+
+.sys-world-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  min-height: 100%;
+}
+
+.sys-world-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid #294b5b;
+  padding-right: 14px;
+}
+
+.sys-world-roster button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  text-align: left;
+}
+
+.sys-world-roster button span {
+  color: #7ab0c8;
+  font-size: 10px;
+}
+
+.sys-world-roster button.active,
+.sys-district-grid article.built {
+  border-color: #4d9a82;
+  background: rgba(38, 99, 81, 0.25);
+}
+
+.sys-world-detail > header,
+.sys-civilization > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.sys-world-detail h3,
+.sys-world-detail h4,
+.sys-civilization h3,
+.sys-civilization h4,
+.sys-vault h3 {
+  margin: 6px 0;
+  color: #70d9b1;
+}
+
+.sys-strip {
+  display: grid;
+  grid-template-columns: 130px 1fr 90px;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.sys-strip > div {
+  height: 8px;
+  overflow: hidden;
+  background: #122532;
+  border: 1px solid #294b5b;
+}
+
+.sys-strip i {
+  display: block;
+  height: 100%;
+  background: #57c99e;
+}
+
+.sys-district-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sys-district-grid article,
+.sys-research-branches article,
+.sys-threat-list article {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  background: #0b1d28;
+  border: 1px solid #294b5b;
+}
+
+.sys-district-grid article span,
+.sys-research-branches article span,
+.sys-threat-list article span {
+  color: #7ab0c8;
+  font-size: 10px;
+}
+
+.sys-district-grid article b {
+  color: #91e3c3;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.sys-district-grid article span.sys-district-cost {
+  margin-top: auto;
+  color: #d3b77b;
+}
+
+.sys-district-grid article span.sys-district-cost.short {
+  color: #c87a7a;
+}
+
+.sys-district-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+
+.sys-district-actions .sys-build {
+  display: grid;
+}
+
+.sys-district-grid article button.sys-raze {
+  width: 26px;
+  color: #c87a7a;
+  border-color: #6d3a3a;
+  line-height: 1;
+}
+
+.sys-district-grid article button.sys-raze.armed {
+  color: #12060a;
+  background: #c87a7a;
+  border-color: #c87a7a;
+}
+
+
+.sys-jobs > div {
+  display: grid;
+  grid-template-columns: 1.2fr 55px 55px 1.4fr 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sys-jobs button {
+  width: 22px;
+  margin-right: 3px;
+}
+
+.sys-table-head {
+  color: #7ab0c8;
+  font-size: 10px;
+}
+
+.sys-delivery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sys-delivery span {
+  padding: 5px 8px;
+  background: #102936;
+  border: 1px solid #315f70;
+}
+
+.sys-project {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sys-project > * {
+  padding: 6px 9px;
+}
+
+.sys-research-branches {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sys-research-branches section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sys-research-branches article.unlocked {
+  border-color: #4d9a82;
+}
+
+.sys-research-branches p {
+  margin: 0;
+}
+
+.sys-threat-list {
+  display: grid;
+  gap: 8px;
+}
+
+.colony-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 12px 0;
+  padding: 12px;
+  color: #c5e5ed;
+  border: 1px solid #345363;
+}
+
+@media (max-width: 760px) {
+  .sys-world-layout,
+  .sys-research-branches {
+    grid-template-columns: 1fr;
+  }
+
+  .sys-world-roster {
+    border-right: 0;
+    border-bottom: 1px solid #294b5b;
+    padding: 0 0 12px;
+  }
+
+  .sys-district-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

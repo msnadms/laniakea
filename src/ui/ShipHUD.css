@@ -430,23 +430,3 @@
   animation: hud-outline-alert 0.7s ease-out forwards;
 }
 
-.hud-row--details {
-  position: relative;
-}
-
-.hud-details-toggle--open {
-  background: rgba(0, 190, 230, 0.22);
-}
-
-.hud-details-panel {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  min-width: 260px;
-  padding: 10px 12px;
-  background: rgba(3, 14, 22, 0.94);
-  border: 1px solid rgba(0, 190, 230, 0.45);
-  box-shadow: 0 0 18px rgba(0, 140, 180, 0.25);
-  pointer-events: all;
-  z-index: 5;
-}

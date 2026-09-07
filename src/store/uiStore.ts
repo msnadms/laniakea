@@ -204,6 +204,8 @@ interface UIState {
   adoptLegacyFuelReserve: (reserve: { exotic: number; helium3: number }) => void;
   showUpgradePanel: boolean;
   toggleUpgradePanel: () => void;
+  showSysPanel: boolean;
+  setShowSysPanel: (show: boolean) => void;
   resetUpgrades: () => void;
   upgradeStorageA: () => void;
   upgradeStorageB: () => void;
@@ -459,6 +461,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   })),
   showUpgradePanel: false,
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
+  showSysPanel: false,
+  setShowSysPanel: showSysPanel => set({ showSysPanel }),
   resetUpgrades: () => set((s) => ({ geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0, kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0, storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
   upgradeStorageA: () => {
     if (get().checkDetectionLethal()) return;
@@ -562,6 +566,7 @@ export function applyUserSettings(settings: UserSettings): void {
     destroyed: false,
     selectedPlanetKey: null,
     showUpgradePanel: false,
+    showSysPanel: false,
     railgunAmmo: settings.railgunAmmo,
     lastFireAt: settings.lastFireAt,
     helium3Reserves: Math.min(settings.helium3Reserves, cap),

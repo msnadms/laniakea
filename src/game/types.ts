@@ -194,6 +194,8 @@ export function makeExtractorKey(galaxySeed: number, systemId: number, planetNam
 export type FabricatorKey = string;
 
 export type ColonyKey = string;
+export type DistrictId = 'farm_district' | 'research_district' | 'civilian_district';
+export type JobType = 'farmer' | 'researcher' | 'steward';
 export interface Colony {
   key: ColonyKey;
   fabricatorKey: FabricatorKey;
@@ -202,22 +204,34 @@ export interface Colony {
   /** Zero while the charter's delivered demand is being assembled. */
   foundedAt: number;
   population: number;
-  installed: Record<string, number>;
+  districts: Record<DistrictId, number>;
+  jobPriority: JobType[];
+  produced: MaterialCost;
   supplies: Partial<Record<Resource['type'], number>>;
   assemblies: MaterialCost;
   /** Standing per-assembly order the colony advertises to routes and keeps back from export. */
   requested: MaterialCost;
   lastTickAt: number; lastFireAt: number; lastProbeEscapeAt: number;
-  ammo: number; localHeat: number; exportedLines: number;
-  fedMs: number; starvationMs: number; lostPeople: number; labor: number;
-  populationTier: number;
-  selfSufficientMs: number;
-  lastShipmentAt: number;
+  ammo: number; localHeat: number;
+  fedMs: number; starvationMs: number; lostPeople: number;
+  planetaryProgressMs: number;
   project: 'dyson' | 'probes' | null;
   projectDelivered: MaterialCost;
   swarmComplete: boolean;
   probeCoverage: number;
+  amenityRatio?: number;
+  districtModel?: boolean;
+  districtSlots?: number;
 }
+
+export type LegacyColony = Omit<Colony, 'districts' | 'jobPriority' | 'produced' | 'planetaryProgressMs' | 'districtModel'> & {
+  installed: Record<string, number>;
+  exportedLines: number;
+  labor: number;
+  populationTier: number;
+  selfSufficientMs: number;
+  lastShipmentAt: number;
+};
 
 export const makeColonyKey = makeFabricatorKey;
 export function colonyNodeId(galaxySeed: number, systemId: number): string {
@@ -395,7 +409,42 @@ export interface RareResource {
   desc: string;
   cost: ResourceCost;
   materials: MaterialCost;
-  effect?: { stat: 'popCap' | 'growth' | 'defense' | 'autonomy' | 'ectogenesis'; value: number };
+  effect?: { stat: 'popCap' | 'growth' | 'defense' | 'autonomy' | 'ectogenesis' | 'research'; value: number };
+}
+
+export interface DistrictOutput {
+  raw?: Partial<Record<Resource['type'], number>>;
+  materials?: MaterialCost;
+  research?: number;
+  amenities?: number;
+}
+
+export interface DistrictDefinition {
+  id: DistrictId;
+  name: string;
+  description: string;
+  builtWith: MaterialCost;
+  jobs: number;
+  job: JobType | null;
+  /** Amenities the district provides from its buildings alone, before any worker staffs it. */
+  baseAmenities?: number;
+  output: DistrictOutput;
+  upkeep: {
+    raw?: Partial<Record<Resource['type'], number>>;
+    materials?: MaterialCost;
+  };
+  anchor?: string;
+  populationCap?: number;
+  heat?: number;
+}
+
+export interface CivilizationResearchTier {
+  tier: 1 | 2 | 3;
+  name: string;
+  description: string;
+  threshold: number;
+  milestone: string;
+  unlock: string;
 }
 
 export const RARE_ROLE_LABELS: Record<string, string> = {

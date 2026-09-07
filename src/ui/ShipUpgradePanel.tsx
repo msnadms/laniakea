@@ -3,7 +3,7 @@ import {
   useUIStore,
   UPGRADE_COSTS, UPGRADE_POOL,
   EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE,
-  computeStorageCap, computeDriveMultiplier, computeLogisticsCap, computeMaterialBandwidth,
+  computeStorageCap, computeDriveMultiplier, computeLogisticsCap, computeMaterialBandwidth, computeWeaponCap,
 } from '../store/uiStore';
 import './ShipUpgradePanel.css';
 
@@ -65,6 +65,23 @@ const DRIVE_B_DESCS = [
   'Cools harvested helium to near-superfluid temperatures and exploits the mass difference between He-3 and He-4.',
   'Increases the energy extracted per fusion event through tighter magnetic confinement and higher plasma densities.',
   'Refines the fusion process toward He-3 + He-3 and He-3 + deuterium reactions, which release energy primarily as charged particles rather than free neutrons.',
+];
+
+const WEAPON_A_NAMES = ['Stock Magazine', 'Expanded Magazine I', 'Expanded Magazine II', 'Deep Magazine', 'Arsenal Hold'];
+const WEAPON_A_DESCS = [
+  'The Peregrine carries its original defensive ammunition allotment.',
+  'Reinforced magazines increase defensive endurance.',
+  'Distributed ammunition lockers reduce reload bottlenecks.',
+  'Deep magazines sustain prolonged suppression fire.',
+  'The full arsenal configuration maximizes ammunition capacity.',
+];
+const WEAPON_B_NAMES = ['Stock Fire Control', 'Predictive Tracking', 'Pattern Intercept', 'Saturation Control', 'Autonomous Defense'];
+const WEAPON_B_DESCS = [
+  'Baseline probe interception and fire control.',
+  'Predictive tracking improves defensive capacity.',
+  'Pattern interception coordinates overlapping firing solutions.',
+  'Saturation control supports a larger ready reserve.',
+  'Autonomous defense reaches the ship system limit.',
 ];
 
 // ── Logistics ─────────────────────────────────────────────────────────────────
@@ -218,6 +235,8 @@ function ShipUpgradePanelInner() {
   const driveB = useUIStore((s) => s.driveB);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
+  const weaponA = useUIStore((s) => s.weaponA);
+  const weaponB = useUIStore((s) => s.weaponB);
   const alloys = useUIStore((s) => s.alloys);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const helium3Reserves = useUIStore((s) => s.helium3Reserves);
@@ -227,6 +246,8 @@ function ShipUpgradePanelInner() {
   const upgradeDriveB = useUIStore((s) => s.upgradeDriveB);
   const upgradeLogisticsA = useUIStore((s) => s.upgradeLogisticsA);
   const upgradeLogisticsB = useUIStore((s) => s.upgradeLogisticsB);
+  const upgradeWeaponA = useUIStore((s) => s.upgradeWeaponA);
+  const upgradeWeaponB = useUIStore((s) => s.upgradeWeaponB);
 
   const storageACost = UPGRADE_COSTS.storageA[storageA] ?? Infinity;
   const storageBCost = UPGRADE_COSTS.storageB[storageB] ?? Infinity;
@@ -234,6 +255,8 @@ function ShipUpgradePanelInner() {
   const driveBCost = UPGRADE_COSTS.driveB[driveB] ?? Infinity;
   const logisticsACost = UPGRADE_COSTS.logisticsA[logisticsA] ?? Infinity;
   const logisticsBCost = UPGRADE_COSTS.logisticsB[logisticsB] ?? Infinity;
+  const weaponACost = UPGRADE_COSTS.weaponA[weaponA] ?? Infinity;
+  const weaponBCost = UPGRADE_COSTS.weaponB[weaponB] ?? Infinity;
 
   return createPortal(
     <div className="ship-upgrade-overlay" onClick={toggle}>
@@ -299,6 +322,33 @@ function ShipUpgradePanelInner() {
               currency: 'helium-3',
               canAfford: helium3Reserves >= driveBCost,
               onUpgrade: upgradeDriveB,
+            }}
+          />
+
+          <UpgradeSection
+            title="DEFENSIVE SYSTEMS"
+            pool={weaponA + weaponB}
+            pathA={{
+              level: weaponA,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - weaponB),
+              names: WEAPON_A_NAMES,
+              descs: WEAPON_A_DESCS,
+              stat: (lvl) => `${computeWeaponCap(lvl, weaponB)} rounds`,
+              costs: UPGRADE_COSTS.weaponA,
+              currency: 'alloys',
+              canAfford: alloys >= weaponACost,
+              onUpgrade: upgradeWeaponA,
+            }}
+            pathB={{
+              level: weaponB,
+              maxLevel: Math.min(PATH_MAX, UPGRADE_POOL - weaponA),
+              names: WEAPON_B_NAMES,
+              descs: WEAPON_B_DESCS,
+              stat: (lvl) => `${computeWeaponCap(weaponA, lvl)} rounds`,
+              costs: UPGRADE_COSTS.weaponB,
+              currency: 'alloys',
+              canAfford: alloys >= weaponBCost,
+              onUpgrade: upgradeWeaponB,
             }}
           />
 

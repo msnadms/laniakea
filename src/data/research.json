@@ -1,0 +1,28 @@
+{
+  "civilizationTiers": [
+    {
+      "tier": 1,
+      "name": "Planetary Civilization",
+      "description": "Unify settlement science into a body of knowledge capable of sustaining an autonomous world.",
+      "threshold": 120,
+      "milestone": "Maintain a fully staffed, food-positive colony for one hour.",
+      "unlock": "Planetary autonomy and Dyson swarm planning"
+    },
+    {
+      "tier": 2,
+      "name": "Stellar Civilization",
+      "description": "Develop the field physics and stellar engineering needed to capture the output of a star.",
+      "threshold": 420,
+      "milestone": "Complete a Dyson swarm at one colony.",
+      "unlock": "Stellar infrastructure and replication-network planning"
+    },
+    {
+      "tier": 3,
+      "name": "Galactic Civilization",
+      "description": "Solve autonomous replication and coordination across an inhabited galaxy.",
+      "threshold": 1120,
+      "milestone": "Bring replication networks online at three stars in one galaxy.",
+      "unlock": "Galactic-scale coordination"
+    }
+  ]
+}

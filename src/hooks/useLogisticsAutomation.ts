@@ -7,6 +7,7 @@ import { saveLogisticsRoute } from '../firebase/logisticsRoutes';
 import { useColonyStore } from '../store/colonyStore';
 import { tickCivilization } from '../store/civStore';
 import { useUIStore } from '../store/uiStore';
+import { useResearchStore } from '../store/researchStore';
 
 function campaignSignature() {
   const s = useUIStore.getState();
@@ -19,6 +20,7 @@ export function useLogisticsAutomation() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let routeSaveTimer: ReturnType<typeof setTimeout>;
+    let researchSaveTimer: ReturnType<typeof setTimeout>;
     // All mutation paths (charter, dispatch, install, evacuation, strikes) fan out here.
     // Serialize colony writes so a slow save cannot resurrect an evacuated settlement.
     let colonyWrites = Promise.resolve();
@@ -39,6 +41,15 @@ export function useLogisticsAutomation() {
         if (!user || !settingsLoaded) return;
         for (const route of useLogisticsStore.getState().routes) saveLogisticsRoute(user.uid, route);
       }, 500);
+    });
+
+    const unsubscribeResearch = useResearchStore.subscribe((state, previous) => {
+      if (state.points === previous.points) return;
+      clearTimeout(researchSaveTimer);
+      researchSaveTimer = setTimeout(() => {
+        const { user, settingsLoaded } = useAuthStore.getState();
+        if (user && settingsLoaded) void persistFabricatorRun(user.uid, { research: true });
+      }, 5000);
     });
 
     const run = async () => {
@@ -84,9 +95,11 @@ export function useLogisticsAutomation() {
     return () => {
       cancelled = true;
       unsubscribeRoutes();
+      unsubscribeResearch();
       unsubscribeColonies();
       clearTimeout(timer);
       clearTimeout(routeSaveTimer);
+      clearTimeout(researchSaveTimer);
     };
   }, []);
 }

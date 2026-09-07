@@ -21,6 +21,8 @@ import { useLogisticsStore } from './logisticsStore';
 import { useStockpileStore } from './stockpileStore';
 import { useQuestStore } from './questStore';
 import { loadNav } from '../lib/navLocalStorage';
+import { loadResearch, saveResearch } from '../firebase/research';
+import { useResearchStore } from './researchStore';
 
 interface AuthState {
   user: User | null;
@@ -47,7 +49,7 @@ export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const [baseSettings, discoveries, extractors, fabricators, quests, logisticsRoutes, extractorUpgrades, stockpile, colonies] = await Promise.all([
+        const [baseSettings, discoveries, extractors, fabricators, quests, logisticsRoutes, extractorUpgrades, stockpile, colonies, research] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
           loadAllExtractors(user.uid),
@@ -57,6 +59,7 @@ export function initAuth(): () => void {
           loadExtractorUpgrades(user.uid),
           loadStockpile(user.uid),
           loadAllColonies(user.uid),
+          loadResearch(user.uid),
         ]);
         // localStorage nav is more recent than Firebase's debounced write — prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
@@ -78,13 +81,18 @@ export function initAuth(): () => void {
         useFabricatorStore.getState().restoreFabricatorStates(fabricators.fabricatorStates);
         useColonyStore.getState().restoreColonies(colonies);
         useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
-        useStockpileStore.getState().restoreStockpile(stockpile.materials, stockpile.rares);
+        const legacyDataCores = stockpile.materials.data_core ?? 0;
+        const stockpileMaterials = { ...stockpile.materials };
+        delete stockpileMaterials.data_core;
+        useStockpileStore.getState().restoreStockpile(stockpileMaterials, stockpile.rares);
+        useResearchStore.getState().restoreResearch(research, legacyDataCores);
         const legacyProductionItems = [
           ...fabricators.legacyProductionItems,
           ...(extractorUpgrades.legacyProductionItems ?? []),
         ];
         const migratedRoutes = logisticsRoutes.some((route) => route.legacyNodeKeys !== undefined);
-        if (legacyProductionItems.length > 0 || migratedRoutes) {
+        const migratedResearch = research.points === undefined || legacyDataCores > 0;
+        if (legacyProductionItems.length > 0 || migratedRoutes || migratedResearch) {
           useExtractorStore.getState().receiveFabricatorItems(legacyProductionItems);
           const normalizedStates = useFabricatorStore.getState().fabricatorStates;
           const migratedStockpile = useStockpileStore.getState();
@@ -92,6 +100,7 @@ export function initAuth(): () => void {
           await Promise.all([
             ...Object.entries(normalizedStates).map(([key, state]) => saveFabricatorState(user.uid, key, state)),
             saveStockpile(user.uid, migratedStockpile.materials, migratedStockpile.rares),
+            saveResearch(user.uid, { points: useResearchStore.getState().points }),
             saveExtractorUpgrades(user.uid, {
               ownedUpgrades: migratedUpgrades.ownedUpgrades,
               nodeEquipped: migratedUpgrades.nodeEquipped,

@@ -153,6 +153,11 @@
       "cost": { "helium": 15 }, "materials": {}, "outputs": 5
     },
     {
+      "id": "viable_line", "name": "Viable Gene Line", "tier": 3,
+      "desc": "A preserved human genetic line returned from a colony clinic.",
+      "cost": {}, "materials": {}, "byproductOnly": true
+    },
+    {
       "id": "statite_mirror", "name": "Statite Mirror", "tier": 4,
       "desc": "Field hardware that holds a mirror against a star's gravity.",
       "cost": { "alienMatter": 1, "alloys": 1200 }, "materials": { "metamaterial_film": 2, "casimir_plate": 1 }

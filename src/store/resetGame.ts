@@ -3,7 +3,7 @@ import { useUIStore, applyUserSettings } from './uiStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore } from './extractorStore';
 import { useFabricatorStore } from './fabricatorStore';
-import { useColonyStore } from './colonyStore';
+import { clearDistrictCapacityCache, useColonyStore } from './colonyStore';
 import { deleteAllColonies } from '../firebase/colonies';
 import { useLogisticsStore } from './logisticsStore';
 import { useStockpileStore } from './stockpileStore';
@@ -19,6 +19,8 @@ import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { saveStockpile } from '../firebase/stockpile';
 import { clearFirstVisit } from '../lib/firstVisit';
 import { flushRunPersistence } from './persistRun';
+import { useResearchStore } from './researchStore';
+import { deleteResearch } from '../firebase/research';
 
 export const DEATH_SEQUENCE_MS = 2800;
 
@@ -51,10 +53,12 @@ export async function resetGame(): Promise<void> {
   useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {} });
   useFabricatorStore.setState({ fabricators: {}, fabricatorStates: {} });
   useColonyStore.setState({ colonies: {} });
+  clearDistrictCapacityCache();
   useLogisticsStore.setState({ routes: [] });
   useStockpileStore.setState({ materials: {}, rares: {} });
   useCodexStore.getState().setAll([]);
   useQuestStore.getState().resetQuests();
+  useResearchStore.setState({ points: 0 });
 
   if (!user) return;
 
@@ -70,5 +74,6 @@ export async function resetGame(): Promise<void> {
     deleteQuests(user.uid),
     saveExtractorUpgrades(user.uid, { ownedUpgrades: [], nodeEquipped: {} }),
     saveStockpile(user.uid, {}, {}),
+    deleteResearch(user.uid),
   ]);
 }

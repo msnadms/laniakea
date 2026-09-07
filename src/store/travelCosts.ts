@@ -44,6 +44,11 @@ export function flatTravelCost(baseExotic: number) {
   };
 }
 
+/** A district is delivered from orbit, so it is priced as a supercluster-scale haul. */
+export function districtBuildCost(): { exotic: number; helium: number } {
+  return flatTravelCost(SC_MAX_EXOTIC);
+}
+
 export function purgeCost(): { exotic: number; helium: number } {
   const [me, mh] = mult();
   return {

@@ -374,6 +374,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
           extractorKeys: collected.map(({ key }) => key),
           fabricatorKeys,
           colonyKeys: result.colonyKeys,
+          campaign: true,
         });
       }
 

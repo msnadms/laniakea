@@ -4,8 +4,8 @@
       "id": "zero_point_capacitor",
       "name": "Zero-Point Capacitor",
       "role": "power",
-      "desc": "Vacuum power source. Each capacitor increases population growth by 0.25 per hour.",
-      "effect": { "stat": "growth", "value": 0.25 },
+      "desc": "Vacuum power source and anchor for a Research District, increasing that district's research output by 25%.",
+      "effect": { "stat": "research", "value": 0.25 },
       "cost": { "exotic": 800 },
       "materials": { "casimir_plate": 2, "bec_cell": 1 }
     },
@@ -13,7 +13,7 @@
       "id": "antihydrogen_reservoir",
       "name": "Antihydrogen Reservoir",
       "role": "fuel",
-      "desc": "Colony dispatch reserve. Stores 2000 units of each warp fuel so its network can operate without the Peregrine.",
+      "desc": "Farm District anchor and colony dispatch reserve. Stores 2000 units of each warp fuel so its network can operate without the Peregrine.",
       "effect": { "stat": "autonomy", "value": 2000 },
       "cost": { "helium": 2200, "metallicHydrogen": 800 },
       "materials": { "positron_trap": 2, "deuterium_slush": 4 }
@@ -22,7 +22,7 @@
       "id": "frame_dragging_gyro",
       "name": "Sentinel Battery",
       "role": "field",
-      "desc": "Superconducting fire-control mount for census probes. Holds 40 rounds and reduces the firing interval.",
+      "desc": "Built into a Research District, where its superconducting mount steadies the instruments and carries the colony's 40-round fire-control battery.",
       "effect": { "stat": "defense", "value": 40 },
       "cost": { "alloys": 1800, "exotic": 1200 },
       "materials": { "ybco_tape": 3, "degenerate_core": 1 }
@@ -31,7 +31,7 @@
       "id": "closed_ecology_column",
       "name": "Closed Ecology Column",
       "role": "life",
-      "desc": "Recycles air, water and waste for 1000 people. Food still requires local production or supply ships.",
+      "desc": "Civilian District anchor. Recycles air, water and waste for 1000 people; food still requires farms or supply ships.",
       "effect": { "stat": "popCap", "value": 1000 },
       "cost": { "nutrients": 3200, "alloys": 1200 },
       "materials": { "silica_aerogel": 6, "graphene_lattice": 4, "muon_cell": 1 }
@@ -40,7 +40,7 @@
       "id": "ectogenesis_bank",
       "name": "Ectogenesis Bank",
       "role": "population",
-      "desc": "Produces people from stored genetic lines. One bank is consumed at founding and at each population tier.",
+      "desc": "Built into a Civilian District, where it raises people from stored genetic lines and returns viable ones to the vault.",
       "effect": { "stat": "ectogenesis", "value": 1000 },
       "cost": { "nutrients": 3000, "alloys": 2000 },
       "materials": { "bec_cell": 2, "muon_cell": 2, "silica_aerogel": 6 }
