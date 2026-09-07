@@ -24,7 +24,7 @@
     {
       "id": "signal_dampener",
       "name": "Signal Dampener",
-      "desc": "Reduces station traffic signatures and lowers the chance of detection by passing census probes.",
+      "desc": "Halves this extractor's route risk. Equip two to eliminate its risk.",
       "cost": { "exotic": 1500 },
       "materials": { "metamaterial_film": 2, "bec_cell": 1 },
       "effect": { "upgType": "detection", "multiplier": 1 }

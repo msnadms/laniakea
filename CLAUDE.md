@@ -175,18 +175,18 @@ capping, and everything else is demand-proportional. Each edge independently enf
 cannot change results.
 
 Raw reserves live on the **extractor** (`Extractor.reserve`, "leave in ground"), not on edges, so
-one source cannot carry conflicting per-edge reserves. The fuel floor is one ship-wide pair
-(`uiStore.fuelReserveExotic` / `fuelReserveHelium3`) rather than per-route, since every route
-draws from the same tanks.
+one source cannot carry conflicting per-edge reserves. The fuel floor
+(`RouteAutomationPolicy.fuelReserveExotic` / `fuelReserveHelium3`) is per-route, since routes draw
+from the same ship tanks at different rates and one route's floor should not gate another's.
 
 Routes are activated under a `dispatchMode` (`fill` waits for `sourceFillPercent`, `batch` waits
-for a craftable batch) plus detection-ceiling and jam policies. `restoreRoutes` migrates older
-saves: `unitCap`→`materialDraw`, `overflow: 'next'`→`'stockpile'`, `requireRecipeReady`→`batch`,
-and the largest legacy `minimumShipReserve` seeds the global fuel floor; edge priority, weight,
-per-edge reserves, and the `quiet` flag are dropped.
-An automated route that cannot afford fuel or would breach its detection ceiling **holds** (staying active
-and retrying as detection decays); only `pauseOnJam` deactivates it, since a jam needs the player.
-Route risk is spent through `raiseDetectionBy` (detection points), not `raiseDetection` (a 0-1 probability).
+for a craftable batch) plus probe-attention-ceiling, fuel-floor, and jam policies. `restoreRoutes`
+migrates older saves: `unitCap`→`materialDraw`, `overflow: 'next'`→`'stockpile'`,
+`requireRecipeReady`→`batch`; edge priority, weight, per-edge reserves, and the `quiet` flag are
+dropped.
+An automated route that cannot afford fuel or would breach its probe attention ceiling **holds** (staying active
+and retrying as attention decays); only `pauseOnJam` deactivates it, since a jam needs the player.
+Route risk over 3 adds one probe attention point; it is not a probability roll.
 `useLogisticsAutomation` runs the same `dispatchRoute` path as manual operation and persists each
 completed run.
 
@@ -196,35 +196,30 @@ batch, so a trickle of demand cannot bleed a full dispatch fee. Extractors alrea
 from `lastCollectedAt`, but routes do not, so the automation hook's **first** tick calls
 `catchUpAutomation` instead of `runAutomation` — it re-dispatches until a pass yields nothing
 (bounded by `AUTOMATION_CATCHUP_PASSES`), converting a day of banked extractor output in one go
-rather than over an hour of real time. Because detection heat is charged per dispatch and cannot
+rather than over an hour of real time. Because probe attention is charged per dispatch and cannot
 decay during a synchronous catch-up, the hook hands `catchUpAutomation` the offline span and it
 opens a `catchUpDetectionCredit` — the heat the ship *would* have shed while away, capped at
 `AUTOMATION_CATCHUP_CREDIT_CAP` — that each dispatch spends before charging real heat. Without it
 the headroom for converting an absence would be the constant `detectionCeiling` no matter how long
 that absence was, so a week away would pay no better than an hour. The credit is cleared when the
 catch-up returns. It terminates on its own because each pass drains the
-extractors below `sourceFillPercent`, and it cannot run away because the detection ceiling holds
-the route once accumulated heat plus risk crosses it (and the credit is finite). `AUTOMATION_POLL_MS` is 60s: an extractor
+extractors below `sourceFillPercent`, and it cannot run away because the probe attention ceiling holds
+the route once accumulated attention plus the thresholded increase crosses it (and the credit is finite). `AUTOMATION_POLL_MS` is 60s: an extractor
 gains a fraction of a unit per tick at any realistic rate, so polling faster buys nothing and
 multiplies the Firestore fan-out.
 
-**Detection risk** (`routeDetectionRisk`) models warp-drive signatures from dispatched drones, so it
-is **route-scoped per dispatch** and prices *traffic concentration*, never distance — distance is
-already paid in fuel by `hopExotic`. Risk is `Σ over superclusters m(m-1)/DETECTION_DENSITY_DIVISOR`
-where `m` is the route's hops inside that supercluster, plus `DETECTION_CROSSING_POINTS` per
-supercluster-crossing edge. Working many hops through one region is what gets you found; a long jump
-to a fresh supercluster is nearly free, which is the point — the meter exists to push the player
-outward. `dispatchRoute` charges the risk as **fractional heat** (`raiseDetectionHeat`), not as
-whole bars — with `DETECTION_HEAT_PER_BAR` at 1 that means every dispatch of a route larger than a
-few hops is visible on the meter, and the sustainable size of a single route is set by where its
-per-dispatch risk crosses the passive decay rate.
+**Detection risk** (`routeDetectionRisk`) is calculated for each extractor included in a route.
+Every extractor in the same galaxy contributes 1 to that routed extractor's risk, every extractor
+in another galaxy in the same supercluster contributes 0.5, and extractors in other superclusters
+contribute nothing. The routed extractor itself is included in the same-galaxy count. Route shape
+and edge distance do not affect risk; distance is already paid in fuel by `hopExotic`. A raw risk
+over `PROBE_ATTENTION_RISK_THRESHOLD` (3) raises probe attention by exactly 1 when useful work is
+dispatched. Raw risk remains visible in the preview while the one-point increase is what automation
+checks against its probe attention ceiling and spends from offline catch-up credit.
 
-A **Signal Dampener** *weights down* the hops incident to its station rather than erasing them: an
-edge counts as `DETECTION_DAMPENED_HOP_WEIGHT` per dampened endpoint (a node counts as dampened
-when it has extractors and all of them are dampened), so a fully masked route floors at a residual
-instead of zero. Zeroing was the wrong shape — in the usual extractor-leaves-into-a-fabricator-hub
-topology every edge is extractor-incident, so one module per extractor bought permanent immunity
-and the meter stopped existing.
+A **Signal Dampener** scales only the equipped extractor's contribution: one module halves it and
+two modules reduce it to zero. Other extractors still count when determining that station's local
+traffic concentration, even when they are not themselves part of the route.
 
 Passive decay scales with the drone fleet: `computeDetectionDecayPerMs(logisticsA)` multiplies the
 base rate by `DETECTION_DECAY_LOGISTICS_MULT`. Decay is global while `logisticsA` also raises the
@@ -337,7 +332,7 @@ Fabricators are the crafting layer — named `Fabricator` in code, UI strings an
 
 **Intermediate materials** (`src/data/materials.json`, typed re-export in `materials.ts`) are real-science intermediates in three tiers (`MATERIAL_TIER_LABELS`: Refined → Engineered → Exotic) — graphene lattice, boron nitride ceramic, deuterium slush, silica aerogel, tritium residue; high-entropy alloy billet, YBCO tape, metamaterial film, BEC cell, tritium getter bed; Casimir plate stack, Penning positron trap, degenerate matter core, muon-catalysed fusion cell. Higher tiers consume lower tiers, so the tree bottoms out in raw extractor output. The graph is deliberately **wide, not linear**: every tier-1 material feeds several downstream recipes so tier-1 demand competes. Two materials have alternate routes (`graphene_lattice_carbide`, `silica_aerogel_vacuum`) trading a different raw mix for a better yield.
 
-**Extractor upgrade modules** (`src/data/upgrades.json`, typed re-export in `upgrades.ts`): data-driven defs (`EXTRACTOR_UPGRADES`) with raw `cost`, intermediate `materials`, and `effect` (`rate`, `storage`, or `detection` `upgType` + `multiplier`). Modules sit at the top of the tree and are earned only via fabricator production, then equipped two-per-extractor; a `detection` module (Signal Dampener) excludes that extractor from `routeDetectionRisk` entirely rather than reducing a numeric detection value.
+**Extractor upgrade modules** (`src/data/upgrades.json`, typed re-export in `upgrades.ts`): data-driven defs (`EXTRACTOR_UPGRADES`) with raw `cost`, intermediate `materials`, and `effect` (`rate`, `storage`, or `detection` `upgType` + `multiplier`). Modules sit at the top of the tree and are earned only via fabricator production, then equipped two-per-extractor; one Signal Dampener halves that extractor's route-risk contribution and two eliminate it.
 
 **Advanced fabricators** are the second fabricator tier (`Fabricator.tier`: `1` basic, `2` advanced; `FABRICATOR_TIER_LABELS`). They are not built directly: a planet only offers a basic fabricator, and an existing tier-1 fabricator is upgraded in place from `PlanetPanel` (`fabricatorStore.upgradeFabricator`) by paying `FABRICATOR_UPGRADE_COST` in raw resources plus `FABRICATOR_UPGRADE_MATERIALS` from the stockpile, so a basic fabricator has to run before one can exist. They craft everything a basic fabricator can, plus the `'rare'` category: **rare assemblies** (`src/data/rareResources.json`, typed re-export in `rareResources.ts`) — neutronium keel, zero-point capacitor, antihydrogen reservoir, frame-dragging gyroscope, closed ecology column — grouped by `role` (`RARE_ROLE_LABELS`) and reserved for player bases. Rare recipes take raw resources plus tier-2/3 intermediates, and their output lands in `stockpileStore.rares` rather than `materials`. `fabricatorCanCraft(tier, category)` gates rare targets to tier 2 in both `setSlotTarget` and `feedFabricator`; the slot picker only lists rare sections for an advanced fabricator, and advanced nodes render amber (rather than green) on the logistics map and in-system.
 

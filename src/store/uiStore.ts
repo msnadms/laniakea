@@ -123,7 +123,6 @@ export const UPGRADE_COSTS = {
 };
 
 interface UIState {
-  geneLines: number;
   exposure: number;
   lastProbeEscapeAt: number;
   alienMatter: number;
@@ -131,8 +130,6 @@ interface UIState {
   strike: CannonStrike | null;
   nextStrikeExposure: number;
   evacuatedPopulation: number;
-  spendGeneLine: (count?: number) => boolean;
-  receiveGeneLine: (count?: number) => void;
   showAttractorLabels: boolean;
   toggleAttractorLabels: () => void;
   showOrbitRings: boolean;
@@ -203,10 +200,6 @@ interface UIState {
   weaponB: number;
   logisticsA: number;
   logisticsB: number;
-  fuelReserveExotic: number;
-  fuelReserveHelium3: number;
-  setFuelReserve: (exotic: number, helium3: number) => void;
-  adoptLegacyFuelReserve: (reserve: { exotic: number; helium3: number }) => void;
   showUpgradePanel: boolean;
   toggleUpgradePanel: () => void;
   showSysPanel: boolean;
@@ -237,16 +230,8 @@ function upsertAddress(address: AddressComponent[], component: AddressComponent)
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
-  geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0,
+  exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0,
   kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0,
-  spendGeneLine: (count = 1) => {
-    if (!Number.isInteger(count) || count <= 0 || get().geneLines < count) return false;
-    set({ geneLines: get().geneLines - count });
-    return true;
-  },
-  receiveGeneLine: (count = 1) => {
-    if (Number.isInteger(count) && count > 0) set({ geneLines: get().geneLines + count });
-  },
   showAttractorLabels: true,
   toggleAttractorLabels: () => set((s) => ({ showAttractorLabels: !s.showAttractorLabels })),
   showOrbitRings: false,
@@ -454,21 +439,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   weaponB: 0,
   logisticsA: 0,
   logisticsB: 0,
-  fuelReserveExotic: 0,
-  fuelReserveHelium3: 0,
-  setFuelReserve: (exotic, helium3) => set({
-    fuelReserveExotic: Math.max(0, Math.floor(exotic)),
-    fuelReserveHelium3: Math.max(0, Math.floor(helium3)),
-  }),
-  adoptLegacyFuelReserve: (reserve) => set((s) => ({
-    fuelReserveExotic: s.fuelReserveExotic || Math.max(0, Math.floor(reserve.exotic)),
-    fuelReserveHelium3: s.fuelReserveHelium3 || Math.max(0, Math.floor(reserve.helium3)),
-  })),
   showUpgradePanel: false,
   toggleUpgradePanel: () => set((s) => ({ showUpgradePanel: !s.showUpgradePanel })),
   showSysPanel: false,
   setShowSysPanel: showSysPanel => set({ showSysPanel }),
-  resetUpgrades: () => set((s) => ({ geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0, kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0, storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
+  resetUpgrades: () => set((s) => ({ exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0, kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0, storageA: 0, storageB: 0, driveA: 0, driveB: 0, weaponA: 0, weaponB: 0, logisticsA: 0, logisticsB: 0, lastFireAt: 0, railgunAmmo: Math.min(s.railgunAmmo, WEAPON_BASE) })),
   upgradeStorageA: () => {
     if (get().checkDetectionLethal()) return;
     const { storageA, storageB, alloys } = get();
@@ -550,7 +525,6 @@ export const useUIStore = create<UIState>((set, get) => ({
 export function applyUserSettings(settings: UserSettings): void {
   const cap = computeStorageCap(settings.storageA);
   useUIStore.setState({
-    geneLines: settings.geneLines ?? 24,
     exposure: settings.exposure ?? 0,
     lastProbeEscapeAt: settings.lastProbeEscapeAt ?? 0,
     alienMatter: settings.alienMatter ?? 0,
@@ -587,7 +561,5 @@ export function applyUserSettings(settings: UserSettings): void {
     weaponB: settings.weaponB,
     logisticsA: settings.logisticsA,
     logisticsB: settings.logisticsB,
-    fuelReserveExotic: settings.fuelReserveExotic ?? 0,
-    fuelReserveHelium3: settings.fuelReserveHelium3 ?? 0,
   });
 }

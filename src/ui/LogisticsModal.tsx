@@ -16,6 +16,7 @@ import {
   DEFAULT_AUTOMATION_POLICY,
   AUTOMATION_POLL_MS,
   MAX_DETECTION_CEILING,
+  PROBE_ATTENTION_RISK_THRESHOLD,
 } from '../store/logisticsStore';
 import { useExtractorStore, peekAccumulated } from '../store/extractorStore';
 import {
@@ -135,9 +136,6 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const logisticsB = useUIStore((s) => s.logisticsB);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
   const helium3 = useUIStore((s) => s.helium3Reserves);
-  const fuelReserveExotic = useUIStore((s) => s.fuelReserveExotic);
-  const fuelReserveHelium3 = useUIStore((s) => s.fuelReserveHelium3);
-  const setFuelReserve = useUIStore((s) => s.setFuelReserve);
   const user = useAuthStore((s) => s.user);
 
   const driveA = useUIStore((s) => s.driveA);
@@ -479,7 +477,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
   const routeSummaries = useMemo(() => {
     void fabricatorStates; void stockpileMaterials; void logisticsA; void logisticsB; void colonies; void stockpileRares;
-    void exoticMatter; void helium3; void fuelReserveExotic; void fuelReserveHelium3;
+    void exoticMatter; void helium3;
     void driveA; void driveB; void previewWorldKey; void nodeEquipped;
     return new Map(routes.map((route) => {
       const preview = previewRoute(route.id);
@@ -487,7 +485,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
       return [route.id, { preview, groups, valid: preview?.valid ?? routeIsValid(route.edges) }];
     }));
   }, [routes, previewRoute, extractors, fabricators, fabricatorStates, stockpileMaterials,
-    logisticsA, logisticsB, exoticMatter, helium3, fuelReserveExotic, fuelReserveHelium3,
+    logisticsA, logisticsB, exoticMatter, helium3,
     driveA, driveB, previewWorldKey, nodeEquipped, colonies, stockpileRares]);
 
   const heldByNode = useMemo(() => {
@@ -564,11 +562,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     const valid = summary?.valid ?? routeIsValid(route.edges);
                     const canAfford = exoticMatter >= cost.exotic && helium3 >= cost.helium;
                     const canDispatch = preview?.canRun === true || (
-                      (preview?.reason === 'Detection ceiling would be exceeded'
+                      (preview?.reason === 'Probe attention ceiling would be exceeded'
                         || preview?.reason === 'Insufficient route fuel')
                       && valid && canAfford
                     );
-                    const raisesDetection = (preview?.detectionRisk ?? 0) > 0;
+                    const raisesDetection = (preview?.detectionRisk ?? 0) > PROBE_ATTENTION_RISK_THRESHOLD;
                     const stalledStatus = fabricatorNodeStatus(fabKeys, fabricatorStates, fabricators);
                     const stalled = stalledStatus === 'jammed' || stalledStatus === 'starved';
 
@@ -602,7 +600,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                         {raisesDetection && (
                           <div className="lroute-warn">
                             <span className="lroute-warn-icon">△</span>
-                            Dispatch raises detection
+                            Dispatch raises probe attention by 1
                           </div>
                         )}
 
@@ -833,7 +831,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                           </>
                         )}
                         <label className="logistics-policy-field">
-                          Detection ceiling
+                          Probe attention ceiling
                           <input type="number" min="0" max={MAX_DETECTION_CEILING} value={draftAutomation.detectionCeiling}
                             onChange={(event) => setDraftAutomation((policy) => ({ ...policy, detectionCeiling: Math.max(0, Math.min(MAX_DETECTION_CEILING, Number(event.target.value))) }))} />
                         </label>
@@ -842,9 +840,16 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                             onChange={(event) => setDraftAutomation((policy) => ({ ...policy, pauseOnJam: event.target.checked }))} />
                           Pause on jam
                         </label>
-                        <div className="logistics-policy-note">
-                          Fuel floors are shared by every route — set them under Reserves.
-                        </div>
+                        <label className="logistics-policy-field">
+                          Keep exotic
+                          <input type="number" min="0" value={draftAutomation.fuelReserveExotic}
+                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, fuelReserveExotic: Math.max(0, Math.floor(Number(event.target.value))) }))} />
+                        </label>
+                        <label className="logistics-policy-field">
+                          Keep He-3
+                          <input type="number" min="0" value={draftAutomation.fuelReserveHelium3}
+                            onChange={(event) => setDraftAutomation((policy) => ({ ...policy, fuelReserveHelium3: Math.max(0, Math.floor(Number(event.target.value))) }))} />
+                        </label>
                       </div>
                       )}
                     </div>
@@ -1006,19 +1011,6 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                     <span className="logistics-resource-type">Helium-3</span>
                     <span className="logistics-resource-amount">{fmt(helium3)}</span>
                   </div>
-                </div>
-                <div className="logistics-fuel-floor">
-                  <div className="logistics-fuel-floor-head">Fuel floor · all routes</div>
-                  <label className="logistics-policy-field">
-                    Keep exotic
-                    <input type="number" min="0" value={fuelReserveExotic}
-                      onChange={(event) => setFuelReserve(Number(event.target.value), fuelReserveHelium3)} />
-                  </label>
-                  <label className="logistics-policy-field">
-                    Keep He-3
-                    <input type="number" min="0" value={fuelReserveHelium3}
-                      onChange={(event) => setFuelReserve(fuelReserveExotic, Number(event.target.value))} />
-                  </label>
                 </div>
                 <div className="logistics-resources-list">
                   {allExtractors.length === 0 ? (
@@ -1495,8 +1487,6 @@ function FabricatorSidebar({
     metallicHydrogen: s.metallicHydrogen,
     neutronStarMatter: s.neutronStarMatter,
     alienMatter: s.alienMatter,
-    fuelReserveExotic: s.fuelReserveExotic,
-    fuelReserveHelium3: s.fuelReserveHelium3,
     logisticsA: s.logisticsA,
     logisticsB: s.logisticsB,
   })));
@@ -1941,7 +1931,7 @@ function InventoryPanel({
                     <UpgradeModuleIcon size={14} />
                     <span className="lm-row-name">{upg.name}</span>
                     <span className="lm-row-badge">
-                      {upg.effect.upgType === 'detection' ? 'mask' : `${upg.effect.multiplier}x`}
+                      {upg.effect.upgType === 'detection' ? '½ risk' : `${upg.effect.multiplier}x`}
                     </span>
                     {pendingEquip ? (
                       <button className={actionClass} disabled={!action} onClick={action ?? undefined}>

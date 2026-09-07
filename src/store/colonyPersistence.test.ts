@@ -31,15 +31,15 @@ beforeEach(() => {
 });
 
 describe('colony persistence fan-out', () => {
-  it('saves delivered assembly counts and vault accounting together with the colony write', async () => {
+  it('saves delivered assembly counts and campaign accounting together with the colony write', async () => {
     const colony = { ...charterSite(f, 100), assemblies: { ectogenesis_bank: 1 } };
     useColonyStore.setState({ colonies: { [f.key]: colony } });
     useStockpileStore.setState({ rares: { ectogenesis_bank: 0 } });
-    useUIStore.setState({ geneLines: 22, exposure: 4 });
+    useUIStore.setState({ exposure: 4 });
     await persistFabricatorRun('player', { colonyKeys: [f.key] });
     expect(saveColony).toHaveBeenCalledWith('player', colony);
     expect(saveStockpile).toHaveBeenCalledWith('player', {}, { ectogenesis_bank: 0 });
-    expect(saveCampaignProgress).toHaveBeenCalledWith('player', expect.objectContaining({ geneLines: 22, exposure: 4 }));
+    expect(saveCampaignProgress).toHaveBeenCalledWith('player', expect.objectContaining({ exposure: 4 }));
   });
   it('serializes old writes before deletion so evacuation cannot be undone by a slow save', async () => {
     let finishSave!: () => void;
@@ -53,14 +53,17 @@ describe('colony persistence fan-out', () => {
     finishSave(); await saving; await deleting;
     expect(deleteColony).toHaveBeenCalledWith('slow-player', f.key);
   });
-  it('restores old settings with a full vault and clears campaign progress on reset', () => {
-    const { geneLines: _gene, exposure: _exposure, lastProbeEscapeAt: _escape, ...old } = defaultSettings;
-    useUIStore.setState({ geneLines: 1, exposure: 50 });
+  it('restores missing campaign settings and clears campaign progress on reset', () => {
+    const { exposure: _exposure, lastProbeEscapeAt: _escape, ...old } = defaultSettings;
+    useUIStore.setState({ exposure: 50 });
     applyUserSettings(old as typeof defaultSettings);
-    expect(useUIStore.getState().geneLines).toBe(24);
     expect(useUIStore.getState().exposure).toBe(0);
-    useUIStore.setState({ geneLines: 1, exposure: 50, alienMatter: 100, kardashevTier: 3 });
+    useUIStore.setState({ exposure: 50, alienMatter: 100, kardashevTier: 3 });
     useUIStore.getState().resetUpgrades();
-    expect(useUIStore.getState()).toMatchObject({ geneLines: 24, exposure: 0, alienMatter: 0, kardashevTier: 0 });
+    expect(useUIStore.getState()).toMatchObject({ exposure: 0, alienMatter: 0, kardashevTier: 0 });
+  });
+  it('drops removed cargo when loading an older stockpile', () => {
+    useStockpileStore.getState().restoreStockpile({ viable_line: 0.75, graphene_lattice: 2 });
+    expect(useStockpileStore.getState().materials).toEqual({ graphene_lattice: 2 });
   });
 });

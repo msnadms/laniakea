@@ -3,7 +3,7 @@ vi.mock('../firebase/firebase', () => ({ db: {}, auth: {}, googleProvider: {} })
 import type { Colony, Fabricator } from '../game/types';
 import { DEFAULT_JOB_PRIORITY, DISTRICT_BY_ID } from '../data/districts';
 import { districtUpkeepShortfall } from '../ui/colonyPresentation';
-import { AMENITIES_PER_PERSON, AMENITIES_PER_WORKING_DISTRICT, AMENITY_GROWTH_FLOOR, charterSite, colonyDemand, colonyExport, colonyRawExport, filledJobs, HOUR, migrateColony, tickColony, useColonyStore } from './colonyStore';
+import { AMENITIES_PER_PERSON, AMENITIES_PER_WORKING_DISTRICT, AMENITY_GROWTH_FLOOR, charterSite, colonyDemand, colonyExport, colonyNetProduction, colonyRawExport, filledJobs, HOUR, migrateColony, tickColony, useColonyStore } from './colonyStore';
 import { evaluateKardashev } from './civStore';
 import { useStockpileStore } from './stockpileStore';
 import { useUIStore } from './uiStore';
@@ -52,6 +52,18 @@ describe('colony districts and jobs', () => {
     expect(tickColony(c, 2 * HOUR).research).toBeCloseTo(1.25);
     expect(tickColony(c, 20 * HOUR).research).toBeCloseTo(2.5);
     expect(tickColony(c, 2 * HOUR).colony.produced.data_core).toBeUndefined();
+  });
+
+  it('summarizes net hourly production and deficits at current staffing', () => {
+    const c = colony({
+      population: 1000,
+      districts: { civilian_district: 1, farm_district: 1, research_district: 1, defense_district: 0 },
+    });
+    const rates = colonyNetProduction(c);
+    expect(rates.raw.nutrients).toBeCloseTo(1930);
+    expect(rates.raw['helium-3']).toBe(-8);
+    expect(rates.research).toBeCloseTo(3.75);
+    expect(rates.materials).toEqual({});
   });
 
   it('degrades output in proportion to unmet upkeep without directly removing population', () => {

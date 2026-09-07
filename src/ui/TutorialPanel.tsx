@@ -101,7 +101,7 @@ const TUTORIAL_CONTENT: Record<TutorialPage, TutorialContent> = {
         title: 'Control the flow',
         items: [
           'Cargo follows the arrows from sources toward fabricators. Edge policies control filters, priorities, reserves, and surplus routing.',
-          'The dry run reports expected batches, edge use, shortages, fuel cost, and detection risk before dispatch.',
+          'The dry run reports expected batches, edge use, shortages, fuel cost, and route risk. Risk over 3 adds 1 probe attention on dispatch.',
           'Activate a valid route for automatic dispatches, or use Dispatch to run it immediately.',
         ],
       },

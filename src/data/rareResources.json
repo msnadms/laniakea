@@ -40,7 +40,7 @@
       "id": "ectogenesis_bank",
       "name": "Ectogenesis Bank",
       "role": "population",
-      "desc": "Built into a Civilian District, where it raises people from stored genetic lines and returns viable ones to the vault.",
+      "desc": "Built into a Civilian District, where it safely grows and supports a new population.",
       "effect": { "stat": "ectogenesis", "value": 1000 },
       "cost": { "nutrients": 3000, "alloys": 2000 },
       "materials": { "bec_cell": 2, "muon_cell": 2, "silica_aerogel": 6 }

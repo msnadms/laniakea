@@ -5,7 +5,6 @@ import { MILKY_WAY_SEED, LANIAKEA_SEED, DEFAULT_ADDRESS } from '../game/hardcode
 import type { AddressComponent, CannonStrike } from '../game/types';
 
 export interface UserSettings {
-  geneLines: number;
   exposure: number;
   lastProbeEscapeAt: number;
   alienMatter: number;
@@ -38,8 +37,6 @@ export interface UserSettings {
   weaponB: number;
   logisticsA: number;
   logisticsB: number;
-  fuelReserveExotic: number;
-  fuelReserveHelium3: number;
   lastView: 'system' | 'galaxy' | 'supercluster';
   lastSuperclusterSeed: number;
   lastGalaxySeed: number;
@@ -48,7 +45,7 @@ export interface UserSettings {
 }
 
 export const defaultSettings: UserSettings = {
-  geneLines: 24, exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0,
+  exposure: 0, lastProbeEscapeAt: 0, alienMatter: 0,
   kardashevTier: 0, strike: null, nextStrikeExposure: 20, evacuatedPopulation: 0,
   showOrbitRings: false,
   showAttractorLabels: true,
@@ -75,8 +72,6 @@ export const defaultSettings: UserSettings = {
   weaponB: 0,
   logisticsA: 0,
   logisticsB: 0,
-  fuelReserveExotic: 0,
-  fuelReserveHelium3: 0,
   lastView: 'system',
   lastSuperclusterSeed: LANIAKEA_SEED,
   lastGalaxySeed: MILKY_WAY_SEED,
@@ -119,7 +114,7 @@ export async function saveUserSettings(uid: string, settings: UserSettings): Pro
   }
 }
 
-export type CampaignProgress = Pick<UserSettings, 'geneLines' | 'exposure' | 'lastProbeEscapeAt' | 'alienMatter' | 'kardashevTier' | 'strike' | 'nextStrikeExposure' | 'evacuatedPopulation'>;
+export type CampaignProgress = Pick<UserSettings, 'exposure' | 'lastProbeEscapeAt' | 'alienMatter' | 'kardashevTier' | 'strike' | 'nextStrikeExposure' | 'evacuatedPopulation'>;
 
 export async function saveCampaignProgress(uid: string, settings: CampaignProgress): Promise<void> {
   await setDoc(doc(db, 'users', uid), { settings }, { merge: true });

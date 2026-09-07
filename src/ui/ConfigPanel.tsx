@@ -6,10 +6,12 @@ import { saveStockpile } from '../firebase/stockpile';
 import { RARE_RESOURCES } from '../data/rareResources';
 import { CRAFT_MATERIALS } from '../data/materials';
 import { TutorialPanel } from './TutorialPanel';
+import { resetGame } from '../store/resetGame';
 import './ConfigPanel.css';
 
 export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
   const toggleAttractorLabels = useUIStore((s) => s.toggleAttractorLabels);
   const showOrbitRings = useUIStore((s) => s.showOrbitRings);
@@ -28,6 +30,15 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const user = useAuthStore((s) => s.user);
 
   if (hidden) return null;
+
+  function handleResetGame() {
+    if (!confirmingReset) {
+      setConfirmingReset(true);
+      return;
+    }
+    setConfirmingReset(false);
+    void resetGame();
+  }
 
   function giveAdvancedResources() {
     const { addRare, addMaterial } = useStockpileStore.getState();
@@ -148,6 +159,18 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           <div className="config-row config-row--seed">
             <span className="config-row-label">Advanced Resources</span>
             <button className="config-refill-btn" onClick={giveAdvancedResources} title="Add one of every engineered material and rare assembly to the stockpile">+</button>
+          </div>
+
+          <div className="config-row config-row--seed">
+            <span className="config-row-label">{confirmingReset ? 'Confirm?' : 'Reset Game'}</span>
+            <button
+              className={`config-refill-btn${confirmingReset ? ' config-refill-btn--danger' : ''}`}
+              onClick={handleResetGame}
+              onBlur={() => setConfirmingReset(false)}
+              title={confirmingReset ? 'Click again to permanently erase all progress' : 'Erase all progress and start over'}
+            >
+              {confirmingReset ? '⚠' : '✕'}
+            </button>
           </div>
 
         </div>

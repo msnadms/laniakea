@@ -54,7 +54,7 @@ export const ALL_CRAFTABLES: Craftable[] = [
 const BY_ID = new Map(ALL_CRAFTABLES.map((c) => [c.id, c]));
 
 export function describeUpgradeEffect(effect: ExtractorUpgrade['effect']): string {
-  if (effect.upgType === 'detection') return 'Baffles traffic signatures that attract passing probes';
+  if (effect.upgType === 'detection') return 'Halves this extractor\'s route risk; two eliminate it';
   return `${effect.multiplier}x to ${effect.upgType}`;
 }
 

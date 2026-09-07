@@ -813,23 +813,6 @@
   padding: 5px 14px;
 }
 
-.logistics-fuel-floor {
-  flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: end;
-  gap: 8px;
-  padding: 8px 14px 10px;
-  border-bottom: 1px solid rgba(0, 100, 150, 0.2);
-}
-
-.logistics-fuel-floor-head {
-  grid-column: 1 / -1;
-  color: rgba(100, 205, 230, 0.75);
-  font: 8px monospace;
-  text-transform: uppercase;
-}
-
 .logistics-resources-list {
   flex: 1;
   overflow-y: auto;

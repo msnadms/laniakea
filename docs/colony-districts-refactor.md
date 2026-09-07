@@ -3,14 +3,14 @@
 A refactor of the colonization campaign from a supply sink into the game's second half.
 
 Supersedes the colony portions of `colonization-and-kardashev-plan.md`. The probe fiction, exposure,
-strikes, the vault, and the charter delivery mechanic in that document all survive unchanged; what
+strikes, and the charter delivery mechanic in that document survive; what
 changes is what a colony *is* once it exists.
 
 ## Why
 
 The current colony is a sink with five install slots. Every rare assembly buys one scalar
 (`popCap`, `growth`, `defense`, `autonomy`, `ectogenesis`), the colony consumes nutrients and
-ammunition forever, and the only thing it ever sends back is a gene line every six fed hours. The
+ammunition forever, and has little useful output. The
 deepest production chains in the game therefore terminate in five numbers, and the Kardashev ladder
 sits on top of hidden predicates the player cannot watch.
 
@@ -24,7 +24,7 @@ extractors -> fabricators -> advanced materials
                                    |
                             JOBS filled by pops
                                    |
-                research . gene lines . materials . food
+                    research . materials . food
                      |                 |  (logistics, homebound)
           civilization ladder         Peregrine stockpile
 ```
@@ -35,7 +35,7 @@ Two consequences carry the design:
 what kind of society they can build. The tier-3 and tier-4 tree stops being a scoreboard.
 
 **Colonies become sources in the DAG.** Today every route edge points at a colony. A mature colony
-emits food surplus, tier-1 and tier-2 materials, and gene lines as real cargo that routes can carry
+emits food surplus and tier-1 and tier-2 materials as real cargo that routes can carry
 home. Research is the exception: it joins a civilization-wide pool immediately, so scientific
 progress continues wherever humanity has staffed research districts.
 
@@ -57,7 +57,6 @@ habitable planet the player settled matters beyond its zone type.
 | Foundry | `hea_billet`, `boron_ceramic` | 3 Metallurgists | alloys, tier-1 materials | helium-3 |
 | Fabrication Yard | `metamaterial_film`, `ybco_tape` | 3 Technicians | tier-2 materials | alloys |
 | Research Campus | `bec_cell`, `casimir_plate` | 3 Researchers | abstract research | helium-3, nutrients |
-| Gene Clinic | `ectogenesis_bank`, `muon_cell` | 2 Geneticists | viable lines | nutrients |
 | Sentinel Array | `frame_dragging_gyro`, `degenerate_core` | 2 Gunners | ammunition capacity, fire rate, local heat suppression | `sentinel_ammo` |
 | Deep Survey Array | `positron_trap`, `momentum_tether` | 2 Astronomers | abstract research | exotic |
 | Orbital Assembly | `statite_mirror`, `tpv_film` | 4 Engineers | project labor | alloys |
@@ -125,7 +124,7 @@ unlocks. Reaching the rung still raises its permanent detection floor.
 `SYS` in `ShipHUD.tsx` is currently a dead placeholder (`PlaceholderButton`, empty `onClick`). It
 becomes the civilization screen, and colony detail lives there and nowhere else.
 
-Four tabs:
+Four views across the panel:
 
 - **WORLDS** - roster on the left; the selected colony fills the frame with a district grid of built
   and empty slots, a jobs table (job, slots, filled, output per hour, upkeep), a food-runway strip,
@@ -134,7 +133,7 @@ Four tabs:
   three Kardashev rungs with separate research and infrastructure status.
 - **THREAT** - exposure against the next strike threshold, per-colony local heat, Sentinel coverage,
   evacuation.
-- **VAULT** - gene lines spent and returned, evacuated population, the running count against the 873.
+- **STATUS** - ship exposure, alien matter, and the population preserved in evacuation flotillas.
 
 `PlanetPanel` and the logistics node sidebar keep a three-line summary - population, food runway,
 one "needs X" line - plus a link into SYS. `CivilizationButton` is removed from the HUD status
@@ -158,8 +157,8 @@ interface Colony {
 }
 ```
 
-Removed: `installed` (becomes `districts`), `populationTier`, `selfSufficientMs`, `lastShipmentAt`,
-`exportedLines`, `labor` (becomes Engineer job-hours held per project).
+Removed: the old installed-assembly scalars and population-tier production counters. `labor`
+becomes Engineer job-hours held per project.
 
 `colonyExport` already exists and simply begins reading `produced`. `restoreColonies` migrates an
 old save by converting each `installed` assembly into its anchor district and seeding `jobPriority`
@@ -211,5 +210,3 @@ already has the right shape for; the Sentinel Array scales colony defense.
   ammunition.
 - Do colony-run districts count toward `routeDetectionRisk`, or only toward local heat? The probe
   fiction can justify treating a quiet local economy differently from warp traffic.
-- Does a Gene Clinic make the vault renewable enough to remove the campaign's scarcity, and if so
-  should its yield be capped per colony rather than per pop?

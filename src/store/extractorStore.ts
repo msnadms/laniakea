@@ -13,20 +13,24 @@ export const ACCUMULATION_RATE_PER_MS = 1 / (60 * 60 * 1000) // 1 unit per hour
 export function getExtractorMultipliers(
   extractorKey: string,
   nodeEquipped: Record<string, [string | null, string | null]>,
-): { rateMultiplier: number; storageMultiplier: number; dampened: boolean } {
+): { rateMultiplier: number; storageMultiplier: number; signalRiskMultiplier: number } {
   const slots = nodeEquipped[extractorKey] ?? [null, null];
   let rateMultiplier = 1;
   let storageMultiplier = 1;
-  let dampened = false;
+  let signalDampeners = 0;
   for (const upgradeId of slots) {
     if (!upgradeId) continue;
     const def = EXTRACTOR_UPGRADES.find((u) => u.id === upgradeId);
     if (!def) continue;
     if (def.effect.upgType === 'rate') rateMultiplier *= def.effect.multiplier;
     if (def.effect.upgType === 'storage') storageMultiplier *= def.effect.multiplier;
-    if (def.effect.upgType === 'detection') dampened = true;
+    if (def.effect.upgType === 'detection') signalDampeners += 1;
   }
-  return { rateMultiplier, storageMultiplier, dampened };
+  return {
+    rateMultiplier,
+    storageMultiplier,
+    signalRiskMultiplier: Math.max(0, 1 - signalDampeners * 0.5),
+  };
 }
 
 export function peekAccumulated(extractor: Extractor, now: number = Date.now()): number {

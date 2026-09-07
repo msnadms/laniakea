@@ -20,7 +20,7 @@
       "jobs": 300,
       "job": "steward",
       "baseAmenities": 700,
-      "output": { "amenities": 4, "materials": { "viable_line": 0.0005 } },
+      "output": { "amenities": 4 },
       "upkeep": { "raw": { "nutrients": 40 } },
       "anchor": "closed_ecology_column",
       "populationCap": 1000,

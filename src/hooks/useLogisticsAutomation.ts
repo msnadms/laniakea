@@ -11,7 +11,7 @@ import { useResearchStore } from '../store/researchStore';
 
 function campaignSignature() {
   const s = useUIStore.getState();
-  return [s.geneLines, s.exposure, s.lastProbeEscapeAt, s.alienMatter, s.kardashevTier,
+  return [s.exposure, s.lastProbeEscapeAt, s.alienMatter, s.kardashevTier,
     s.strike, s.nextStrikeExposure, s.evacuatedPopulation].join('|');
 }
 

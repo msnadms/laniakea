@@ -163,6 +163,9 @@ export interface RouteAutomationPolicy {
   fillAggregate: RouteFillAggregate;
   detectionCeiling: number;
   pauseOnJam: boolean;
+  /** Ship cargo this route will not dip below when dispatching. */
+  fuelReserveExotic: number;
+  fuelReserveHelium3: number;
 }
 
 export interface LogisticsRoute {
@@ -215,7 +218,7 @@ export interface Colony {
   requested: MaterialCost;
   lastTickAt: number; lastFireAt: number; lastProbeEscapeAt: number;
   localHeat: number;
-  fedMs: number; starvationMs: number; lostPeople: number;
+  starvationMs: number; lostPeople: number;
   planetaryProgressMs: number;
   project: 'dyson' | 'probes' | null;
   projectDelivered: MaterialCost;
@@ -229,6 +232,7 @@ export interface Colony {
 export type LegacyColony = Omit<Colony, 'districts' | 'jobPriority' | 'produced' | 'planetaryProgressMs' | 'districtModel'> & {
   installed: Record<string, number>;
   exportedLines: number;
+  fedMs: number;
   labor: number;
   populationTier: number;
   selfSufficientMs: number;

@@ -19,6 +19,30 @@
   font: 12px/1.5 var(--font-mono);
 }
 
+.sys-panel,
+.sys-panel * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 150, 200, 0.25) transparent;
+}
+
+.sys-panel::-webkit-scrollbar,
+.sys-panel *::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.sys-panel::-webkit-scrollbar-track,
+.sys-panel *::-webkit-scrollbar-track,
+.sys-panel::-webkit-scrollbar-corner,
+.sys-panel *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.sys-panel::-webkit-scrollbar-thumb,
+.sys-panel *::-webkit-scrollbar-thumb {
+  background: rgba(0, 150, 200, 0.25);
+}
+
 .sys-panel button {
   color: inherit;
   background: #102936;
@@ -135,10 +159,16 @@
 .sys-world-detail h3,
 .sys-world-detail h4,
 .sys-civilization h3,
-.sys-civilization h4,
-.sys-vault h3 {
+.sys-civilization h4 {
   margin: 6px 0;
   color: #70d9b1;
+}
+
+.sys-world-detail h4 > small {
+  margin-left: 6px;
+  color: #668b9c;
+  font-size: 9px;
+  font-weight: 400;
 }
 
 .sys-strip {
@@ -306,16 +336,70 @@
   font-size: 10px;
 }
 
-.sys-delivery {
-  display: flex;
-  flex-wrap: wrap;
+.sys-colony-flows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 8px;
+  margin-bottom: 12px;
 }
 
-.sys-delivery span {
-  padding: 5px 8px;
-  background: #102936;
-  border: 1px solid #315f70;
+.sys-colony-flows article {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 7px 9px;
+  background: #0b1d28;
+  border: 1px solid currentColor;
+}
+
+.sys-colony-flows article.production {
+  color: #70d9a4;
+  background: rgba(27, 89, 68, 0.2);
+}
+
+.sys-colony-flows article.deficit {
+  color: #e47979;
+  background: rgba(111, 38, 47, 0.2);
+}
+
+.sys-colony-flows article > i {
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+
+.sys-colony-flows article > i svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sys-colony-flows article > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sys-colony-flows article strong {
+  overflow: hidden;
+  color: #c5e5ed;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sys-colony-flows article small {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+
+.sys-colony-flows article b {
+  white-space: nowrap;
+}
+
+.sys-colony-flows > p {
+  margin: 0;
+  color: #7ab0c8;
 }
 
 .sys-project {

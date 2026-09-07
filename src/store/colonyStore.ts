@@ -16,7 +16,6 @@ import { districtBuildCost, trySpendTravelCost } from './travelCosts';
 import { researchThreshold } from '../data/research';
 
 export const HOUR = 3_600_000;
-export const CHARTER_LINES = 2;
 export const CHARTER_ASSEMBLIES: MaterialCost = {
   closed_ecology_column: 1, zero_point_capacitor: 1,
   frame_dragging_gyro: 1, antihydrogen_reservoir: 1, ectogenesis_bank: 1,
@@ -48,8 +47,6 @@ export const PROBE_LABOR = 50;
 export const NUTRIENTS_PER_PERSON_HOUR = 18;
 export const JOB_WEIGHT_MAX = 10;
 export const DEFAULT_JOB_WEIGHT = 5;
-export const MATURITY_POPULATION = 500;
-export const MATURITY_INTERVAL = 6 * HOUR;
 // Nothing simulates a closed tab, so an unattended gap is capped at the food a colony can hold.
 export const MAX_UNATTENDED_MS = 2 * HOUR;
 export const MAX_UNATTENDED_ESCAPES = 4;
@@ -66,7 +63,7 @@ export const AMENITY_GROWTH_FLOOR = 0.8;
 export const COLONY_FUEL_CAP = 2000;
 export const PROJECT_LABOR_PER_PERSON_HOUR = 0.01;
 
-type LegacyFields = Pick<LegacyColony, 'installed' | 'exportedLines' | 'labor' | 'populationTier' | 'selfSufficientMs' | 'lastShipmentAt'>;
+type LegacyFields = Pick<LegacyColony, 'installed' | 'exportedLines' | 'labor' | 'populationTier' | 'selfSufficientMs' | 'lastShipmentAt' | 'fedMs'>;
 
 function legacyFields(colony: Colony | LegacyColony): Partial<LegacyFields> {
   return colony as Colony & Partial<LegacyFields>;
@@ -178,6 +175,51 @@ export function colonyJobSlots(c: Colony): Record<JobType, number> {
   return slots;
 }
 
+export interface ColonyNetProduction {
+  raw: Partial<Record<Resource['type'], number>>;
+  materials: MaterialCost;
+  research: number;
+}
+
+/** Nominal hourly balance at current staffing, before shortages throttle a district. */
+export function colonyNetProduction(c: Colony): ColonyNetProduction {
+  if (!c.foundedAt || c.population <= 0) return { raw: {}, materials: {}, research: 0 };
+  const raw: Partial<Record<Resource['type'], number>> = {
+    nutrients: -c.population * NUTRIENTS_PER_PERSON_HOUR,
+  };
+  const materials: MaterialCost = {};
+  const assignments = filledJobs(c);
+  let research = 0;
+
+  for (const district of DISTRICTS) {
+    const count = c.districts[district.id] ?? 0;
+    if (count <= 0) continue;
+    for (const [type, rate] of Object.entries(district.upkeep.raw ?? {})) {
+      const id = type as Resource['type'];
+      raw[id] = (raw[id] ?? 0) - (rate ?? 0) * count;
+    }
+    for (const [id, rate] of Object.entries(district.upkeep.materials ?? {})) {
+      materials[id] = (materials[id] ?? 0) - rate * count;
+    }
+
+    const workers = district.job ? assignments[district.job] : 0;
+    const anchorEffect = district.anchor ? RARE_RESOURCES.find(resource => resource.id === district.anchor)?.effect : undefined;
+    const modifier = anchorEffect?.stat === 'research' ? 1 + anchorEffect.value
+      : anchorEffect?.stat === 'ectogenesis' ? 1 + anchorEffect.value / ECTOGENESIS_TIER_SIZE : 1;
+    const active = workers * modifier;
+    for (const [type, rate] of Object.entries(district.output.raw ?? {})) {
+      const id = type as Resource['type'];
+      raw[id] = (raw[id] ?? 0) + (rate ?? 0) * active;
+    }
+    for (const [id, rate] of Object.entries(district.output.materials ?? {})) {
+      materials[id] = (materials[id] ?? 0) + rate * active;
+    }
+    research += (district.output.research ?? 0) * active;
+  }
+
+  return { raw, materials, research };
+}
+
 /** Local factory output may leave by route; a colony keeps only what it has standing orders for. */
 export function colonyExport(c: Colony): MaterialCost {
   if (!c.foundedAt || c.population <= 0) return {};
@@ -221,7 +263,7 @@ export function charterSite(fabricator: Fabricator, now: number): Colony {
     supplies: {}, assemblies: {}, requested: {},
     lastTickAt: now, lastFireAt: now,
     lastProbeEscapeAt: now, localHeat: 0,
-    fedMs: 0, starvationMs: 0, lostPeople: 0, planetaryProgressMs: 0,
+    starvationMs: 0, lostPeople: 0, planetaryProgressMs: 0,
     project: null, projectDelivered: {},
     swarmComplete: false, probeCoverage: 0, amenityRatio: 1,
   };
@@ -303,8 +345,7 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
   const next = { ...c, supplies: { ...c.supplies } } as Colony & Partial<LegacyFields>;
   let escapes = 0;
   let kills = 0;
-  let lines = 0;
-  if (now <= c.lastTickAt || !c.foundedAt || c.population <= 0) return { colony: next, escapes, kills, lines, research: 0 };
+  if (now <= c.lastTickAt || !c.foundedAt || c.population <= 0) return { colony: next, escapes, kills, research: 0 };
   // A closed tab is not a siege: unattended time is simulated only as far as a colony can stock for.
   const simStart = Math.max(c.lastTickAt, now - MAX_UNATTENDED_MS);
   const hours = (now - simStart) / HOUR;
@@ -332,12 +373,6 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
     - Math.max(0, previousStarvation - HOUR / 2) / HOUR * 100));
   next.population -= loss;
   next.lostPeople += loss;
-  // Only fed time spent at maturity counts, and each population tier is worth one line.
-  if (next.population >= MATURITY_POPULATION) {
-    next.fedMs += fedHours * HOUR;
-    lines = Math.max(0, Math.min(currentLegacy.populationTier ?? 0, Math.floor(next.fedMs / MATURITY_INTERVAL)) - (currentLegacy.exportedLines ?? 0));
-    next.exportedLines = (currentLegacy.exportedLines ?? 0) + lines;
-  }
   const selfFed = unfedMs <= 1 && localFoodPerHour >= next.population * NUTRIENTS_PER_PERSON_HOUR && (currentLegacy.lastShipmentAt ?? 0) <= simStart - HOUR;
   next.selfSufficientMs = selfFed ? (currentLegacy.selfSufficientMs ?? 0) + (now - simStart) : 0;
   // Simulate defense on a fixed weapon clock, including unattended elapsed time.
@@ -376,11 +411,11 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
   }
   next.localHeat = Math.min(5, Math.max(floor, heat + (now - cursor) * heatPerMs));
   next.lastTickAt = now;
-  return { colony: next, escapes: Math.min(escapes, MAX_UNATTENDED_ESCAPES), kills, lines, research: 0 };
+  return { colony: next, escapes: Math.min(escapes, MAX_UNATTENDED_ESCAPES), kills, research: 0 };
 }
 
 function tickDistrictColony(c: Colony, now: number, industryCount = 0, floor = 0) {
-  if (now <= c.lastTickAt || !c.foundedAt || c.population <= 0) return { colony: { ...c, supplies: { ...c.supplies }, produced: { ...c.produced } }, escapes: 0, kills: 0, lines: 0, research: 0 };
+  if (now <= c.lastTickAt || !c.foundedAt || c.population <= 0) return { colony: { ...c, supplies: { ...c.supplies }, produced: { ...c.produced } }, escapes: 0, kills: 0, research: 0 };
   const simStart = Math.max(c.lastTickAt, now - MAX_UNATTENDED_MS);
   const hours = (now - simStart) / HOUR;
   const next: Colony = {
@@ -454,7 +489,6 @@ function tickDistrictColony(c: Colony, now: number, industryCount = 0, floor = 0
   result.colony.projectDelivered = next.projectDelivered;
   result.colony.probeCoverage = next.probeCoverage;
   result.colony.amenityRatio = next.amenityRatio;
-  result.lines = 0;
   result.research = research;
   return result;
 }
@@ -499,8 +533,7 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
     if (!c || c.foundedAt || f?.tier !== 2 || ui.destroyed
       || game.galaxy.seed !== c.galaxySeed || game.system?.id !== c.systemId
       || game.system.planets?.find(p => p.name === c.planetName)?.type !== 'habitable'
-      || !canCharterWithAvailableAssemblies(c)
-      || !ui.spendGeneLine(CHARTER_LINES)) return false;
+      || !canCharterWithAvailableAssemblies(c)) return false;
     const assemblies = { ...c.assemblies };
     const installed: MaterialCost = {};
     const districts = { ...c.districts };
@@ -630,10 +663,6 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
       c = tick.colony;
       research += tick.research;
       if (Math.floor(c.lostPeople) > Math.floor(original.lostPeople)) useUIStore.getState().triggerHudNotify(`${c.planetName}: ${Math.floor(c.lostPeople) - Math.floor(original.lostPeople)} people lost to starvation`);
-      if (tick.lines) {
-        useUIStore.getState().receiveGeneLine(tick.lines);
-        useUIStore.getState().triggerHudNotify(`${c.planetName}: ${tick.lines} VIABLE LINES RETURNED TO THE VAULT`);
-      }
       if (tick.escapes || tick.kills) {
         const ui = useUIStore.getState();
         useUIStore.setState({ exposure: ui.exposure + tick.escapes, alienMatter: ui.alienMatter + tick.kills });
@@ -674,7 +703,7 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
     if (!c?.foundedAt || c.population <= 0 || useUIStore.getState().destroyed) return false;
     const strike = useUIStore.getState().strike;
     if (strike?.superclusSeed === c.superclusSeed && Date.now() >= strike.arrivesAt) return false;
-    useUIStore.setState(s => ({ evacuatedPopulation: s.evacuatedPopulation + Math.floor(c.population), geneLines: s.geneLines + 1 }));
+    useUIStore.setState(s => ({ evacuatedPopulation: s.evacuatedPopulation + Math.floor(c.population) }));
     get().removeColony(key);
     return true;
   },
@@ -694,12 +723,19 @@ function foldDistricts(saved: Record<string, number>): Record<DistrictId, number
   return districts;
 }
 
+function withoutRemovedColonyMaterials(materials: MaterialCost = {}): MaterialCost {
+  return Object.fromEntries(Object.entries(materials).filter(([id]) => id !== 'viable_line'));
+}
+
 export function migrateColony(saved: Colony | LegacyColony): Colony {
   const legacy = legacyFields(saved);
-  const { installed: _installed, exportedLines: _exportedLines, labor: _labor, populationTier: _populationTier, selfSufficientMs: _selfSufficientMs, lastShipmentAt: _lastShipmentAt, ammo: _ammo, ...current } = saved as Colony & Partial<LegacyFields> & { ammo?: number };
+  const { installed: _installed, exportedLines: _exportedLines, labor: _labor, populationTier: _populationTier, selfSufficientMs: _selfSufficientMs, lastShipmentAt: _lastShipmentAt, fedMs: _fedMs, ammo: _ammo, ...current } = saved as Colony & Partial<LegacyFields> & { ammo?: number };
   if ('districts' in saved && saved.districts && saved.jobPriority && saved.produced) {
     return {
-      ...current, districtModel: true, requested: saved.requested ?? {},
+      ...current, districtModel: true,
+      assemblies: withoutRemovedColonyMaterials(saved.assemblies),
+      produced: withoutRemovedColonyMaterials(saved.produced),
+      requested: withoutRemovedColonyMaterials(saved.requested),
       districts: foldDistricts(saved.districts as Record<string, number>),
       jobPriority: [...new Set([...(saved.jobPriority as JobType[]).filter(job => DEFAULT_JOB_PRIORITY.includes(job)), ...DEFAULT_JOB_PRIORITY])],
     } as Colony;
@@ -716,8 +752,9 @@ export function migrateColony(saved: Colony | LegacyColony): Colony {
     districts,
     jobPriority: [...DEFAULT_JOB_PRIORITY],
     produced: {},
+    assemblies: withoutRemovedColonyMaterials(saved.assemblies),
     planetaryProgressMs: 0,
     projectDelivered: { ...saved.projectDelivered, ...(legacy.labor ? { labor: legacy.labor } : {}) },
-    requested: saved.requested ?? {},
+    requested: withoutRemovedColonyMaterials(saved.requested),
   } as Colony;
 }

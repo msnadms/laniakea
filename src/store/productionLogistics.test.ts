@@ -6,7 +6,7 @@ import type { NodeGroup } from './logisticsStore';
 import { COST_KEY_TO_RESOURCE, extractorNodeId, fabricatorNodeId, makeEmptyFabricatorSlot } from '../game/types';
 import { processFabricator, useFabricatorStore } from './fabricatorStore';
 import { HOUR } from './colonyStore';
-import { DETECTION_CROSSING_POINTS, allocateEdgeCargo, cargoReaches, computeRouteCost, routeDetectionRisk, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
+import { allocateEdgeCargo, cargoReaches, computeRouteCost, probeAttentionFromRisk, routeDetectionRisk, routeIslandNodes, routeIsValid, routeNodes, topoOrder, useLogisticsStore } from './logisticsStore';
 import { computeDetectionDecayPerMs, computeStorageCap, decayDetectionHeat, DETECTION_HEAT_DECAY_PER_MS } from './uiStore';
 import { generatePlanets, generateSystemLayout } from '../game/planetGen';
 import { useExtractorStore } from './extractorStore';
@@ -321,40 +321,49 @@ describe('route dispatch integration', () => {
     expect(decayed.lastDetectionChangeAt).toBe(start + 30_000);
   });
 
-  it('carries fractional route heat across several dispatches until a bar lands', () => {
+  it('adds exactly one probe attention when a dispatched route has risk over three', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
-    const fabricators = Object.fromEntries(Array.from({ length: 5 }, (_, index) => {
-      const id = index + 1;
-      const fab: Fabricator = {
-        key: `heat-fab-${id}`, tier: 1, galaxySeed: 84, systemId: id,
-        systemName: `Heat ${id}`, planetName: `Heat ${id}`, builtAt: 1,
-        systemX: id, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
-      };
-      return [fab.key, fab];
+    const routed: Extractor = {
+      key: 'heat-source', galaxySeed: 84, systemId: 1, systemName: 'Heat source', planetName: 'Mine',
+      resourceType: 'alloys', rate: 1, placedAt: 1, lastCollectedAt: Date.now(),
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    const neighbors = Array.from({ length: 3 }, (_, index): Extractor => ({
+      ...routed, key: `heat-neighbor-${index}`, systemId: index + 2,
     }));
+    const fabricator: Fabricator = {
+      key: 'heat-fab', tier: 1, galaxySeed: 84, systemId: 10,
+      systemName: 'Heat fab', planetName: 'Forge', builtAt: 1,
+      systemX: 10, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
+    };
+    useExtractorStore.setState({
+      extractors: Object.fromEntries([routed, ...neighbors].map((entry) => [entry.key, entry])),
+      ownedUpgrades: [], nodeEquipped: {},
+    });
     useFabricatorStore.setState({
-      fabricators,
-      fabricatorStates: Object.fromEntries(Object.keys(fabricators).map((key) => [key, { slots: [] }])),
+      fabricators: { [fabricator.key]: fabricator },
+      fabricatorStates: { [fabricator.key]: { slots: [] } },
       lastRun: {},
     });
-    const nodes = Array.from({ length: 5 }, (_, index) => fabricatorNodeId(84, index + 1));
-    const edges = nodes.slice(1).map((to, index) => ({
-      from: nodes[index], to, allowedMaterials: ['graphene_lattice'],
-    }));
+    const source = extractorNodeId(84, 1);
+    const sink = fabricatorNodeId(84, 10);
+    const edges = [{ from: source, to: sink, allowedMaterials: ['graphene_lattice'] }];
     useUIStore.setState({
       exoticMatter: 10_000, helium3Reserves: 10_000,
       detectionHeat: 0, detectionRating: 0, lastDetectionChangeAt: Date.now(),
     });
-    useLogisticsStore.setState({ routes: [{ id: 'heat', name: 'Heat', edges }], lastRuns: {}, automationNotices: {} });
+    useLogisticsStore.setState({
+      routes: [{
+        id: 'heat', name: 'Heat', edges,
+        heldCargo: { [source]: { raw: {}, materials: { graphene_lattice: 1 } } },
+      }],
+      lastRuns: {}, automationNotices: {},
+    });
 
-    for (let dispatch = 0; dispatch < 5; dispatch++) {
-      useLogisticsStore.getState().updateRoute('heat', {
-        heldCargo: { [nodes[0]]: { raw: {}, materials: { graphene_lattice: 1 } } },
-      });
-      expect(useLogisticsStore.getState().dispatchRoute('heat')).not.toBe(false);
-    }
-    expect(useUIStore.getState().detectionHeat).toBeCloseTo(1);
+    expect(useLogisticsStore.getState().previewRoute('heat')?.detectionRisk).toBe(4);
+    expect(useLogisticsStore.getState().dispatchRoute('heat')).not.toBe(false);
+    expect(useUIStore.getState().detectionHeat).toBe(1);
     expect(useUIStore.getState().detectionRating).toBe(1);
   });
 
@@ -382,6 +391,9 @@ describe('route dispatch integration', () => {
       resourceType: 'alloys', rate: 1, placedAt: now - 50 * HOUR, lastCollectedAt: now - 50 * HOUR,
       systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 1,
     };
+    const neighbors = Array.from({ length: 3 }, (_, index): Extractor => ({
+      ...extractor, key: `credit-neighbor-${index}`, systemId: index + 10,
+    }));
     const fabricators = Object.fromEntries([2, 3, 4, 5].map((id) => {
       const fab: Fabricator = {
         key: `credit-fab-${id}`, tier: 1, galaxySeed: 85, systemId: id,
@@ -390,7 +402,10 @@ describe('route dispatch integration', () => {
       };
       return [fab.key, fab];
     }));
-    useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
+    useExtractorStore.setState({
+      extractors: Object.fromEntries([extractor, ...neighbors].map((entry) => [entry.key, entry])),
+      ownedUpgrades: [], nodeEquipped: {},
+    });
     useFabricatorStore.setState({
       fabricators,
       fabricatorStates: Object.fromEntries(Object.keys(fabricators).map((key) => [key, { slots: [] }])),
@@ -404,20 +419,22 @@ describe('route dispatch integration', () => {
     });
     const route: LogisticsRoute = {
       id: 'credit', name: 'Credit', edges, active: true,
-      automation: { dispatchMode: 'fill', sourceFillPercent: 1, fillAggregate: 'any', detectionCeiling: 4, pauseOnJam: false },
+      automation: { dispatchMode: 'fill', sourceFillPercent: 1, fillAggregate: 'any', detectionCeiling: 4, pauseOnJam: false, fuelReserveExotic: 0, fuelReserveHelium3: 0 },
     };
     useLogisticsStore.setState({ routes: [route], lastRuns: {}, automationNotices: {} });
-    expect(useLogisticsStore.getState().previewRoute('credit')?.detectionRisk).toBeCloseTo(0.2);
+    expect(useLogisticsStore.getState().previewRoute('credit')?.detectionRisk).toBe(4);
 
     useLogisticsStore.getState().catchUpAutomation(30 * 60_000);
     expect(useUIStore.getState().detectionHeat).toBe(0);
 
     useExtractorStore.setState({
-      extractors: { [extractor.key]: { ...extractor, lastCollectedAt: now - 50 * HOUR } },
+      extractors: Object.fromEntries([
+        { ...extractor, lastCollectedAt: now - 50 * HOUR }, ...neighbors,
+      ].map((entry) => [entry.key, entry])),
     });
     useUIStore.setState({ lastDetectionChangeAt: Date.now() });
     useLogisticsStore.getState().catchUpAutomation(0);
-    expect(useUIStore.getState().detectionHeat).toBeCloseTo(0.2);
+    expect(useUIStore.getState().detectionHeat).toBe(1);
     useUIStore.setState({ logisticsA: 0, logisticsB: 0, storageA: 0, storageB: 0 });
   });
 
@@ -468,7 +485,7 @@ describe('route dispatch integration', () => {
     const edge = { from: extractorNodeId(81, 1), to: fabricatorNodeId(81, 2), overflow: 'hold' as const };
     useLogisticsStore.setState({ routes: [{
       id: 'hold-only', name: 'Hold only', edges: [edge],
-      automation: { dispatchMode: 'batch', sourceFillPercent: 50, fillAggregate: 'weighted', detectionCeiling: 4, pauseOnJam: true },
+      automation: { dispatchMode: 'batch', sourceFillPercent: 50, fillAggregate: 'weighted', detectionCeiling: 4, pauseOnJam: true, fuelReserveExotic: 0, fuelReserveHelium3: 0 },
     }], lastRuns: {}, automationNotices: {} });
 
     const preview = useLogisticsStore.getState().previewRoute('hold-only');
@@ -504,12 +521,13 @@ describe('route dispatch integration', () => {
     ];
     useLogisticsStore.setState({ routes: [{
       id: 'weighted', name: 'Weighted', active: true, edges,
-      automation: { dispatchMode: 'fill', sourceFillPercent: 50, fillAggregate: 'weighted', detectionCeiling: 4, pauseOnJam: true },
+      automation: { dispatchMode: 'fill', sourceFillPercent: 50, fillAggregate: 'weighted', detectionCeiling: 4, pauseOnJam: true, fuelReserveExotic: 0, fuelReserveHelium3: 0 },
     }], lastRuns: {}, automationNotices: {} });
     expect(useLogisticsStore.getState().runAutomation()).toEqual([]);
 
     useLogisticsStore.getState().updateRoute('weighted', { automation: {
       dispatchMode: 'fill', sourceFillPercent: 50, fillAggregate: 'any', detectionCeiling: 4, pauseOnJam: true,
+      fuelReserveExotic: 0, fuelReserveHelium3: 0,
     } });
     expect(useLogisticsStore.getState().runAutomation()).toHaveLength(1);
   });
@@ -718,96 +736,57 @@ describe('route dispatch integration', () => {
     expect(useUIStore.getState().detectionRating).toBe(5);
   });
 
-  it('prices traffic density per supercluster, not distance travelled', () => {
-    const node = (nodeId: string, superclusSeed: number, systemId: number): NodeGroup => ({
-      nodeId, extractors: [], fabricatorKeys: [], galaxySeed: superclusSeed * 10,
-      systemId, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed,
-    });
-    useExtractorStore.setState({ extractors: {}, ownedUpgrades: [], nodeEquipped: {} });
-
-    const chain = (count: number, superclusSeed: number) => {
-      const groups = new Map<string, NodeGroup>();
-      for (let i = 0; i <= count; i++) groups.set(`s${superclusSeed}n${i}`, node(`s${superclusSeed}n${i}`, superclusSeed, i));
-      const edges = Array.from({ length: count }, (_, i) => ({ from: `s${superclusSeed}n${i}`, to: `s${superclusSeed}n${i + 1}` }));
-      return { groups, edges };
-    };
-
-    // Continuous heat keeps every local hop visible without the old bar cliff.
-    expect(routeDetectionRisk(chain(2, 1).edges, chain(2, 1).groups)).toBeCloseTo(2 / 60);
-    expect(routeDetectionRisk(chain(3, 1).edges, chain(3, 1).groups)).toBeCloseTo(6 / 60);
-    expect(routeDetectionRisk(chain(6, 1).edges, chain(6, 1).groups)).toBeCloseTo(30 / 60);
-    expect(routeDetectionRisk(chain(4, 1).edges, chain(4, 1).groups)).toBeCloseTo(
-      2 * routeDetectionRisk(chain(3, 1).edges, chain(3, 1).groups),
-    );
-
-    const spread = chain(3, 1);
-    for (const [id, group] of chain(3, 2).groups) spread.groups.set(id, group);
-    spread.edges.push(...chain(3, 2).edges, { from: 's1n3', to: 's2n0' });
-    expect(routeDetectionRisk(spread.edges, spread.groups)).toBeCloseTo(0.1 + 0.1 + DETECTION_CROSSING_POINTS);
-  });
-
-  it('floors a fully dampened route at a residual rather than at zero', () => {
-    const node = (nodeId: string, systemId: number, extractors: Extractor[]): NodeGroup => ({
-      nodeId, extractors, fabricatorKeys: [], galaxySeed: 91,
-      systemId, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 9,
-    });
-    const source = (index: number): Extractor => ({
-      key: `masked-${index}`, galaxySeed: 91, systemId: index, systemName: `S${index}`, planetName: 'Mine',
+  it('prices each routed extractor by nearby extractor locations', () => {
+    const extractor = (key: string, galaxySeed: number, superclusSeed: number): Extractor => ({
+      key, galaxySeed, systemId: key.length, systemName: key, planetName: 'Mine',
       resourceType: 'alloys', rate: 1, placedAt: 1, lastCollectedAt: 1,
-      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 9,
+      systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed,
     });
-    const hub = fabricatorNodeId(91, 100);
-    const extractors = [1, 2, 3, 4].map(source);
-    const groups = new Map<string, NodeGroup>([[hub, node(hub, 100, [])]]);
-    for (const extractor of extractors) {
-      const id = extractorNodeId(91, extractor.systemId);
-      groups.set(id, node(id, extractor.systemId, [extractor]));
-    }
-    const edges = extractors.map((extractor) => ({ from: extractorNodeId(91, extractor.systemId), to: hub }));
-
+    const routed = extractor('routed', 10, 1);
+    const roster = [
+      routed,
+      extractor('same-galaxy', 10, 1),
+      extractor('same-supercluster', 11, 1),
+      extractor('other-supercluster', 12, 2),
+    ];
+    const nodeId = extractorNodeId(routed.galaxySeed, routed.systemId);
+    const groups = new Map<string, NodeGroup>([[nodeId, {
+      ...routed, nodeId, extractors: [routed], fabricatorKeys: [],
+    }]]);
     useExtractorStore.setState({
-      extractors: Object.fromEntries(extractors.map((extractor) => [extractor.key, extractor])),
+      extractors: Object.fromEntries(roster.map((entry) => [entry.key, entry])),
       ownedUpgrades: [], nodeEquipped: {},
     });
-    const bare = routeDetectionRisk(edges, groups);
-    expect(bare).toBeCloseTo(12 / 60);
 
-    useExtractorStore.setState({
-      nodeEquipped: Object.fromEntries(extractors.map((extractor) => [extractor.key, ['signal_dampener', null] as [string | null, string | null]])),
-    });
-    const masked = routeDetectionRisk(edges, groups);
-    expect(masked).toBeGreaterThan(0);
-    expect(masked).toBeCloseTo(2 * (2 - 1) / 60);
-    expect(masked).toBeLessThan(bare / 4);
+    expect(routeDetectionRisk([], groups)).toBe(2.5);
+    expect(probeAttentionFromRisk(3)).toBe(0);
+    expect(probeAttentionFromRisk(3.5)).toBe(1);
   });
 
-  it('lets a signal dampener mask the hops incident to its station', () => {
-    const extractor: Extractor = {
+  it('halves an extractor risk with one signal dampener and eliminates it with two', () => {
+    const routed: Extractor = {
       key: 'quiet-source', galaxySeed: 71, systemId: 1, systemName: 'Source', planetName: 'Mine',
       resourceType: 'alloys', rate: 1, placedAt: 1, lastCollectedAt: 1,
       systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 7,
     };
-    const group = (nodeId: string, systemId: number, extractors: Extractor[]): NodeGroup => ({
-      nodeId, extractors, fabricatorKeys: [], galaxySeed: 71,
-      systemId, systemX: 0, systemY: 0, galaxyX: 0, galaxyY: 0, superclusSeed: 7,
-    });
+    const neighbors = Array.from({ length: 3 }, (_, index): Extractor => ({
+      ...routed, key: `neighbor-${index}`, systemId: index + 2,
+    }));
     const source = extractorNodeId(71, 1);
-    const mid = fabricatorNodeId(71, 2);
-    const sink = fabricatorNodeId(71, 3);
-    const groups = new Map<string, NodeGroup>([
-      [source, group(source, 1, [extractor])],
-      [mid, group(mid, 2, [])],
-      [sink, group(sink, 3, [])],
-    ]);
-    const edges = [{ from: source, to: mid }, { from: mid, to: sink }];
+    const groups = new Map<string, NodeGroup>([[source, {
+      ...routed, nodeId: source, extractors: [routed], fabricatorKeys: [],
+    }]]);
+    useExtractorStore.setState({
+      extractors: Object.fromEntries([routed, ...neighbors].map((entry) => [entry.key, entry])),
+      ownedUpgrades: [], nodeEquipped: {},
+    });
+    expect(routeDetectionRisk([], groups)).toBe(4);
 
-    useExtractorStore.setState({ extractors: { [extractor.key]: extractor }, ownedUpgrades: [], nodeEquipped: {} });
-    expect(routeDetectionRisk(edges, groups)).toBeCloseTo(2 / 60);
+    useExtractorStore.setState({ nodeEquipped: { [routed.key]: ['signal_dampener', null] } });
+    expect(routeDetectionRisk([], groups)).toBe(2);
 
-    useExtractorStore.setState({ nodeEquipped: { [extractor.key]: ['signal_dampener', null] } });
-    const masked = 1.5;
-    expect(routeDetectionRisk(edges, groups)).toBeCloseTo(masked * (masked - 1) / 60);
-    expect(routeDetectionRisk(edges, groups)).toBeGreaterThan(0);
+    useExtractorStore.setState({ nodeEquipped: { [routed.key]: ['signal_dampener', 'signal_dampener'] } });
+    expect(routeDetectionRisk([], groups)).toBe(0);
   });
 
   it('round-trips edge policies, automation and held cargo through a restore', () => {
@@ -836,11 +815,10 @@ describe('route dispatch integration', () => {
       active: true,
       automation: {
         sourceFillPercent: 80, requireRecipeReady: true, detectionCeiling: 2,
-        pauseOnJam: false, quiet: true, minimumShipReserve: { exotic: 100, helium3: 50 },
+        pauseOnJam: false, quiet: true,
       },
       heldCargo: { [from]: { raw: { alloys: 12 }, materials: { graphene_lattice: 3 } } },
     } as unknown as LogisticsRoute;
-    useUIStore.setState({ fuelReserveExotic: 0, fuelReserveHelium3: 0 });
     useLogisticsStore.getState().restoreRoutes([structuredClone(saved)]);
     const restored = useLogisticsStore.getState().routes[0];
     expect(restored.edges).toEqual([{
@@ -850,9 +828,8 @@ describe('route dispatch integration', () => {
     }]);
     expect(restored.automation).toEqual({
       dispatchMode: 'batch', sourceFillPercent: 80, fillAggregate: 'any', detectionCeiling: 2, pauseOnJam: false,
+      fuelReserveExotic: 0, fuelReserveHelium3: 0,
     });
-    expect(useUIStore.getState().fuelReserveExotic).toBe(100);
-    expect(useUIStore.getState().fuelReserveHelium3).toBe(50);
     expect(restored.heldCargo).toEqual(saved.heldCargo);
     expect(restored.active).toBe(true);
   });
@@ -910,7 +887,6 @@ describe('route dispatch integration', () => {
     useUIStore.setState({
       exoticMatter: 500, helium3Reserves: 500, alloys: 0,
       detectionRating: 0, logisticsA: 1, logisticsB: 0, storageA: 0, driveA: 0, driveB: 0,
-      fuelReserveExotic: 0, fuelReserveHelium3: 0,
     });
     const edges = sources.slice(1).map((source) => ({
       from: extractorNodeId(sources[0].galaxySeed, sources[0].systemId),

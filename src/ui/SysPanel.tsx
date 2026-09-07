@@ -5,18 +5,47 @@ import { CIVILIZATION_RESEARCH, researchThreshold } from '../data/research';
 import { materialName } from '../data/materials';
 import type { DistrictId, JobType, Resource } from '../game/types';
 import { RESOURCE_LABELS } from '../game/types';
-import { colonyAmenityDemand, colonyAmenityRatio, colonyContentment, colonyDefense, colonyDemand, colonyDistrictCapacity, colonyDistrictsUsed, colonyFoodCapacity, colonyJobSlots, DEFAULT_JOB_WEIGHT, DYSON_COST, DYSON_LABOR, filledJobs, HOUR, JOB_WEIGHT_MAX, NUTRIENTS_PER_PERSON_HOUR, PROBE_COST, PROBE_LABOR, useColonyStore } from '../store/colonyStore';
+import { colonyAmenityDemand, colonyAmenityRatio, colonyContentment, colonyDefense, colonyDistrictCapacity, colonyDistrictsUsed, colonyFoodCapacity, colonyFuelCap, colonyJobSlots, colonyNetProduction, DEFAULT_JOB_WEIGHT, DYSON_COST, DYSON_LABOR, filledJobs, HOUR, JOB_WEIGHT_MAX, NUTRIENTS_PER_PERSON_HOUR, PROBE_COST, PROBE_LABOR, useColonyStore } from '../store/colonyStore';
 import { useResearchStore } from '../store/researchStore';
 import { useStockpileStore } from '../store/stockpileStore';
 import { detectionFloor, useUIStore } from '../store/uiStore';
 import { districtBuildCost } from '../store/travelCosts';
 import { civilizationMilestoneMet } from '../store/civStore';
+import { AlloysIcon, ExoticMatterIcon, Helium3Icon, MetallicHydrogenIcon, NeutronStarMatterIcon, NutrientsIcon, UpgradeModuleIcon } from './CargoIcons';
 import { DistrictIcon } from './DistrictIcons';
 import { colonyNextAction, colonyRunwayHours, districtBuildBlockers, districtUpkeepShortfall } from './colonyPresentation';
 import './SysPanel.css';
 
-type Tab = 'worlds' | 'civilization' | 'threat' | 'vault' | 'status';
-const TABS: Tab[] = ['worlds', 'civilization', 'threat', 'vault', 'status'];
+type Tab = 'worlds' | 'civilization' | 'threat' | 'status';
+const TABS: Tab[] = ['worlds', 'civilization', 'threat', 'status'];
+
+type ColonyFlow = {
+  id: string;
+  label: string;
+  rate: number;
+  kind: 'raw' | 'research' | 'material';
+};
+
+function ColonyFlowIcon({ flow }: { flow: ColonyFlow }) {
+  if (flow.kind === 'research') return <DistrictIcon id="research_district" />;
+  if (flow.kind === 'material') return <UpgradeModuleIcon />;
+  switch (flow.id as Resource['type']) {
+    case 'alloys': return <AlloysIcon />;
+    case 'nutrients': return <NutrientsIcon />;
+    case 'metallicHydrogen': return <MetallicHydrogenIcon />;
+    case 'neutronStarMatter': return <NeutronStarMatterIcon />;
+    case 'exotic': return <ExoticMatterIcon />;
+    case 'helium-3': return <Helium3Icon />;
+    default: return <UpgradeModuleIcon />;
+  }
+}
+
+function formatFlowRate(rate: number): string {
+  const absolute = Math.abs(rate);
+  return absolute.toLocaleString(undefined, {
+    maximumFractionDigits: absolute < 1 ? 3 : absolute < 10 ? 2 : absolute < 100 ? 1 : 0,
+  });
+}
 
 function WorldsTab() {
   const colonies = useColonyStore(state => state.colonies);
@@ -35,13 +64,24 @@ function WorldsTab() {
   if (!colony) return <p>Upgrade a habitable world's fabricator and stage a colony charter to begin.</p>;
   const slots = colonyJobSlots(colony);
   const filled = filledJobs(colony);
-  const demand = colonyDemand(colony);
+  const netProduction = colonyNetProduction(colony);
+  const flows: ColonyFlow[] = [
+    ...Object.entries(netProduction.raw).map(([id, rate]) => ({
+      id, label: RESOURCE_LABELS[id as Resource['type']], rate: rate ?? 0, kind: 'raw' as const,
+    })),
+    ...(netProduction.research ? [{ id: 'research', label: 'Research', rate: netProduction.research, kind: 'research' as const }] : []),
+    ...Object.entries(netProduction.materials).map(([id, rate]) => ({
+      id, label: materialName(id), rate, kind: 'material' as const,
+    })),
+  ].filter(flow => Math.abs(flow.rate) >= 0.0005);
   const capacity = colonyDistrictCapacity(colony);
   const used = colonyDistrictsUsed(colony);
   const cost = districtBuildCost();
   const hold = { materials, rares };
   const fuel = { exotic: infiniteExplore ? Infinity : exoticMatter, helium: infiniteExplore ? Infinity : helium3Reserves };
   const runway = colonyRunwayHours(colony.population, colony.supplies.nutrients ?? 0);
+  const helium3 = Math.max(0, colony.supplies['helium-3'] ?? 0);
+  const helium3Capacity = colonyFuelCap(colony);
   const amenityRatio = colonyAmenityRatio(colony);
   const amenityDemand = colonyAmenityDemand(colony);
   const orderedJobs = [...colony.jobPriority];
@@ -58,6 +98,7 @@ function WorldsTab() {
     <div className="sys-world-detail">
       <header><div><h3>{colony.planetName}</h3><span>{Math.floor(colony.population).toLocaleString()} people · {used}/{capacity} districts</span></div><strong>{colonyNextAction(colony)}</strong></header>
       <div className="sys-strip"><span>FOOD RUNWAY</span><div><i style={{ width: `${Math.min(100, runway / 2 * 100)}%` }} /></div><b>{Number.isFinite(runway) ? `${runway.toFixed(2)}h` : '∞'}</b></div>
+      <div className="sys-strip"><span>HE-3 INVENTORY</span><div><i style={{ width: `${helium3Capacity > 0 ? Math.min(100, helium3 / helium3Capacity * 100) : 0}%` }} /></div><b>{Math.floor(helium3).toLocaleString()} / {Math.floor(helium3Capacity).toLocaleString()}</b></div>
       <div className="sys-strip"><span>AMENITIES</span><div><i style={{ width: `${Math.min(100, amenityRatio * 100)}%` }} /></div><b>{Math.round(amenityRatio * amenityDemand)} / {Math.round(amenityDemand)}</b></div>
       <h4>DISTRICTS · {used} / {capacity} SLOTS USED</h4>
       <div className="sys-district-grid">{DISTRICTS.map(district => {
@@ -67,16 +108,26 @@ function WorldsTab() {
         return <article key={district.id} className={count ? 'built' : ''}><b>{count}</b><i className="sys-district-art" aria-hidden="true"><DistrictIcon id={district.id} /></i><strong title={district.description}>{district.name.replace(' District', '')}</strong><ul className={blockers.length ? 'sys-district-cost short' : 'sys-district-cost'}>{costLines.map(line => <li key={line}>{line}</li>)}</ul><div className="sys-district-actions"><span className="sys-build" title={blockers.length ? `Needs ${blockers.join(', ')}` : `Build one ${district.name} — ${costLines.join(' · ')}`}><button disabled={blockers.length > 0} onClick={() => useColonyStore.getState().buildDistrict(colony.key, district.id)}>BUILD</button></span><button className={razing === district.id ? 'sys-raze armed' : 'sys-raze'} disabled={!count} title={razing === district.id ? `Confirm razing one ${district.name}` : `Raze one ${district.name}`} aria-label={razing === district.id ? `Confirm razing one ${district.name}` : `Raze one ${district.name}`} onClick={() => { if (razing !== district.id) { setRazing(district.id); return; } useColonyStore.getState().demolishDistrict(colony.key, district.id); setRazing(null); }}>{razing === district.id ? '✓' : '✕'}</button></div></article>;
       })}</div>
       <h4>JOBS · {Math.round(Object.values(filled).reduce((sum, amount) => sum + amount, 0)).toLocaleString()} OF {Math.floor(colony.population).toLocaleString()} ASSIGNED</h4>
-      <div className="sys-jobs"><div className="sys-table-head"><span>PRIORITY / JOB</span><span>SHARE</span><span>SLOTS</span><span>FILLED</span><span>OUTPUT / HOUR</span><span>UPKEEP / HOUR</span></div>{orderedJobs.map(job => {
+      <div className="sys-jobs"><div className="sys-table-head"><span>PRIORITY / JOB</span><span>SHARE</span><span>SLOTS</span><span>FILLED</span><span>OUTPUT / HOUR</span><span>UPKEEP / HOUR · TOTAL</span></div>{orderedJobs.map(job => {
         const district = DISTRICTS.find(item => item.job === job)!;
-        const output = [...Object.entries(district.output.raw ?? {}), ...Object.entries(district.output.materials ?? {})].map(([id, rate]) => `${((rate ?? 0) * filled[job]).toFixed(1)} ${RESOURCE_LABELS[id as Resource['type']] ?? materialName(id)}`).concat(district.output.research ? [`${(district.output.research * filled[job]).toFixed(1)} research`] : [], district.output.amenities ? [`${(district.output.amenities * filled[job]).toFixed(0)} amenities`] : []).join(', ') || 'none';
-        const upkeep = [...Object.entries(district.upkeep.raw ?? {}), ...Object.entries(district.upkeep.materials ?? {})].map(([id, rate]) => `${rate} ${RESOURCE_LABELS[id as Resource['type']] ?? materialName(id)}`).join(', ') || 'none';
+        const districtCount = colony.districts[district.id] ?? 0;
+        const jobCapacity = districtCount * district.jobs;
+        const staffedFraction = jobCapacity > 0 ? Math.min(1, filled[job] / jobCapacity) : 0;
+        const heatSuppression = Math.max(0, -(district.heat ?? 0));
+        const sentinelsNeeded = Math.max(0, Math.ceil(jobCapacity - filled[job]));
+        const defenseOutput = heatSuppression > 0 && districtCount > 0
+          ? [`${formatFlowRate(heatSuppression * districtCount * staffedFraction)} / ${formatFlowRate(heatSuppression * districtCount)} heat/h suppressed${sentinelsNeeded ? ` · ${sentinelsNeeded.toLocaleString()} more sentinels for full output` : ''}`]
+          : [];
+        const output = [...Object.entries(district.output.raw ?? {}), ...Object.entries(district.output.materials ?? {})].map(([id, rate]) => `${((rate ?? 0) * filled[job]).toFixed(1)} ${RESOURCE_LABELS[id as Resource['type']] ?? materialName(id)}`).concat(district.output.research ? [`${(district.output.research * filled[job]).toFixed(1)} research`] : [], district.output.amenities ? [`${(district.output.amenities * filled[job]).toFixed(0)} amenities`] : [], defenseOutput).join(', ') || 'none';
+        const upkeep = districtCount > 0
+          ? [...Object.entries(district.upkeep.raw ?? {}), ...Object.entries(district.upkeep.materials ?? {})].map(([id, rate]) => `${formatFlowRate(rate * districtCount)} ${RESOURCE_LABELS[id as Resource['type']] ?? materialName(id)}`).join(', ') || 'none'
+          : 'none';
         const shortfall = districtUpkeepShortfall(colony, district);
         const weight = colony.jobWeights?.[job] ?? DEFAULT_JOB_WEIGHT;
-        return <div key={job}><span><button onClick={() => moveJob(job, -1)}>↑</button><button onClick={() => moveJob(job, 1)}>↓</button>{job.toUpperCase()}</span><span className="sys-job-weight"><input type="range" min={0} max={JOB_WEIGHT_MAX} step={1} value={weight} aria-label={`${job} staffing share`} title={weight ? `Share ${weight} of ${JOB_WEIGHT_MAX}` : 'Unstaffed'} onChange={event => useColonyStore.getState().setJobWeight(colony.key, job, Number(event.target.value))} /><b>{weight}</b></span><span>{slots[job].toLocaleString()}</span><span>{Math.round(filled[job]).toLocaleString()}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? 'STALLED' : output}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? `NO ${shortfall.join(', ').toUpperCase()}` : upkeep}</span></div>;
-      })}</div>
-      <h4>DELIVERY</h4>
-      <div className="sys-delivery">{Object.entries(demand.raw).filter(([, amount]) => (amount ?? 0) > 0).map(([id, amount]) => <span key={id}>{RESOURCE_LABELS[id as Resource['type']]} · {Math.ceil(amount ?? 0)}</span>)}{Object.entries(demand.materials).filter(([, amount]) => amount > 0).map(([id, amount]) => <span key={id}>{materialName(id)} · {Math.ceil(amount)}</span>)}{Object.values(demand.raw).every(amount => !amount) && Object.values(demand.materials).every(amount => !amount) && <span>No inbound cargo needed.</span>}</div>
+        return <div key={job}><span><button onClick={() => moveJob(job, -1)}>↑</button><button onClick={() => moveJob(job, 1)}>↓</button>{job.toUpperCase()}</span><span className="sys-job-weight"><input type="range" min={0} max={JOB_WEIGHT_MAX} step={1} value={weight} aria-label={`${job} staffing share`} title={weight ? `Share ${weight} of ${JOB_WEIGHT_MAX}` : 'Unstaffed'} onChange={event => useColonyStore.getState().setJobWeight(colony.key, job, Number(event.target.value))} /><b>{weight}</b></span><span>{slots[job].toLocaleString()}</span><span>{Math.round(filled[job]).toLocaleString()}</span><span className={shortfall.length ? 'colony-warning' : ''}>{shortfall.length ? 'STALLED' : output}</span><span className={shortfall.length ? 'colony-warning' : ''}>{upkeep}{shortfall.length ? ` · NO ${shortfall.join(', ').toUpperCase()}` : ''}</span></div>;
+      })}<div className="sys-resident-load"><span title="Every resident consumes food, including residents without a job.">RESIDENTS</span><span>—</span><span>—</span><span>{Math.floor(colony.population).toLocaleString()}</span><span>none</span><span>{formatFlowRate(colony.population * NUTRIENTS_PER_PERSON_HOUR)} {RESOURCE_LABELS.nutrients}</span></div></div>
+      <h4>PRODUCTION / DEFICIT <small>NET PER HOUR · OUTPUT − TOTAL UPKEEP</small></h4>
+      <div className="sys-colony-flows">{flows.map(flow => <article key={`${flow.kind}:${flow.id}`} className={flow.rate > 0 ? 'production' : 'deficit'} title={`${flow.label}: ${flow.rate > 0 ? 'net production' : 'net deficit'} at current staffing`}><i aria-hidden="true"><ColonyFlowIcon flow={flow} /></i><span><strong>{flow.label}</strong><small>{flow.rate > 0 ? 'PRODUCTION' : 'DEFICIT'}</small></span><b>{flow.rate > 0 ? '+' : '−'}{formatFlowRate(flow.rate)} / h</b></article>)}{flows.length === 0 && <p>No active production or deficits.</p>}</div>
       <h4>STELLAR PROJECT</h4>
       {colony.project ? <div className="sys-project"><strong>{colony.project === 'dyson' ? 'DYSON SWARM' : 'REPLICATION NETWORK'}</strong><span>Colonist labor {(colony.projectDelivered.labor ?? 0).toFixed(1)} / {colony.project === 'dyson' ? DYSON_LABOR : PROBE_LABOR}</span>{Object.entries(colony.project === 'dyson' ? DYSON_COST : PROBE_COST).map(([id, amount]) => <span key={id}>{materialName(id)} {colony.projectDelivered[id] ?? 0} / {amount}</span>)}</div> : <div className="sys-project"><button disabled={colony.swarmComplete || tier < 1 || research < researchThreshold(2)} onClick={() => useColonyStore.getState().startProject(colony.key, 'dyson')}>{colony.swarmComplete ? 'DYSON SWARM ONLINE' : research < researchThreshold(2) ? 'RESEARCH STELLAR THEORY' : 'COMMISSION DYSON SWARM'}</button><button disabled={!colony.swarmComplete || colony.probeCoverage >= 1 || tier < 2 || research < researchThreshold(3)} onClick={() => useColonyStore.getState().startProject(colony.key, 'probes')}>{colony.probeCoverage >= 1 ? 'REPLICATION NETWORK ONLINE' : research < researchThreshold(3) ? 'RESEARCH GALACTIC THEORY' : 'COMMISSION REPLICATION NETWORK'}</button></div>}
       <small>Food capacity {Math.floor(colonyFoodCapacity(colony)).toLocaleString()} · consumption {(colony.population * NUTRIENTS_PER_PERSON_HOUR).toFixed(0)}/hour · planetary integration {Math.min(100, (colony.planetaryProgressMs ?? 0) / HOUR * 100).toFixed(0)}% · growth {(colonyContentment(colony) * 100).toFixed(0)}% of normal</small>
@@ -108,22 +159,15 @@ function ThreatTab() {
   return <div><div className="sys-strip"><span>EXPOSURE</span><div><i style={{ width: `${Math.min(100, exposure / nextStrike * 100)}%` }} /></div><b>{exposure} / {nextStrike}</b></div>{strike && <p className="colony-warning">Cannon transit to {strike.targetName}.</p>}<div className="sys-threat-list">{Object.values(colonies).map(colony => <article key={colony.key}><strong>{colony.planetName}</strong><span>local heat {colony.localHeat.toFixed(1)} · {colonyDefense(colony).batteries} defense districts</span><button disabled={colony.population <= 0} onClick={() => useColonyStore.getState().evacuate(colony.key)}>Evacuate {Math.floor(colony.population)} people</button></article>)}</div></div>;
 }
 
-function VaultTab() {
-  const lines = useUIStore(state => state.geneLines);
-  const evacuated = useUIStore(state => state.evacuatedPopulation);
-  const returned = useStockpileStore(state => state.materials.viable_line ?? 0);
-  return <div className="sys-vault"><h3>THE VAULT</h3><strong>{lines} viable lines aboard</strong><p>{returned.toFixed(2)} lines in returned cargo · {evacuated.toLocaleString()} people evacuated.</p><div className="sys-strip"><span>HUMAN LEDGER</span><div><i style={{ width: `${Math.min(100, evacuated / 873 * 100)}%` }} /></div><b>{evacuated} / 873</b></div></div>;
-}
-
 function StatusTab() {
   const exposure = useUIStore(state => state.exposure);
-  const geneLines = useUIStore(state => state.geneLines);
+  const evacuated = useUIStore(state => state.evacuatedPopulation);
   const alienMatter = useUIStore(state => state.alienMatter);
   const nextStrike = useUIStore(state => state.nextStrikeExposure);
   return <div className="sys-status">
     <h3>SHIP STATUS</h3>
     <div><span>EXPOSURE</span><b>{exposure}</b><small>Census probes that escaped and reported your position. It never goes down. At {nextStrike} the cannon fires on one of your worlds.</small></div>
-    <div><span>VIABLE LINES</span><b>{geneLines}</b><small>Frozen human genetic lines held aboard. A colony charter costs two; evacuating a colony returns them.</small></div>
+    <div><span>EVACUATED</span><b>{evacuated.toLocaleString()}</b><small>People preserved in flotillas after their colonies were evacuated.</small></div>
     <div><span>ALIEN MATTER</span><b>{alienMatter}</b><small>Salvage recovered from probes shot down nearby. Used as a build resource.</small></div>
   </div>;
 }
@@ -132,5 +176,5 @@ export function SysPanel() {
   const show = useUIStore(state => state.showSysPanel);
   const [tab, setTab] = useState<Tab>('worlds');
   if (!show) return null;
-  return createPortal(<div className="sys-overlay" onClick={() => useUIStore.getState().setShowSysPanel(false)}><section className="sys-panel" role="dialog" aria-modal="true" aria-label="Humanity" onClick={event => event.stopPropagation()}><button className="sys-close" onClick={() => useUIStore.getState().setShowSysPanel(false)}>×</button><nav className="sys-tabs">{TABS.map(item => <button className={`${item === 'status' ? 'sys-tab-right' : ''}${tab === item ? ' active' : ''}`} key={item} onClick={() => setTab(item)}>{item.toUpperCase()}</button>)}</nav><main>{tab === 'worlds' ? <WorldsTab /> : tab === 'civilization' ? <CivilizationTab /> : tab === 'threat' ? <ThreatTab /> : tab === 'vault' ? <VaultTab /> : <StatusTab />}</main></section></div>, document.body);
+  return createPortal(<div className="sys-overlay" onClick={() => useUIStore.getState().setShowSysPanel(false)}><section className="sys-panel" role="dialog" aria-modal="true" aria-label="Humanity" onClick={event => event.stopPropagation()}><button className="sys-close" onClick={() => useUIStore.getState().setShowSysPanel(false)}>×</button><nav className="sys-tabs">{TABS.map(item => <button className={`${item === 'status' ? 'sys-tab-right' : ''}${tab === item ? ' active' : ''}`} key={item} onClick={() => setTab(item)}>{item.toUpperCase()}</button>)}</nav><main>{tab === 'worlds' ? <WorldsTab /> : tab === 'civilization' ? <CivilizationTab /> : tab === 'threat' ? <ThreatTab /> : <StatusTab />}</main></section></div>, document.body);
 }

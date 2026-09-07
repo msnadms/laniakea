@@ -374,8 +374,6 @@ export interface HoldFeedSource {
   metallicHydrogen: number;
   neutronStarMatter: number;
   alienMatter?: number;
-  fuelReserveExotic: number;
-  fuelReserveHelium3: number;
   logisticsA: number;
   logisticsB: number;
 }
@@ -389,9 +387,7 @@ export interface HoldFeedPools {
 export function holdFeedPools(source: HoldFeedSource, materials: MaterialCost): HoldFeedPools {
   const raw: Partial<Record<Resource['type'], number>> = {};
   for (const type of HOLD_RAW_TYPES) {
-    const reserved = type === 'exotic' ? source.fuelReserveExotic
-      : type === 'helium-3' ? source.fuelReserveHelium3 : 0;
-    const available = Math.max(0, resourceAmount(source, type) - reserved);
+    const available = resourceAmount(source, type);
     if (available > 0) raw[type] = available;
   }
   return {

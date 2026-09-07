@@ -32,7 +32,7 @@ export function useSettingsPersist() {
         const s = useUIStore.getState();
         const g = useGameStore.getState();
         saveUserSettings(user.uid, {
-          geneLines: s.geneLines, exposure: s.exposure, lastProbeEscapeAt: s.lastProbeEscapeAt,
+          exposure: s.exposure, lastProbeEscapeAt: s.lastProbeEscapeAt,
           alienMatter: s.alienMatter, kardashevTier: s.kardashevTier, strike: s.strike,
           nextStrikeExposure: s.nextStrikeExposure, evacuatedPopulation: s.evacuatedPopulation,
           showOrbitRings: s.showOrbitRings,
@@ -60,8 +60,6 @@ export function useSettingsPersist() {
           weaponB: s.weaponB,
           logisticsA: s.logisticsA,
           logisticsB: s.logisticsB,
-          fuelReserveExotic: s.fuelReserveExotic,
-          fuelReserveHelium3: s.fuelReserveHelium3,
           lastView: s.view,
           lastSuperclusterSeed: g.supercluster.seed,
           lastGalaxySeed: g.galaxy.seed,

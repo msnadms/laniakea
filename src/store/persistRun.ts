@@ -48,7 +48,7 @@ function writeRun(uid: string, touched: { extractorKeys: string[]; fabricatorKey
   if (touched.campaign || touched.colonyKeys.length > 0) {
     const s = useUIStore.getState();
     writes.push(saveCampaignProgress(uid, {
-      geneLines: s.geneLines, exposure: s.exposure, lastProbeEscapeAt: s.lastProbeEscapeAt,
+      exposure: s.exposure, lastProbeEscapeAt: s.lastProbeEscapeAt,
       alienMatter: s.alienMatter, kardashevTier: s.kardashevTier, strike: s.strike,
       nextStrikeExposure: s.nextStrikeExposure, evacuatedPopulation: s.evacuatedPopulation,
     }));

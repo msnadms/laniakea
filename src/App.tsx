@@ -4,7 +4,6 @@ import { ConfigPanel } from './ui/ConfigPanel';
 import { useUIStore } from './store/uiStore';
 import { useGameStore } from './store/gameStore';
 import { generateGalaxyName } from './game/superclusters';
-import { GALAXY_TYPE_LABELS } from './game/types';
 import './App.css';
 import { AuthButton } from './ui/AuthButton';
 import { ShipHUD } from './ui/ShipHUD';
@@ -27,7 +26,6 @@ const ViewTitle = memo(function ViewTitle() {
   const view = useUIStore((s) => s.view);
   const supercluterName = useGameStore((s) => s.supercluster.name);
   const galaxyName = useGameStore((s) => generateGalaxyName(s.galaxy.seed));
-  const galaxyType = useGameStore((s) => s.galaxy.config.type);
   const systemName = useGameStore((s) => s.system?.name ?? null);
 
   const title =
@@ -39,7 +37,6 @@ const ViewTitle = memo(function ViewTitle() {
   return (
     <div className="galaxy-title">
       {title}
-      {view === 'galaxy' && <div className="galaxy-title-sub">{GALAXY_TYPE_LABELS[galaxyType]}</div>}
     </div>
   );
 });

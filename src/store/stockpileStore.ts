@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { MaterialCost } from '../game/types';
 
+const REMOVED_MATERIAL_IDS = new Set(['viable_line']);
+
+function withoutRemovedMaterials(materials: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.entries(materials).filter(([id]) => !REMOVED_MATERIAL_IDS.has(id)));
+}
+
 interface StockpileState {
   materials: Record<string, number>;
   rares: Record<string, number>;
@@ -21,8 +27,10 @@ export const useStockpileStore = create<StockpileState>()(
     materials: {},
     rares: {},
 
-    addMaterial: (id, count) =>
-      set((s) => ({ materials: { ...s.materials, [id]: (s.materials[id] ?? 0) + count } })),
+    addMaterial: (id, count) => {
+      if (REMOVED_MATERIAL_IDS.has(id)) return;
+      set((s) => ({ materials: { ...s.materials, [id]: (s.materials[id] ?? 0) + count } }));
+    },
 
     addRare: (id, count) =>
       set((s) => ({ rares: { ...s.rares, [id]: (s.rares[id] ?? 0) + count } })),
@@ -42,6 +50,6 @@ export const useStockpileStore = create<StockpileState>()(
       return true;
     },
 
-    restoreStockpile: (materials, rares = {}) => set({ materials, rares }),
+    restoreStockpile: (materials, rares = {}) => set({ materials: withoutRemovedMaterials(materials), rares }),
   })),
 );

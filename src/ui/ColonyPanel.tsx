@@ -1,4 +1,4 @@
-import { useColonyStore, canCharterWithAvailableAssemblies, CHARTER_LINES, colonyDemand, colonyFoodCapacity } from '../store/colonyStore';
+import { useColonyStore, canCharterWithAvailableAssemblies, colonyDemand, colonyFoodCapacity } from '../store/colonyStore';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { RESOURCE_LABELS, type Resource } from '../game/types';
@@ -8,7 +8,6 @@ import { colonyNextAction, colonyRunwayHours } from './colonyPresentation';
 
 export function ColonySummary({ colonyKey }: { colonyKey: string }) {
   const colony = useColonyStore(state => state.colonies[colonyKey]);
-  const geneLines = useUIStore(state => state.geneLines);
   const galaxySeed = useGameStore(state => state.galaxy.seed);
   const systemId = useGameStore(state => state.system?.id);
   if (!colony) return null;
@@ -16,13 +15,12 @@ export function ColonySummary({ colonyKey }: { colonyKey: string }) {
   const blockers = [
     ...canCharterWithAvailableAssemblies(colony) ? [] : ['charter assemblies'],
     ...galaxySeed === colony.galaxySeed && systemId === colony.systemId ? [] : ['the Peregrine in system'],
-    ...geneLines >= CHARTER_LINES ? [] : [`${CHARTER_LINES} viable lines`],
   ];
   return <section className="colony-summary">
     <strong>{colony.foundedAt ? `${Math.floor(colony.population).toLocaleString()} people` : 'Charter staging'}</strong>
     <span>{Number.isFinite(runway) ? `${runway.toFixed(1)}h food runway` : 'No food demand'} · {Math.floor(colony.supplies.nutrients ?? 0)} / {Math.floor(colonyFoodCapacity(colony))} nutrients</span>
     <span className={runway < 0.25 ? 'colony-warning' : ''}>{colonyNextAction(colony)}</span>
-    {!colony.foundedAt && <button disabled={blockers.length > 0} title={blockers.length ? `Needs ${blockers.join(', ')}` : 'Charter this colony'} onClick={() => useColonyStore.getState().charterColony(colony.key)}>Charter colony · {blockers.length ? `needs ${blockers.join(', ')}` : `${CHARTER_LINES} viable lines`}</button>}
+    {!colony.foundedAt && <button disabled={blockers.length > 0} title={blockers.length ? `Needs ${blockers.join(', ')}` : 'Charter this colony'} onClick={() => useColonyStore.getState().charterColony(colony.key)}>Charter colony · {blockers.length ? `needs ${blockers.join(', ')}` : 'ready'}</button>}
     <button onClick={() => useUIStore.getState().setShowSysPanel(true)}>Open Humanity</button>
   </section>;
 }

@@ -49,6 +49,8 @@ export const DEFAULT_AUTOMATION_POLICY: RouteAutomationPolicy = {
   fillAggregate: 'weighted',
   detectionCeiling: 4,
   pauseOnJam: true,
+  fuelReserveExotic: 0,
+  fuelReserveHelium3: 0,
 };
 
 export function resolveAutomationPolicy(route: LogisticsRoute): RouteAutomationPolicy {
@@ -235,41 +237,29 @@ function edgeCapacity(edge: RouteEdge, bandwidth: number): number {
   return Math.max(0, Math.min(bandwidth, Math.floor(edge.materialDraw ?? bandwidth)));
 }
 
-export const DETECTION_DENSITY_DIVISOR = 60;
-export const DETECTION_CROSSING_POINTS = 0.05;
-export const DETECTION_DAMPENED_HOP_WEIGHT = 0.5;
+export const PROBE_ATTENTION_RISK_THRESHOLD = 3;
 
-function localHopRisk(hops: number): number {
-  return Math.max(0, hops * (hops - 1)) / DETECTION_DENSITY_DIVISOR;
-}
-
-function edgeHopWeight(fromDampened: boolean, toDampened: boolean): number {
-  return (fromDampened ? DETECTION_DAMPENED_HOP_WEIGHT : 1) * (toDampened ? DETECTION_DAMPENED_HOP_WEIGHT : 1);
-}
-
-function nodeIsDampened(group: NodeGroup, equipped: Record<string, [string | null, string | null]>): boolean {
-  return group.extractors.length > 0
-    && group.extractors.every((extractor) => getExtractorMultipliers(extractor.key, equipped).dampened);
+export function probeAttentionFromRisk(risk: number): number {
+  return risk > PROBE_ATTENTION_RISK_THRESHOLD ? 1 : 0;
 }
 
 export function routeDetectionRisk(
-  edges: RouteEdge[],
+  _edges: RouteEdge[],
   groups: Map<string, NodeGroup>,
 ): number {
-  const equipped = useExtractorStore.getState().nodeEquipped;
-  const dampened = new Map([...groups].map(([nodeId, group]) => [nodeId, nodeIsDampened(group, equipped)]));
-  const localHops = new Map<number, number>();
-  let crossings = 0;
-  for (const edge of edges) {
-    const from = groups.get(edge.from);
-    const to = groups.get(edge.to);
-    if (!from || !to) continue;
-    const weight = edgeHopWeight(!!dampened.get(edge.from), !!dampened.get(edge.to));
-    if (from.superclusSeed !== to.superclusSeed) crossings += DETECTION_CROSSING_POINTS * weight;
-    else localHops.set(from.superclusSeed, (localHops.get(from.superclusSeed) ?? 0) + weight);
+  const { extractors, nodeEquipped } = useExtractorStore.getState();
+  const nearbyExtractors = Object.values(extractors);
+  const routeExtractors = [...groups.values()].flatMap((group) => group.extractors);
+  let risk = 0;
+  for (const routeExtractor of routeExtractors) {
+    const localRisk = nearbyExtractors.reduce((sum, extractor) => {
+      if (extractor.galaxySeed === routeExtractor.galaxySeed) return sum + 1;
+      if (extractor.superclusSeed === routeExtractor.superclusSeed) return sum + 0.5;
+      return sum;
+    }, 0);
+    risk += localRisk * getExtractorMultipliers(routeExtractor.key, nodeEquipped).signalRiskMultiplier;
   }
-  const density = [...localHops.values()].reduce((sum, hops) => sum + localHopRisk(hops), 0);
-  return Math.max(0, density + crossings);
+  return risk;
 }
 
 export function routeExtractorKeys(groups: Map<string, NodeGroup>): ExtractorKey[] {
@@ -531,14 +521,6 @@ class LiveWorld implements RouteWorld {
   }
   depositRaw(type: Resource['type'], amount: number) { return useUIStore.getState().depositCargo(type, amount); }
   depositMaterial(id: string, amount: number) {
-    if (id === 'viable_line') {
-      const stockpile = useStockpileStore.getState();
-      const total = (stockpile.materials.viable_line ?? 0) + amount;
-      const returned = Math.floor(total);
-      useStockpileStore.setState({ materials: { ...stockpile.materials, viable_line: total - returned } });
-      if (returned > 0) useUIStore.getState().receiveGeneLine(returned);
-      return;
-    }
     if (rareIds.has(id)) useStockpileStore.getState().addRare(id, amount);
     else useStockpileStore.getState().addMaterial(id, amount);
   }
@@ -941,11 +923,12 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const islands = routeIslandNodes(route.edges);
   const valid = routeIsValid(route.edges) && groups.size === nodes.length;
   const policy = resolveAutomationPolicy(route);
-  const risk = Math.max(0, routeDetectionRisk(route.edges, groups) - catchUpDetectionCredit);
+  const risk = routeDetectionRisk(route.edges, groups);
+  const attentionIncrease = Math.max(0, probeAttentionFromRisk(risk) - catchUpDetectionCredit);
   const ui = useUIStore.getState();
   const cost = computeRouteCost(route.edges, extractors, fabricators, traversal.throughputUnits);
-  const affordable = !!routeSponsor(groups, cost) || (ui.exoticMatter - cost.exotic >= ui.fuelReserveExotic
-    && ui.helium3Reserves - cost.helium >= ui.fuelReserveHelium3);
+  const affordable = !!routeSponsor(groups, cost) || (ui.exoticMatter - cost.exotic >= policy.fuelReserveExotic
+    && ui.helium3Reserves - cost.helium >= policy.fuelReserveHelium3);
   let reason = 'Ready';
   const storedHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
     ? ui.detectionHeat
@@ -959,7 +942,7 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const exceedsTank = cost.exotic > tank || cost.helium > tank;
   if (!valid) reason = islands.length > 0 ? 'Disconnected route islands' : 'Incomplete or cyclic route';
   else if (!affordable) reason = exceedsTank ? 'Route costs more fuel than the hold can carry' : 'Insufficient route fuel';
-  else if (effectiveHeat + risk > policy.detectionCeiling * DETECTION_HEAT_PER_BAR) reason = 'Detection ceiling would be exceeded';
+  else if (effectiveHeat + attentionIncrease > policy.detectionCeiling * DETECTION_HEAT_PER_BAR) reason = 'Probe attention ceiling would be exceeded';
   else if (!traversal.didWork) reason = 'Waiting for useful cargo';
   else if (policy.dispatchMode === 'batch' && traversal.expectedBatches === 0 && hasConfiguredRecipe) reason = 'Waiting for a complete recipe batch';
   return {
@@ -1053,7 +1036,7 @@ function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | 
   const preview = optimizedRoutePreview(route, true);
   const currentUI = useUIStore.getState();
   const manualPolicyOverride = !automatic && (
-    preview.reason === 'Detection ceiling would be exceeded'
+    preview.reason === 'Probe attention ceiling would be exceeded'
     || (preview.reason === 'Insufficient route fuel'
       && currentUI.exoticMatter >= preview.cost.exotic
       && currentUI.helium3Reserves >= preview.cost.helium)
@@ -1090,8 +1073,9 @@ function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | 
   const deliveries = traversal.endItems.length > 0
     ? useExtractorStore.getState().receiveFabricatorItems(traversal.endItems)
     : [];
-  if (preview.detectionRisk > 0) useUIStore.getState().raiseDetectionHeat(preview.detectionRisk);
-  catchUpDetectionCredit = Math.max(0, catchUpDetectionCredit - routeDetectionRisk(route.edges, groups));
+  const attentionIncrease = Math.max(0, probeAttentionFromRisk(preview.detectionRisk) - catchUpDetectionCredit);
+  if (attentionIncrease > 0) useUIStore.getState().raiseDetectionHeat(attentionIncrease);
+  catchUpDetectionCredit = Math.max(0, catchUpDetectionCredit - probeAttentionFromRisk(preview.detectionRisk));
   const result: DispatchResult = {
     colonyKeys: [...groups.values()].flatMap(g => g.colonyKeys ?? []),
     order: traversal.order,
@@ -1213,7 +1197,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       if (fill < policy.sourceFillPercent) continue;
       const preview = optimizedRoutePreview(route, true);
       if (!preview.canRun) {
-        if (get().automationNotices[route.id] !== preview.reason && (preview.reason.includes('jam') || preview.reason.includes('fuel') || preview.reason.includes('Detection'))) {
+        if (get().automationNotices[route.id] !== preview.reason && (preview.reason.includes('jam') || preview.reason.includes('fuel') || preview.reason.includes('attention'))) {
           useUIStore.getState().triggerHudNotify(`${route.name.toUpperCase()} HOLDING — ${preview.reason.toUpperCase()}`);
           set((state) => ({ automationNotices: { ...state.automationNotices, [route.id]: preview.reason } }));
         }
@@ -1277,7 +1261,6 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
         heldCargo: route.heldCargo ?? {},
       };
     }), lastRuns: {}, automationNotices: {} });
-    useUIStore.getState().adoptLegacyFuelReserve(legacyFuelReserve(routes));
   },
 }));
 
@@ -1291,7 +1274,6 @@ interface LegacyRouteEdge extends RouteEdge {
 interface LegacyAutomationPolicy extends Partial<RouteAutomationPolicy> {
   requireRecipeReady?: boolean;
   quiet?: boolean;
-  minimumShipReserve?: { exotic?: number; helium3?: number };
 }
 
 function migrateEdge(edge: RouteEdge): RouteEdge {
@@ -1313,14 +1295,8 @@ function migrateAutomationPolicy(automation: RouteAutomationPolicy | undefined):
     fillAggregate: legacy.fillAggregate ?? 'any',
     detectionCeiling: legacy.detectionCeiling ?? DEFAULT_AUTOMATION_POLICY.detectionCeiling,
     pauseOnJam: legacy.pauseOnJam ?? DEFAULT_AUTOMATION_POLICY.pauseOnJam,
-  };
-}
-
-function legacyFuelReserve(routes: LogisticsRoute[]): { exotic: number; helium3: number } {
-  const reserves = routes.map((route) => (route.automation as LegacyAutomationPolicy | undefined)?.minimumShipReserve);
-  return {
-    exotic: Math.max(0, ...reserves.map((reserve) => reserve?.exotic ?? 0)),
-    helium3: Math.max(0, ...reserves.map((reserve) => reserve?.helium3 ?? 0)),
+    fuelReserveExotic: legacy.fuelReserveExotic ?? 0,
+    fuelReserveHelium3: legacy.fuelReserveHelium3 ?? 0,
   };
 }
 

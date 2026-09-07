@@ -10,9 +10,9 @@ stops being an abstract penalty and becomes that civilization's opposition.
 
 The intended arc is:
 
-- spend a finite inheritance of frozen genetic material on colonies that cannot pay it back;
+- turn rare assemblies into complete colony charters rather than another inventory counter;
 - keep those colonies supplied and defended against a hostile automated census;
-- reach the point where colonies produce more humans than the vault ever held;
+- reach the point where colonies sustain and spread humanity on their own;
 - climb from planetary to stellar to galactic scale;
 - decide what a Type III humanity does with the weapon that killed Earth.
 
@@ -34,10 +34,9 @@ Venus was not a warship, it was a census. Probes self-replicate, they are drawn 
 signatures, and they are how the axiom is enforced at galactic range. A probe that observes you
 and leaves has already killed you; the Cannon only arrives later.
 
-**The Peregrine already carries the vault.** She was provisioned for colonization before the
-strike, so frozen genetic material is aboard and is not craftable, purchasable, or replaceable.
-It is a fixed inheritance, and the only thing in the game that can make more of it is a colony of
-living people. That is the spine: humanity is a resource only humans make.
+**The Peregrine was provisioned for colonization.** The biological seed stock is part of the
+settlement hardware rather than a separate resource. An Ectogenesis Bank abstracts the material
+and clinical systems needed to establish a population, keeping the game focused on logistics.
 
 ## Current state
 
@@ -93,19 +92,12 @@ itself, since the same tank fuels dispatches.
 
 Exposure drives the mid-game threat. See **Strikes**.
 
-### The vault
+### Colony charters
 
-A new Peregrine stat beside railgun ammo in the HUD and in `uiStore`: `geneLines`, labeled VIABLE
-LINES. The starting value is small and fixed — 873 is the manifest, so the vault should read in
-that order of magnitude. The plan assumes **24 lines**, tuned later.
-
-- Founding a colony spends lines. Nothing else spends them, and nothing craftable makes them.
-- A colony that reaches maturity **exports a line back to the vault**. This is the only renewal in
-  the game, and the moment the first export lands is the inflection point of the campaign: before
-  it the player is spending down an inheritance, after it humanity compounds.
-- The vault is physically aboard, so **only the Peregrine can found a colony**. Drones supply,
-  defend, and deliver; chartering requires the ship in the system. This keeps the ship meaningful
-  in a game whose second half is a network.
+A charter's settlement assemblies include its biological seed stock. The game does not count that
+stock separately: acquiring and delivering an Ectogenesis Bank is the visible representation of
+the capability. The Peregrine must still be present to charter a colony, keeping the ship meaningful
+in a game whose second half is a network.
 
 ### Colonies
 
@@ -116,10 +108,9 @@ habitable planet → fabricator (t1) → advanced fabricator (t2) → colony
 ```
 
 Chartering is offered in `PlanetPanel` on a habitable world hosting a tier-2 fabricator. It costs
-gene lines from the vault plus a set of rare assemblies **delivered to that node**, not paid from
-the global stockpile. That distinction is the point: a charter is a standing demand on the
-logistics network satisfied over several dispatches, which is a better problem than affording a
-price.
+a set of rare assemblies delivered to that node or carried there by the Peregrine. A charter is a
+standing demand on the logistics network satisfied over several dispatches, which is a better
+problem than affording a price.
 
 A colony has `population` growing logistically toward a cap, an `installed` set of rare assemblies
 each buying a specific stat, standing consumption of nutrients and railgun ammo, and the usual
@@ -217,7 +208,7 @@ that operates without the Peregrine at all — never presence, because presence 
 
 Exposure thresholds telegraph a Cannon strike against a named supercluster with a warning window.
 During the window the player can evacuate a colony there, losing everything installed but keeping
-the population and the gene line. Doing nothing loses the colony and its people permanently,
+the population in a flotilla. Doing nothing loses the colony and its people permanently,
 reported by name count in the same register as the boot sequence.
 
 This gives the mid-game a beat that is not accumulation, makes the Sentinel Battery worth its
@@ -260,7 +251,6 @@ export interface Colony {
   lastFireAt: number;
   ammo: number;
   localHeat: number;
-  exportedLines: number;
   systemX: number; systemY: number;
   galaxyX: number; galaxyY: number;
   superclusSeed: number;
@@ -284,15 +274,14 @@ clock.
 
 ### `store/uiStore.ts`
 
-Add `geneLines`, `exposure`, and `lastProbeEscapeAt`. Extend `tickRailgunSuppression` to record an
-escape when heat is at threshold and no shot was available. Add `spendGeneLine` and
-`receiveGeneLine`. `resetUpgrades` and `resetGame` clear the new fields.
+Add `exposure` and `lastProbeEscapeAt`. Extend `tickRailgunSuppression` to record an
+escape when heat is at threshold and no shot was available. `resetUpgrades` and `resetGame` clear the new fields.
 
 ### Persistence
 
 Firestore gains a `colonies` collection alongside `fabricators`, written through a new
-`firebase/colonies.ts` with the same shape as `firebase/fabricators.ts`. `geneLines` and `exposure`
-join `UserSettings` in `firebase/userDoc.ts` with defaults (`geneLines: 24`, `exposure: 0`) so old
+`firebase/colonies.ts` with the same shape as `firebase/fabricators.ts`. `exposure`
+joins `UserSettings` in `firebase/userDoc.ts` with a default of zero so old
 saves load unchanged. `store/persistRun.ts` grows a `colonyKeys` field so the post-run fan-out
 cannot forget colony writes — that file exists precisely so a new feed path cannot drop a write,
 and colonies must go through it.
@@ -316,13 +305,13 @@ in the established register — brief, flowing, understated. Re-desc the Signal 
 
 No new economy. This phase alone makes the existing meter legible.
 
-### Phase 2 — The vault and colonies
+### Phase 2 — Colonies
 
 `game/types.ts`, `store/colonyStore.ts` (new), `store/uiStore.ts`, `ui/PlanetPanel.tsx`,
 `firebase/colonies.ts` (new), `store/persistRun.ts`, `store/resetGame.ts`, `game/quests.ts`.
 
-`geneLines` on the ship with a HUD row. Charter action in `PlanetPanel` gated on a tier-2
-fabricator and the ship being present. Population growth and starvation in `tickColonies`, driven
+Charter action in `PlanetPanel` gated on a tier-2 fabricator, the complete assembly set, and the
+ship being present. Population growth and starvation in `tickColonies`, driven
 by the automation tick that already exists in `useLogisticsAutomation`. A new colony quest id —
 note that `firebase/fabricators.ts` already carries one-time compatibility for an older
 `first_colony` id, so check for a collision before reusing that string.
@@ -367,9 +356,6 @@ three endings below stay unbuilt for now; Type III is the ceiling and play conti
 
 Starting points, not conclusions.
 
-- **Vault: 24 lines.** Enough for a real network, few enough that the first export matters. If
-  founding costs 2 and maturity returns 1, the player is net negative until roughly the twelfth
-  colony, which is the right shape for a campaign.
 - **Ammo economy.** At `FIRE_COST` 5 and `RELOAD_HELIUM_PER_AMMO` 3, a shot costs 15 helium-3
   against a 25-helium jump. Colony batteries should draw at the same rate so that defending a wide
   network genuinely competes with expanding it.
@@ -387,7 +373,7 @@ Starting points, not conclusions.
 
 - `tickColonies` growth, starvation, and cap arithmetic over injected elapsed time.
 - The escape rule: heat at threshold with zero ammo raises exposure exactly once per cooldown.
-- Charter accounting: lines debited, assemblies consumed, colony created, and the whole thing
+- Charter accounting: assemblies consumed, colony created, and the whole thing
   refused when the ship is not present.
 - Colony sink demand in `dispatchRoute`, including a colony competing with a fabricator on the same
   route for the same nutrients.

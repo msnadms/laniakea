@@ -26,16 +26,6 @@ const makeLiving = (patch: Partial<LivingColony> = {}): LivingColony => ({ ...ch
   supplies: { nutrients: 100_000 }, ...patch,
 });
 
-/** Feeds a colony hour by hour, since a single long call is clamped as unattended time. */
-function feed(colony: LivingColony, throughHour: number, fromHour = 1) {
-  let lines = 0;
-  for (let h = fromHour; h <= throughHour; h++) {
-    const run = tickColony({ ...colony, supplies: { ...colony.supplies, nutrients: 1e8 } }, NOW + h * HOUR);
-    colony = run.colony; lines += run.lines;
-  }
-  return { colony, lines };
-}
-
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(NOW);
   applyUserSettings(defaultSettings);
@@ -102,20 +92,6 @@ describe('colony population arithmetic', () => {
     expect(colonyExport({ ...c, requested: { zero_point_capacitor: 1 } })).toEqual({});
     expect(colonyExport({ ...c, assemblies: { zero_point_capacitor: 3 }, requested: { zero_point_capacitor: 1 } })).toEqual({ zero_point_capacitor: 2 });
   });
-  it('returns one line per population tier after six fed hours at maturity', () => {
-    const c = makeLiving({ population: 600 });
-    expect(feed(c, 5).lines).toBe(0);
-    const six = feed(c, 6);
-    expect(six.lines).toBe(1);
-    // Capped by population tier: further fed hours alone return nothing.
-    expect(feed(six.colony, 18, 7).lines).toBe(0);
-    const tiered = feed({ ...six.colony, populationTier: 2 }, 19, 7);
-    expect(tiered.lines).toBe(1);
-    expect(legacy(tiered.colony).exportedLines).toBe(2);
-  });
-  it('does not credit fed hours spent below the maturity population', () => {
-    expect(feed(makeLiving({ population: 100 }), 6).lines).toBe(0);
-  });
   it('bounds an unattended catch-up so a closed tab cannot flood exposure', () => {
     const abandoned = tickColony(makeLiving({ localHeat: 3, ...UNARMED }), NOW + 24 * HOUR);
     expect(abandoned.escapes).toBe(MAX_UNATTENDED_ESCAPES);
@@ -165,7 +141,6 @@ describe('charter accounting', () => {
     useGameStore.setState(s => ({ galaxy: { ...s.galaxy, seed: 1 }, system: { ...s.galaxy.systems[0], id: 1,
       planets: [{ name: 'Haven', type: 'habitable', resources: [], moons: [] }] } }));
     expect(useColonyStore.getState().charterColony(f.key)).toBe(true);
-    expect(useUIStore.getState().geneLines).toBe(22);
     expect(useStockpileStore.getState().rares).toEqual(Object.fromEntries(Object.keys(CHARTER_ASSEMBLIES).map(id => [id, 0])));
   });
   it('combines route-delivered and Peregrine assemblies, spending the route buffer first', () => {
@@ -176,23 +151,16 @@ describe('charter accounting', () => {
     expect(useColonyStore.getState().charterColony(f.key)).toBe(true);
     expect(useStockpileStore.getState().rares.zero_point_capacitor).toBe(1);
   });
-  it('refuses remotely, then spends lines and consumes delivered assemblies once', () => {
+  it('refuses remotely, then consumes delivered assemblies once', () => {
     prepare();
     useGameStore.setState(s => ({ system: { ...s.system!, id: 2 } }));
     expect(useColonyStore.getState().charterColony(f.key)).toBe(false);
-    expect(useUIStore.getState().geneLines).toBe(24);
     useGameStore.setState(s => ({ system: { ...s.system!, id: 1 } }));
     expect(useColonyStore.getState().charterColony(f.key)).toBe(true);
     const c = useColonyStore.getState().colonies[f.key];
     expect(c.population).toBe(100); expect(c.assemblies.ectogenesis_bank).toBe(0);
     expect(legacy(c).installed!.closed_ecology_column).toBe(1);
-    expect(useUIStore.getState().geneLines).toBe(22);
     expect(useColonyStore.getState().charterColony(f.key)).toBe(false);
-  });
-  it('refuses without enough viable lines and leaves the delivered buffer intact', () => {
-    prepare(); useUIStore.setState({ geneLines: 1 });
-    expect(useColonyStore.getState().charterColony(f.key)).toBe(false);
-    expect(useColonyStore.getState().colonies[f.key].assemblies).toEqual(CHARTER_ASSEMBLIES);
   });
 });
 
@@ -306,7 +274,6 @@ describe('civilization and strikes', () => {
     useColonyStore.setState({ colonies: { [f.key]: makeLiving() } });
     useUIStore.setState({ strike: { superclusSeed: 1, targetName: 'Home', arrivesAt: NOW } });
     expect(useColonyStore.getState().evacuate(f.key)).toBe(false);
-    expect(useUIStore.getState().geneLines).toBe(24);
   });
   it('runs local industry while the Peregrine is in another system and retains output locally', () => {
     const grapheneAlloys = (getCraftable('graphene_lattice')?.cost as Record<string, number>).alloys;
@@ -366,7 +333,7 @@ describe('civilization and strikes', () => {
     expect(useColonyStore.getState().colonies[f.key].swarmComplete).toBe(true);
     expect(legacy(useColonyStore.getState().colonies[f.key]).labor!).toBeLessThan(1);
   });
-  it('telegraphs a named strike, evacuates people and a line, and destroys only its target', () => {
+  it('telegraphs a named strike, evacuates people, and destroys only its target', () => {
     const other = makeLiving({ key: 'other', superclusSeed: 2 });
     useColonyStore.setState({ colonies: { [f.key]: makeLiving(), other } });
     useUIStore.setState({ exposure: 20 });
@@ -375,7 +342,6 @@ describe('civilization and strikes', () => {
     expect(useUIStore.getState().strike?.targetName.length).toBeGreaterThan(0);
     expect(useColonyStore.getState().evacuate(f.key)).toBe(true);
     expect(useUIStore.getState().evacuatedPopulation).toBe(100);
-    expect(useUIStore.getState().geneLines).toBe(25);
     expect(useColonyStore.getState().evacuate(f.key)).toBe(false);
     tickCivilization(NOW + STRIKE_WARNING_MS);
     expect(useColonyStore.getState().colonies.other).toEqual(other);
