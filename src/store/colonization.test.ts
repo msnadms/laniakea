@@ -125,17 +125,17 @@ describe('colony population arithmetic', () => {
 });
 
 describe('charter accounting', () => {
-  it('lets a basic fabricator stage demand but requires advanced fabrication to found', () => {
+  it('refuses to stage a colony charter until the fabricator is advanced, then founds once staged', () => {
     const basic = { ...f, tier: 1 as const };
     useFabricatorStore.getState().placeFabricator(basic);
+    expect(useColonyStore.getState().planCharter(basic.key, NOW)).toBe(false);
+    expect(fabricatorCanCraft(1, 'rare')).toBe(false);
+    useFabricatorStore.setState(state => ({ fabricators: { ...state.fabricators, [basic.key]: { ...basic, tier: 2 } } }));
     expect(useColonyStore.getState().planCharter(basic.key, NOW)).toBe(true);
     expect(colonyDemand(useColonyStore.getState().colonies[basic.key]).materials).toEqual(CHARTER_ASSEMBLIES);
-    expect(fabricatorCanCraft(1, 'rare')).toBe(false);
     useStockpileStore.setState({ rares: { ...CHARTER_ASSEMBLIES } });
     useGameStore.setState(s => ({ galaxy: { ...s.galaxy, seed: 1 }, system: { ...s.galaxy.systems[0], id: 1,
       planets: [{ name: 'Haven', type: 'habitable', resources: [], moons: [] }] } }));
-    expect(useColonyStore.getState().charterColony(basic.key)).toBe(false);
-    useFabricatorStore.setState(state => ({ fabricators: { ...state.fabricators, [basic.key]: { ...basic, tier: 2 } } }));
     expect(useColonyStore.getState().charterColony(basic.key)).toBe(true);
   });
 

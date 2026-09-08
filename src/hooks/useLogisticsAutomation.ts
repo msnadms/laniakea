@@ -68,11 +68,11 @@ export function useLogisticsAutomation() {
         if (useUIStore.getState().destroyed) {
           return;
         }
-        const holdFed = useFabricatorStore.getState().runHoldFeeds();
         const results = caughtUpBefore
           ? useLogisticsStore.getState().runAutomation()
           : useLogisticsStore.getState().catchUpAutomation();
         caughtUp = true;
+        const holdFed = results.length > 0 ? useFabricatorStore.getState().runHoldFeeds() : [];
         // Colony documents are written by the store subscription above, which sees every
         // mutation; passing their keys here as well would double every colony write.
         const extractorKeys = new Set([...colonyTick.extractorKeys, ...results.flatMap((result) => result.collected.map((entry) => entry.key))]);

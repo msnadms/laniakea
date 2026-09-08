@@ -191,7 +191,7 @@ export function processFabricator(
 
   const ordered = orderedSlotIndices(slots).map((index) => ({ slot: slots[index], index }));
 
-  let quota = (options.fillMode ?? 'priority') === 'shared' ? 1 : depth;
+  let quota = (options.fillMode ?? 'shared') === 'shared' ? 1 : depth;
   let passes = 0;
   while (passes++ < 100_000) {
     let progressed = false;
@@ -571,7 +571,7 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
 
     setFillMode: (key, mode) => set((state) => {
       const fabricator = state.fabricators[key];
-      if (!fabricator || (fabricator.fillMode ?? 'priority') === mode) return state;
+      if (!fabricator || (fabricator.fillMode ?? 'shared') === mode) return state;
       return { fabricators: { ...state.fabricators, [key]: { ...fabricator, fillMode: mode } } };
     }),
 

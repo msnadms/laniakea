@@ -228,6 +228,58 @@
   box-shadow: 0 0 10px rgba(200, 60, 60, 0.25);
 }
 
+.planet-panel-tooltip-wrap {
+  position: relative;
+}
+
+.planet-panel-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(260px, 90vw);
+  background: rgba(5, 18, 30, 0.92);
+  border: 1px solid rgba(0, 190, 230, 0.4);
+  color: rgba(0, 200, 232, 0.85);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+}
+
+.planet-panel-tooltip-wrap:hover .planet-panel-tooltip {
+  opacity: 1;
+}
+
+.planet-panel-tooltip ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planet-panel-tooltip li {
+  white-space: normal;
+  word-break: break-word;
+  padding-left: 12px;
+  position: relative;
+}
+
+.planet-panel-tooltip li + li {
+  margin-top: 3px;
+}
+
+.planet-panel-tooltip li::before {
+  content: '\2022';
+  position: absolute;
+  left: 0;
+  color: rgba(0, 200, 232, 0.6);
+}
+
 .planet-panel-resource-picker {
   display: flex;
   flex-direction: column;

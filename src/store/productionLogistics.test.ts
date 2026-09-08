@@ -173,10 +173,10 @@ describe('instant fixed-point production', () => {
     const scarce = { alloys: 3 * unitCost('graphene_lattice', 'alloys'), nutrients: 1000 };
     const grapheneFirst = processFabricator([
       slot('graphene_lattice', 0), slot('silica_aerogel', 1),
-    ], 1, scarce, {});
+    ], 1, scarce, {}, { fillMode: 'priority' });
     const silicaFirst = processFabricator([
       slot('graphene_lattice', 1), slot('silica_aerogel', 0),
-    ], 1, scarce, {});
+    ], 1, scarce, {}, { fillMode: 'priority' });
     expect(output(grapheneFirst, 'graphene_lattice')).toBe(6);
     expect(output(grapheneFirst, 'silica_aerogel')).toBe(0);
     expect(output(silicaFirst, 'silica_aerogel')).toBe(6);

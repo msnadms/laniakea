@@ -19,7 +19,7 @@ export async function saveFabricator(uid: string, fabricator: Fabricator): Promi
       galaxyY: fabricator.galaxyY,
       superclusSeed: fabricator.superclusSeed,
       drawFromHold: fabricator.drawFromHold ?? false,
-      fillMode: fabricator.fillMode ?? 'priority',
+      fillMode: fabricator.fillMode ?? 'shared',
     }, { merge: true });
   } catch (err) {
     console.error('saveFabricator failed:', err);
@@ -155,7 +155,7 @@ export async function loadAllFabricators(uid: string): Promise<{
       galaxyY: (d2.galaxyY as number) ?? 0,
       superclusSeed: (d2.superclusSeed as number) ?? 0,
       drawFromHold: (d2.drawFromHold as boolean) ?? false,
-      fillMode: (d2.fillMode as SlotFillMode) ?? 'priority',
+      fillMode: (d2.fillMode as SlotFillMode) ?? 'shared',
     } satisfies Fabricator);
 
     // Old timed slots are accepted here. normalizeFabricatorState strips the

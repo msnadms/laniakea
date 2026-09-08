@@ -111,12 +111,13 @@ slots during the same visit. It stops only when a complete pass makes no progres
 `SlotRunResult`s describe batches, inputs, products, byproduct movement, jams, and shortages.
 
 How much a slot may take per pass is the fabricator's `Fabricator.fillMode` (`SlotFillMode`), set
-in `FabricatorSidebar` and persisted with the fabricator. `priority` (the default, and what every
-old save loads as) lets each slot top up its whole `depth`-batch buffer before the next one draws.
-`shared` starts the per-pass quota at one batch and raises it only when a complete pass makes no
-progress, so priority still decides who goes first but only ever wins by a batch at a time and a
-scarce input spreads across the slots. The split belongs to the fabricator, not to `RouteEdge`: an
-edge terminates at a map node, which has no notion of slots and may host several fabricators.
+in `FabricatorSidebar` and persisted with the fabricator. `shared` is the default (and what every
+old save without a stored value loads as): the per-pass quota starts at one batch and rises only
+when a complete pass makes no progress, so priority still decides who goes first but only ever wins
+by a batch at a time and a scarce input spreads across the slots. `priority` instead lets each slot
+top up its whole `depth`-batch buffer before the next one draws. The split belongs to the
+fabricator, not to `RouteEdge`: an edge terminates at a map node, which has no notion of slots and
+may host several fabricators.
 
 Statuses are `idle`, `ready`, `starved`, `jammed`, and `flowing` (the last dispatch produced
 output). A byproduct that cannot be consumed or routed fills its local buffer and jams its
@@ -315,11 +316,13 @@ The logistics modal is split into two files: `LogisticsMap.tsx` owns map project
 - `FabricatorSidebar` also exposes a per-fabricator **Draw from Hold** toggle (`Fabricator.drawFromHold`,
   set via `fabricatorStore.setDrawFromHold`). While it is on, the fabricator feeds itself from the ship's
   own cargo (minus the ship-wide fuel floor) and stockpile materials, capped by `computeMaterialBandwidth`,
-  so it runs without being on a route. `runHoldFeeds` performs that pass for every enabled fabricator on
-  each `useLogisticsAutomation` tick, in sorted key order so a scarce hold is split the same way every run
+  so it runs without being on a route. It still only fires on a dispatch, though: `runHoldFeeds`
+  performs that pass for every enabled fabricator, in sorted key order so a scarce hold is split the
+  same way every run, and is called from `handleDispatch` after a manual dispatch and from
+  `useLogisticsAutomation` only on a tick where `runAutomation`/`catchUpAutomation` actually
+  dispatched a route — never on an idle poll, and not merely from flipping the toggle on
   (`loadFromHold` runs the same `processFabricator` code as dispatch and deposits output through
-  `receiveFabricatorItems`); flipping the toggle on also feeds once immediately.
-  `previewHoldFeed` drives the sidebar's "next draw" summary line.
+  `receiveFabricatorItems`). `previewHoldFeed` drives the sidebar's "next draw" summary line.
 - `handleDispatch` snapshots pre-dispatch accumulated amounts, calls `dispatchRoute`, then builds a `DispatchAnim` (per-node reveal of cost/collection lines, 500ms per hop) purely for visual feedback — the actual resource transfer already happened synchronously in the store.
 - All mutations that affect Firebase-backed state (`ownedUpgrades`/`nodeEquipped`, fabricator states, routes, extractor `lastCollectedAt`) are mirrored to Firestore (`firebase/extractorUpgrades.ts`, `firebase/fabricators.ts`, `firebase/logisticsRoutes.ts`, `firebase/extractors.ts`) immediately after each local store update. The post-run fan-out shared by manual dispatch, hold feeding and automation lives in one place — `store/persistRun.ts → persistFabricatorRun(uid, { fabricatorKeys, extractorKeys })` — so a new feed path cannot forget one of the writes.
 

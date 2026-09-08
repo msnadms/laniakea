@@ -517,7 +517,7 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
   colonies: {},
   planCharter: (key, now = Date.now()) => {
     const f = useFabricatorStore.getState().fabricators[key];
-    if (!f || f.tier < 1 || get().colonies[key] || useUIStore.getState().destroyed) return false;
+    if (!f || f.tier !== 2 || get().colonies[key] || useUIStore.getState().destroyed) return false;
     const system = useGameStore.getState().system;
     const districtSlots = system && system.id === f.systemId
       ? planetDistrictSlots(system.seed, system.starType, f.planetName) : undefined;

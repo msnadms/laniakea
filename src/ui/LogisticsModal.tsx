@@ -145,7 +145,6 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const setSlotTarget = useFabricatorStore((s) => s.setSlotTarget);
   const unlockFabricatorSlot = useFabricatorStore((s) => s.unlockFabricatorSlot);
   const moveSlotOrder = useFabricatorStore((s) => s.moveSlotOrder);
-  const loadFabricatorFromHold = useFabricatorStore((s) => s.loadFromHold);
   const setDrawFromHold = useFabricatorStore((s) => s.setDrawFromHold);
   const setFillMode = useFabricatorStore((s) => s.setFillMode);
   const removeFabricator = useFabricatorStore((s) => s.removeFabricator);
@@ -204,10 +203,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     setDrawFromHold(key, enabled);
     const fabricator = useFabricatorStore.getState().fabricators[key];
     if (user && fabricator) saveFabricator(user.uid, fabricator);
-    if (!enabled) return;
-    const result = loadFabricatorFromHold(key);
-    if (result?.changed && user) persistFabricatorRun(user.uid, { fabricatorKeys: [key] });
-  }, [setDrawFromHold, loadFabricatorFromHold, user]);
+  }, [setDrawFromHold, user]);
 
   const handleSetFillMode = useCallback((key: string, mode: SlotFillMode) => {
     setFillMode(key, mode);
@@ -407,10 +403,11 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const result = dispatchRoute(routeId);
     if (result !== false) {
       const { collected, deliveries, order, carried, materialsMoved } = result;
+      const holdFed = useFabricatorStore.getState().runHoldFeeds();
       if (user) {
         persistFabricatorRun(user.uid, {
           extractorKeys: collected.map(({ key }) => key),
-          fabricatorKeys,
+          fabricatorKeys: [...new Set([...fabricatorKeys, ...holdFed])],
           colonyKeys: result.colonyKeys,
           campaign: true,
         });
@@ -1627,7 +1624,7 @@ function FabricatorSidebar({
               {(['priority', 'shared'] as SlotFillMode[]).map((mode) => (
                 <button
                   key={mode}
-                  className={`lm-fill-mode-btn${(fabricator?.fillMode ?? 'priority') === mode ? ' lm-fill-mode-btn--active' : ''}`}
+                  className={`lm-fill-mode-btn${(fabricator?.fillMode ?? 'shared') === mode ? ' lm-fill-mode-btn--active' : ''}`}
                   onClick={() => onSetFillMode(k, mode)}
                   title={mode === 'priority'
                     ? 'Each slot fills its whole buffer before the next one draws'

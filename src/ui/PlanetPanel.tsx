@@ -50,6 +50,22 @@ function costLabel(cost: Record<string, number>): string {
   return Object.entries(cost).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`).join(' - ');
 }
 
+function costItems(cost: Record<string, number>): string[] {
+  return Object.entries(cost).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`);
+}
+
+function ReqTooltip({ items }: { items: string[] }) {
+  return (
+    <div className="planet-panel-tooltip">
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function hoursLabel(hours: number): string {
   return hours < 1 ? `${Math.round(hours * 60)}m` : `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
 }
@@ -164,6 +180,12 @@ export function PlanetPanel() {
     return canAffordCost(FABRICATOR_UPGRADE_COST) && Object.entries(FABRICATOR_UPGRADE_MATERIALS).every(
       ([id, amt]) => (stockpileMaterials[id] ?? 0) >= amt,
     );
+  }
+
+  function upgradeRequirementItems(): string[] {
+    const materials = Object.entries(FABRICATOR_UPGRADE_MATERIALS)
+      .map(([id, amt]) => `${amt}x ${materialName(id)} (${stockpileMaterials[id] ?? 0} held)`);
+    return [...costItems(FABRICATOR_UPGRADE_COST), ...materials];
   }
 
   const canBuildHere = planet?.type === 'habitable' && !fabricator;
@@ -359,23 +381,36 @@ export function PlanetPanel() {
             )}
             {(fabricator.tier ?? 1) < 2 && (
               <div className="planet-panel-fabricator-option">
-                {canAffordUpgrade() ? (
-                  <button className="planet-panel-btn planet-panel-btn--settle" onClick={handleUpgradeFabricator}>
-                    Upgrade to {FABRICATOR_TIER_LABELS[2]} ({costLabel(FABRICATOR_UPGRADE_COST)})
-                  </button>
-                ) : (
-                  <button className="planet-panel-btn planet-panel-btn--dim" disabled>
-                    {FABRICATOR_TIER_LABELS[2]} requires: {costLabel(FABRICATOR_UPGRADE_COST)}
-                  </button>
-                )}
+                <div className="planet-panel-tooltip-wrap">
+                  {canAffordUpgrade() ? (
+                    <button
+                      className="planet-panel-btn planet-panel-btn--settle"
+                      onClick={handleUpgradeFabricator}
+                    >
+                      Upgrade to {FABRICATOR_TIER_LABELS[2]}
+                    </button>
+                  ) : (
+                    <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                      {FABRICATOR_TIER_LABELS[2]} requires more resources
+                    </button>
+                  )}
+                  <ReqTooltip items={upgradeRequirementItems()} />
+                </div>
                 <span className="planet-panel-extractor-rate">
-                  Plus {Object.entries(FABRICATOR_UPGRADE_MATERIALS)
-                    .map(([id, amt]) => `${amt}x ${materialName(id)} (${stockpileMaterials[id] ?? 0} held)`)
-                    .join(' - ')} — assembles rare components for future bases
+                  Assembles rare components for future bases
                 </span>
               </div>
             )}
-            {!colony && <button className="planet-panel-btn" onClick={() => useColonyStore.getState().planCharter(fabricator.key)}>Stage colony charter - open delivery demand</button>}
+            {!colony && (fabricator.tier ?? 1) >= 2 && (
+              <button className="planet-panel-btn" onClick={() => useColonyStore.getState().planCharter(fabricator.key)}>
+                Stage colony charter - open delivery demand
+              </button>
+            )}
+            {!colony && (fabricator.tier ?? 1) < 2 && (
+              <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                Colony charter requires {FABRICATOR_TIER_LABELS[2]}
+              </button>
+            )}
             {colony && <ColonyDetails colonyKey={colony.key} />}
             <button className="planet-panel-btn planet-panel-btn--abandon" disabled={!!colony} onClick={handleAbandon}>
               Abandon {FABRICATOR_TIER_LABELS[fabricator.tier ?? 1]}
@@ -455,15 +490,21 @@ export function PlanetPanel() {
               <div className="planet-panel-settle-section">
                 <div className="planet-panel-divider" />
                 <div className="planet-panel-fabricator-option">
-                  {canAffordCost(FABRICATOR_COST) ? (
-                    <button className="planet-panel-btn planet-panel-btn--settle" onClick={handleSettle}>
-                      Establish {FABRICATOR_TIER_LABELS[1]} ({costLabel(FABRICATOR_COST)})
-                    </button>
-                  ) : (
-                    <button className="planet-panel-btn planet-panel-btn--dim" disabled>
-                      {FABRICATOR_TIER_LABELS[1]} requires: {costLabel(FABRICATOR_COST)}
-                    </button>
-                  )}
+                  <div className="planet-panel-tooltip-wrap">
+                    {canAffordCost(FABRICATOR_COST) ? (
+                      <button
+                        className="planet-panel-btn planet-panel-btn--settle"
+                        onClick={handleSettle}
+                      >
+                        Establish {FABRICATOR_TIER_LABELS[1]}
+                      </button>
+                    ) : (
+                      <button className="planet-panel-btn planet-panel-btn--dim" disabled>
+                        {FABRICATOR_TIER_LABELS[1]} requires more resources
+                      </button>
+                    )}
+                    <ReqTooltip items={costItems(FABRICATOR_COST)} />
+                  </div>
                   <span className="planet-panel-extractor-rate">
                     Can be upgraded to an {FABRICATOR_TIER_LABELS[2]} once built
                   </span>
