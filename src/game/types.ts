@@ -334,8 +334,8 @@ export const FABRICATOR_INCLUDED_SLOTS: Record<FabricatorTier, number> = { 1: 5,
 export const FABRICATOR_MAX_SLOTS: Record<FabricatorTier, number> = { 1: 6, 2: 8 };
 export const MAX_FABRICATOR_SLOTS = 8;
 export const FABRICATOR_COST = { alloys: 150, helium3: 50, nutrients: 100, metallicHydrogen: 0 } as const;
-export const FABRICATOR_UPGRADE_COST = { alloys: 250, helium3: 150, nutrients: 250, metallicHydrogen: 200 } as const;
-export const FABRICATOR_UPGRADE_MATERIALS: MaterialCost = { hea_billet: 2, ybco_tape: 1, metamaterial_film: 1 };
+export const FABRICATOR_UPGRADE_COST = { alloys: 250, helium3: 150, nutrients: 0, metallicHydrogen: 0 } as const;
+export const FABRICATOR_UPGRADE_MATERIALS: MaterialCost = { hea_billet: 2, ybco_tape: 1, metamaterial_film: 1, bec_cell: 1 };
 export function includedFabricatorSlots(tier: FabricatorTier | undefined): number {
   return FABRICATOR_INCLUDED_SLOTS[tier ?? 1];
 }

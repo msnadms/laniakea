@@ -3,9 +3,9 @@
     {
       "tier": 1,
       "name": "Planetary Civilization",
-      "description": "Unify settlement science into a body of knowledge capable of sustaining an autonomous world.",
+      "description": "Unify settlement science into the foundation for civilization-scale engineering.",
       "threshold": 120,
-      "unlock": "Planetary autonomy and Dyson swarm planning"
+      "unlock": "Dyson swarm planning; construction requires Type II theory"
     },
     {
       "tier": 2,

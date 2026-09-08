@@ -341,6 +341,8 @@ export interface RoutePreview {
   expectedEdgeUse: Record<string, { used: number; capacity: number }>;
   shortages: string[];
   throughputUnits: number;
+  selfFundingExotic: boolean;
+  selfFundingHelium: boolean;
 }
 
 export interface RouteWorld {
@@ -887,6 +889,7 @@ interface PreviewCacheEntry {
 }
 
 const previewCache = new Map<string, PreviewCacheEntry>();
+const DRAFT_PREVIEW_ID = '__draft-preview__';
 
 function previewTraversal(route: LogisticsRoute, force = false): { groups: Map<string, NodeGroup>; traversal: TraversalResult } {
   const extractors = useExtractorStore.getState().extractors;
@@ -928,8 +931,17 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const attentionIncrease = probeAttentionFromRisk(risk);
   const ui = useUIStore.getState();
   const cost = computeRouteCost(route.edges, extractors, fabricators, traversal.throughputUnits);
-  const affordable = !!routeSponsor(groups, cost) || (ui.exoticMatter - cost.exotic >= policy.fuelReserveExotic
-    && ui.helium3Reserves - cost.helium >= policy.fuelReserveHelium3);
+  // A dispatch that returns more exotic (or more helium-3) than that resource's own cost
+  // immediately repays whatever it borrows of it, so it may draw the sealed reserve for just
+  // that resource rather than hold for lack of a jump-start — the other resource is untouched
+  // unless it clears the same bar on its own.
+  const selfFundingExotic = (traversal.deposited.raw.exotic ?? 0) >= cost.exotic;
+  const selfFundingHelium = (traversal.deposited.raw['helium-3'] ?? 0) >= cost.helium;
+  const exoticOk = ui.exoticMatter - cost.exotic >= policy.fuelReserveExotic
+    || (selfFundingExotic && ui.exoticMatter + ui.emergencyReserveExotic >= cost.exotic);
+  const heliumOk = ui.helium3Reserves - cost.helium >= policy.fuelReserveHelium3
+    || (selfFundingHelium && ui.helium3Reserves + ui.emergencyReserveHelium >= cost.helium);
+  const affordable = !!routeSponsor(groups, cost) || (exoticOk && heliumOk);
   let reason = 'Ready';
   const storedHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
     ? ui.detectionHeat
@@ -961,6 +973,8 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
     }])),
     shortages: traversal.shortages,
     throughputUnits: traversal.throughputUnits,
+    selfFundingExotic,
+    selfFundingHelium,
   };
 }
 
@@ -1074,7 +1088,21 @@ function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | 
       'helium-3': (colony.supplies['helium-3'] ?? 0) - preview.cost.helium,
     } } } };
   });
-  else useUIStore.getState().consumeResources(preview.cost.exotic, preview.cost.helium);
+  else {
+    const liveUI = useUIStore.getState();
+    const exoticFromOperational = Math.min(liveUI.exoticMatter, preview.cost.exotic);
+    const heliumFromOperational = Math.min(liveUI.helium3Reserves, preview.cost.helium);
+    const exoticFromReserve = preview.selfFundingExotic
+      ? Math.min(liveUI.emergencyReserveExotic, preview.cost.exotic - exoticFromOperational) : 0;
+    const heliumFromReserve = preview.selfFundingHelium
+      ? Math.min(liveUI.emergencyReserveHelium, preview.cost.helium - heliumFromOperational) : 0;
+    useUIStore.setState({
+      exoticMatter: liveUI.exoticMatter - exoticFromOperational,
+      helium3Reserves: liveUI.helium3Reserves - heliumFromOperational,
+      emergencyReserveExotic: liveUI.emergencyReserveExotic - exoticFromReserve,
+      emergencyReserveHelium: liveUI.emergencyReserveHelium - heliumFromReserve,
+    });
+  }
   const deliveries = traversal.endItems.length > 0
     ? useExtractorStore.getState().receiveFabricatorItems(traversal.endItems)
     : [];
@@ -1118,6 +1146,7 @@ interface LogisticsState {
   setRouteActive: (id: string, active: boolean) => void;
   flushHeldCargo: (id: string, nodeId: string) => boolean;
   previewRoute: (id: string, force?: boolean) => RoutePreview | null;
+  previewDraftEdges: (edges: RouteEdge[]) => RoutePreview;
   dispatchRoute: (id: string, automatic?: boolean) => DispatchResult | false;
   runAutomation: () => DispatchResult[];
   catchUpAutomation: () => DispatchResult[];
@@ -1165,6 +1194,7 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     const route = get().routes.find((candidate) => candidate.id === id);
     return route ? optimizedRoutePreview(route, force) : null;
   },
+  previewDraftEdges: (edges) => optimizedRoutePreview({ id: DRAFT_PREVIEW_ID, name: '', edges }, true),
 
   dispatchRoute: (id, automatic = false) => executeRouteDispatch(id, automatic),
 
@@ -1200,7 +1230,14 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
             : weightTotal > 0
               ? fills.reduce((sum, value, index) => sum + value * demandWeights[index], 0) / weightTotal
               : fills.reduce((sum, value) => sum + value, 0) / fills.length;
-      if (fill < policy.sourceFillPercent) continue;
+      if (fill < policy.sourceFillPercent) {
+        const reason = `Waiting for extractor fill (need ${policy.sourceFillPercent}%)`;
+        if (get().automationNotices[route.id] !== reason) {
+          useUIStore.getState().triggerHudNotify(`${route.name.toUpperCase()} HOLDING — ${reason.toUpperCase()}`);
+          set((state) => ({ automationNotices: { ...state.automationNotices, [route.id]: reason } }));
+        }
+        continue;
+      }
       const preview = optimizedRoutePreview(route, true);
       if (!preview.canRun) {
         if (get().automationNotices[route.id] !== preview.reason && (preview.reason.includes('jam') || preview.reason.includes('fuel') || preview.reason.includes('attention'))) {

@@ -49,9 +49,9 @@ import { AlloysIcon, ExoticMatterIcon, Helium3Icon, MetallicHydrogenIcon, Neutro
 import type { Extractor, Fabricator, FabricatorState, FabricatorProductionSlot, MaterialCost, RouteEdge, SlotStatus, RouteAutomationPolicy, RouteDispatchMode, RouteFillAggregate, Resource, SlotFillMode } from '../game/types';
 import { maxFabricatorSlots, makeEmptyFabricatorSlot, RAW_TYPES } from '../game/types';
 import { saveLogisticsRoute, deleteLogisticsRoute } from '../firebase/logisticsRoutes';
-import { updateExtractorReserve } from '../firebase/extractors';
+import { updateExtractorReserve, deleteExtractor } from '../firebase/extractors';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
-import { saveFabricatorState, saveFabricator } from '../firebase/fabricators';
+import { saveFabricatorState, saveFabricator, deleteFabricator } from '../firebase/fabricators';
 import { saveStockpile } from '../firebase/stockpile';
 import { persistFabricatorRun } from '../store/persistRun';
 import { fmt } from './strings';
@@ -63,6 +63,7 @@ import { TutorialPanel } from './TutorialPanel';
 import './LogisticsModal.css';
 import './LogisticsPolicies.css';
 import { useColonyStore } from '../store/colonyStore';
+import { useGameStore } from '../store/gameStore';
 import { ColonyDetails } from './ColonyPanel';
 
 type AnimLine = { text: string; isCost: boolean; revealStep: number };
@@ -127,6 +128,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const removeRoute = useLogisticsStore((s) => s.removeRoute);
   const dispatchRoute = useLogisticsStore((s) => s.dispatchRoute);
   const previewRoute = useLogisticsStore((s) => s.previewRoute);
+  const previewDraftEdges = useLogisticsStore((s) => s.previewDraftEdges);
   const setRouteActive = useLogisticsStore((s) => s.setRouteActive);
   const flushHeldCargo = useLogisticsStore((s) => s.flushHeldCargo);
   const lastRuns = useLogisticsStore((s) => s.lastRuns);
@@ -146,6 +148,10 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const loadFabricatorFromHold = useFabricatorStore((s) => s.loadFromHold);
   const setDrawFromHold = useFabricatorStore((s) => s.setDrawFromHold);
   const setFillMode = useFabricatorStore((s) => s.setFillMode);
+  const removeFabricator = useFabricatorStore((s) => s.removeFabricator);
+  const removeExtractor = useExtractorStore((s) => s.removeExtractor);
+  const currentSystem = useGameStore((s) => s.system);
+  const currentGalaxySeed = useGameStore((s) => s.galaxy.seed);
   const logisticsA = useUIStore((s) => s.logisticsA);
   const logisticsB = useUIStore((s) => s.logisticsB);
   const exoticMatter = useUIStore((s) => s.exoticMatter);
@@ -208,6 +214,24 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const fabricator = useFabricatorStore.getState().fabricators[key];
     if (user && fabricator) saveFabricator(user.uid, fabricator);
   }, [setFillMode, user]);
+
+  const shipInSystem = useCallback((located: { systemId: number; galaxySeed: number } | undefined) => (
+    !!located && currentSystem?.id === located.systemId && currentGalaxySeed === located.galaxySeed
+  ), [currentSystem, currentGalaxySeed]);
+
+  const handleDestroyFabricator = useCallback((key: string) => {
+    const fabricator = useFabricatorStore.getState().fabricators[key];
+    if (!fabricator || shipInSystem(fabricator)) return;
+    removeFabricator(key);
+    if (user) deleteFabricator(user.uid, key);
+  }, [removeFabricator, shipInSystem, user]);
+
+  const handleDestroyExtractor = useCallback((key: string) => {
+    const extractor = useExtractorStore.getState().extractors[key];
+    if (!extractor || shipInSystem(extractor)) return;
+    removeExtractor(key);
+    if (user) deleteExtractor(user.uid, key);
+  }, [removeExtractor, shipInSystem, user]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -376,7 +400,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const { extractors: liveExtractors } = useExtractorStore.getState();
     const liveFabricators = useFabricatorStore.getState().fabricators;
 
-    const cost = computeRouteCost(route.edges, liveExtractors, liveFabricators);
+    const cost = previewRoute(routeId, true).cost;
     const groups = resolveNodeGroups(routeNodes(route.edges), liveExtractors, liveFabricators);
     const fabricatorKeys = routeFabricatorKeys(groups);
 
@@ -461,7 +485,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     if (user) saveLogisticsRoute(user.uid, { ...route, active });
   }
 
-  const draftCost = computeRouteCost(draftEdges, extractors, fabricators);
+  const draftCost = previewDraftEdges(draftEdges).cost;
   const draftIslands = useMemo(() => routeIslandNodes(draftEdges), [draftEdges]);
 
   const nodeName = useCallback(
@@ -998,6 +1022,8 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                   setPendingEquip({ extractorKey, nodeName: lastHoveredNode.name, resourceLabel, slot });
                 }}
                 onUnequip={(extractorKey, slot) => { equipUpgrade(extractorKey, slot, null); saveUpgrades(); }}
+                onDestroy={handleDestroyExtractor}
+                shipInSystem={shipInSystem}
               />
             )}
             {lastHoveredNode && lastHoveredNode.nodeType === 'fabricator' && (
@@ -1012,6 +1038,8 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                 onUnlockSlot={handleUnlockFabricatorSlot}
                 onSetDrawFromHold={handleSetDrawFromHold}
                 onSetFillMode={handleSetFillMode}
+                onDestroy={handleDestroyFabricator}
+                shipInSystem={shipInSystem}
               />
             )}
             <div className="logistics-resources-header lm-tab-header">
@@ -1521,6 +1549,8 @@ function FabricatorSidebar({
   onUnlockSlot,
   onSetDrawFromHold,
   onSetFillMode,
+  onDestroy,
+  shipInSystem,
 }: {
   node: ProjectedMapNode;
   fabricators: Record<string, Fabricator>;
@@ -1532,6 +1562,8 @@ function FabricatorSidebar({
   onUnlockSlot: (key: string) => void;
   onSetDrawFromHold: (key: string, enabled: boolean) => void;
   onSetFillMode: (key: string, mode: SlotFillMode) => void;
+  onDestroy: (key: string) => void;
+  shipInSystem: (located: { systemId: number; galaxySeed: number } | undefined) => boolean;
 }) {
   const [openSlot, setOpenSlot] = useState<SlotMenuState | null>(null);
   const stockpile = useStockpileStore((s) => s.materials);
@@ -1629,6 +1661,18 @@ function FabricatorSidebar({
                 + Configure Slot {slotCount + 1} - Free
               </button>
             )}
+            <button
+              className="lm-fabricator-destroy-btn"
+              disabled={shipInSystem(fabricator)}
+              onClick={() => {
+                if (window.confirm('Destroy this fabricator? All pending inputs, materials and byproducts are lost.')) onDestroy(k);
+              }}
+              title={shipInSystem(fabricator)
+                ? 'The Peregrine must leave this system before remote demolition'
+                : 'Destroy this fabricator remotely - no resources are recovered'}
+            >
+              Destroy - No Refund
+            </button>
           </div>
         );
       })}
@@ -1676,12 +1720,16 @@ function NodeSidebar({
   onClose,
   onSlotClick,
   onUnequip,
+  onDestroy,
+  shipInSystem,
 }: {
   node: ProjectedMapNode;
   nodeEquipped: Record<string, [string | null, string | null]>;
   onClose: () => void;
   onSlotClick: (extractorKey: string, slot: 0 | 1, resourceLabel: string) => void;
   onUnequip: (extractorKey: string, slot: 0 | 1) => void;
+  onDestroy: (extractorKey: string) => void;
+  shipInSystem: (located: { systemId: number; galaxySeed: number } | undefined) => boolean;
 }) {
   const resources = node.resources ?? [];
   const totalRate = resources.reduce((s, r) => s + r.rate, 0);
@@ -1751,6 +1799,18 @@ function NodeSidebar({
                 );
               })}
             </div>
+            <button
+              className="lm-fabricator-destroy-btn"
+              disabled={shipInSystem(extractors[extractorKey])}
+              onClick={() => {
+                if (window.confirm('Destroy this extractor? Nothing is refunded.')) onDestroy(extractorKey);
+              }}
+              title={shipInSystem(extractors[extractorKey])
+                ? 'The Peregrine must leave this system before remote demolition'
+                : 'Destroy this extractor remotely - no resources are recovered'}
+            >
+              Destroy - No Refund
+            </button>
           </div>
         );
       })}

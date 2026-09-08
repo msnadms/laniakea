@@ -55,3 +55,15 @@ export const AmenitiesIcon = () => (
     <path d={ICON_PATHS.amenities} />
   </svg>
 );
+
+export const ProbeAttentionIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox={VIEWBOX} fill="currentColor">
+    <path d={ICON_PATHS.probeAttention} />
+  </svg>
+);
+
+export const RailgunIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox={VIEWBOX} fill="currentColor">
+    <path d={ICON_PATHS.railgun} />
+  </svg>
+);

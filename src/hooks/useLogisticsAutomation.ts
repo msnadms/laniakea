@@ -55,9 +55,12 @@ export function useLogisticsAutomation() {
     let caughtUp = false;
 
     const run = async () => {
+      let ready = false;
       try {
       const { user, settingsLoaded } = useAuthStore.getState();
+      ready = !!user && settingsLoaded;
       if (!cancelled && user && settingsLoaded) {
+        const caughtUpBefore = caughtUp;
         const campaignBefore = campaignSignature();
         useUIStore.getState().tickRailgunSuppression();
         const colonyTick = useColonyStore.getState().tickColonies(Date.now());
@@ -66,7 +69,7 @@ export function useLogisticsAutomation() {
           return;
         }
         const holdFed = useFabricatorStore.getState().runHoldFeeds();
-        const results = caughtUp
+        const results = caughtUpBefore
           ? useLogisticsStore.getState().runAutomation()
           : useLogisticsStore.getState().catchUpAutomation();
         caughtUp = true;
@@ -92,7 +95,7 @@ export function useLogisticsAutomation() {
         console.error('Automation persistence failed', error);
         useUIStore.getState().triggerHudNotify('AUTOMATION SAVE FAILED — CHECK CONNECTION');
       } finally {
-        if (!cancelled) timer = setTimeout(run, AUTOMATION_POLL_MS);
+        if (!cancelled) timer = setTimeout(run, ready ? AUTOMATION_POLL_MS : 3_000);
       }
     };
 

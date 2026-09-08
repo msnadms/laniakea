@@ -1351,6 +1351,30 @@
   cursor: default;
 }
 
+.lm-fabricator-destroy-btn {
+  width: 100%;
+  margin-top: 6px;
+  background: transparent;
+  border: 1px dashed rgba(220, 60, 60, 0.4);
+  color: rgba(220, 90, 90, 0.7);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.lm-fabricator-destroy-btn:hover:not(:disabled) {
+  border-color: rgba(240, 70, 70, 0.8);
+  color: rgba(240, 90, 90, 1);
+}
+
+.lm-fabricator-destroy-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .lm-fabricator-planet-name {
   font-size: 9px;
   letter-spacing: 0.1em;

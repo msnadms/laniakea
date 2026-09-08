@@ -18,6 +18,7 @@ export interface UserSettings {
   showBootSequence: boolean;
   infiniteExplore: boolean;
   exoticMatter: number;
+  emergencyReserveExotic: number;
   detectionRating: number;
   detectionHeat: number;
   lastDetectionChangeAt: number;
@@ -25,6 +26,7 @@ export interface UserSettings {
   railgunAmmo: number;
   lastFireAt: number;
   helium3Reserves: number;
+  emergencyReserveHelium: number;
   alloys: number;
   nutrients: number;
   metallicHydrogen: number;
@@ -53,6 +55,7 @@ export const defaultSettings: UserSettings = {
   showBootSequence: true,
   infiniteExplore: false,
   exoticMatter: 350,
+  emergencyReserveExotic: 30,
   detectionRating: 0,
   detectionHeat: 0,
   lastDetectionChangeAt: 0,
@@ -60,6 +63,7 @@ export const defaultSettings: UserSettings = {
   railgunAmmo: 20,
   lastFireAt: 0,
   helium3Reserves: 220,
+  emergencyReserveHelium: 25,
   alloys: 400,
   nutrients: 200,
   metallicHydrogen: 0,

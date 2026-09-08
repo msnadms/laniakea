@@ -47,7 +47,7 @@ const COST_UNITS: Record<string, string> = {
 };
 
 function costLabel(cost: Record<string, number>): string {
-  return Object.entries(cost).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`).join(' - ');
+  return Object.entries(cost).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${COST_UNITS[k] ?? k}`).join(' - ');
 }
 
 function hoursLabel(hours: number): string {

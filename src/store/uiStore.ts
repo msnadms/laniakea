@@ -4,6 +4,7 @@ import type { UserSettings } from '../firebase/userDoc';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
 import { purgeCost } from './travelCosts';
 import { beginDeathSequence } from './resetGame';
+import { EMERGENCY_RESERVE_EXOTIC, EMERGENCY_RESERVE_HELIUM } from './emergencyFuel';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
@@ -130,6 +131,7 @@ interface UIState {
   showBootSequence: boolean;
   toggleBootSequence: () => void;
   exoticMatter: number;
+  emergencyReserveExotic: number;
   detectionRating: number;
   detectionHeat: number;
   lastDetectionChangeAt: number;
@@ -138,6 +140,7 @@ interface UIState {
   railgunAmmo: number;
   lastFireAt: number;
   helium3Reserves: number;
+  emergencyReserveHelium: number;
   alloys: number;
   nutrients: number;
   metallicHydrogen: number;
@@ -162,6 +165,7 @@ interface UIState {
   spendNutrients: (amount: number) => void;
   spendMetallicHydrogen: (amount: number) => void;
   consumeResources: (exotic: number, helium: number) => void;
+  replenishEmergencyReserve: () => void;
   refillResources: () => void;
   infiniteExplore: boolean;
   toggleInfiniteExplore: () => void;
@@ -369,6 +373,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   selectedPlanetKey: null,
   setSelectedPlanet: (key) => set({ selectedPlanetKey: key }),
   exoticMatter: 350,
+  emergencyReserveExotic: EMERGENCY_RESERVE_EXOTIC,
   detectionRating: 0,
   detectionHeat: 0,
   lastDetectionChangeAt: 0,
@@ -377,6 +382,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   railgunAmmo: 20,
   lastFireAt: 0,
   helium3Reserves: 200,
+  emergencyReserveHelium: EMERGENCY_RESERVE_HELIUM,
   setShipStats: (stats) => set({
     ...stats,
     detectionHeat: stats.detectionHeat ?? stats.detectionRating * DETECTION_HEAT_PER_BAR,
@@ -391,9 +397,28 @@ export const useUIStore = create<UIState>((set, get) => ({
     exoticMatter: Math.max(0, s.exoticMatter - exotic),
     helium3Reserves: Math.max(0, s.helium3Reserves - helium),
   })),
+  replenishEmergencyReserve: () => set((s) => {
+    const exotic = Math.min(s.exoticMatter, Math.max(0, EMERGENCY_RESERVE_EXOTIC - s.emergencyReserveExotic));
+    const helium = Math.min(s.helium3Reserves, Math.max(0, EMERGENCY_RESERVE_HELIUM - s.emergencyReserveHelium));
+    return {
+      exoticMatter: s.exoticMatter - exotic,
+      helium3Reserves: s.helium3Reserves - helium,
+      emergencyReserveExotic: s.emergencyReserveExotic + exotic,
+      emergencyReserveHelium: s.emergencyReserveHelium + helium,
+    };
+  }),
   refillResources: () => set((s) => {
     const cap = computeStorageCap(s.storageA);
-    return { exoticMatter: cap, helium3Reserves: cap, alloys: cap, nutrients: cap, metallicHydrogen: cap, neutronStarMatter: cap };
+    return {
+      exoticMatter: cap,
+      helium3Reserves: cap,
+      emergencyReserveExotic: EMERGENCY_RESERVE_EXOTIC,
+      emergencyReserveHelium: EMERGENCY_RESERVE_HELIUM,
+      alloys: cap,
+      nutrients: cap,
+      metallicHydrogen: cap,
+      neutronStarMatter: cap,
+    };
   }),
   infiniteExplore: false,
   toggleInfiniteExplore: () => set((s) => ({ infiniteExplore: !s.infiniteExplore })),
@@ -508,6 +533,7 @@ export function applyUserSettings(settings: UserSettings): void {
     showBootSequence: settings.showBootSequence,
     infiniteExplore: settings.infiniteExplore,
     exoticMatter: Math.min(settings.exoticMatter, cap),
+    emergencyReserveExotic: Math.min(settings.emergencyReserveExotic ?? EMERGENCY_RESERVE_EXOTIC, EMERGENCY_RESERVE_EXOTIC),
     detectionRating: detectionRatingFromHeat(settings.detectionHeat ?? settings.detectionRating * DETECTION_HEAT_PER_BAR),
     detectionHeat: settings.detectionHeat ?? settings.detectionRating * DETECTION_HEAT_PER_BAR,
     lastDetectionChangeAt: settings.lastDetectionChangeAt,
@@ -519,6 +545,7 @@ export function applyUserSettings(settings: UserSettings): void {
     railgunAmmo: settings.railgunAmmo,
     lastFireAt: settings.lastFireAt,
     helium3Reserves: Math.min(settings.helium3Reserves, cap),
+    emergencyReserveHelium: Math.min(settings.emergencyReserveHelium ?? EMERGENCY_RESERVE_HELIUM, EMERGENCY_RESERVE_HELIUM),
     alloys: Math.min(settings.alloys, cap),
     nutrients: Math.min(settings.nutrients, cap),
     metallicHydrogen: Math.min(settings.metallicHydrogen, cap),

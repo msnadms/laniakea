@@ -71,7 +71,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   visitedGalaxyBySuperclusterSeed: { [LANIAKEA_SEED]: new Set([MILKY_WAY_SEED]) },
   regenerateGalaxy: (seed) => {
     if (useUIStore.getState().checkDetectionLethal()) return;
-    useUIStore.getState().raiseDetection(0.25);
+    if (seed === undefined || seed !== get().galaxy.seed) useUIStore.getState().raiseDetection(0.25);
     set((state) => {
       const galaxy = makeGalaxy(seed);
       return {
@@ -103,7 +103,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const layout = generateSystemLayout(system.seed, system.starType);
       const planets = generatePlanets(layout);
       if (layout.planets.some((p) => p.zone === 'habitable')) useMilestoneStore.getState().completeMilestone('first_habitable');
-      useUIStore.getState().raiseDetection(0.1);
+      const shipCurrentId = get().galaxy.systems.find((s) => s.current)?.id;
+      if (shipCurrentId !== system.id) useUIStore.getState().raiseDetection(0.1);
       set({ system: { ...system, planets } });
     } else {
       set({ system: null });

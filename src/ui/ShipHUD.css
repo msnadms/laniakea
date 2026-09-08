@@ -46,6 +46,16 @@
   flex-shrink: 0;
 }
 
+.hud-label-icon {
+  display: flex;
+  align-items: center;
+  width: 20px;
+  color: #4fb8e0;
+  position: relative;
+  z-index: 3;
+  pointer-events: all;
+}
+
 .hud-bar-track {
   flex: 1;
   height: 4px;
@@ -54,11 +64,46 @@
   overflow: hidden;
 }
 
+.hud-bar-track--fuel {
+  overflow: visible;
+  pointer-events: all;
+}
+
+.hud-bar-track--reserve-low {
+  cursor: pointer;
+}
+
 .hud-bar-fill {
   height: 100%;
   background: #0088bb;
   box-shadow: 0 0 6px rgba(0, 136, 187, 0.7);
   transition: width 0.4s ease;
+}
+
+.hud-bar-reserve-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 1;
+  background: #d6a84b;
+  box-shadow: 0 0 6px rgba(214, 168, 75, 0.75);
+  pointer-events: none;
+}
+
+.hud-bar-reserve-line {
+  position: absolute;
+  z-index: 2;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: #f0bd55;
+  box-shadow: 0 0 5px rgba(240, 189, 85, 0.9);
+  pointer-events: none;
+}
+
+.hud-bar-track--reserve-low .hud-bar-reserve-line {
+  background: #df5a32;
+  box-shadow: 0 0 6px rgba(223, 90, 50, 0.9);
 }
 
 .hud-bar-low {
@@ -131,6 +176,40 @@
 .hud-value-dim {
   color: #2a6a8a;
   text-shadow: none;
+}
+
+.hud-emergency {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(220, 72, 30, 0.45);
+  pointer-events: all;
+}
+
+.hud-emergency > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  color: #df5a32;
+  font: 9px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.hud-emergency > div span {
+  overflow: hidden;
+  color: rgba(223, 90, 50, 0.7);
+  font-size: 8px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-recovery-btn {
+  border-color: rgba(223, 90, 50, 0.55);
+  color: #ef7955;
 }
 
 .hud-content {
@@ -219,7 +298,8 @@
   pointer-events: all;
 }
 
-.hud-vcargo-col[data-tooltip]::after {
+.hud-vcargo-col[data-tooltip]::after,
+.hud-label-icon[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 6px);
@@ -238,7 +318,8 @@
   transition: opacity 0.15s ease;
 }
 
-.hud-vcargo-col[data-tooltip]:hover::after {
+.hud-vcargo-col[data-tooltip]:hover::after,
+.hud-label-icon[data-tooltip]:hover::after {
   opacity: 1;
 }
 
@@ -280,8 +361,25 @@
   padding-right: 10px;
 }
 
+.nav-current-btn {
+  left: calc(107% + 59px);
+  height: calc(55% - 5px);
+  bottom: auto;
+  box-sizing: border-box;
+  padding-left: 17px;
+}
+
+.nav-scan-btn {
+  left: calc(107% + 59px);
+  top: calc(55% + 5px);
+  box-sizing: border-box;
+  padding-right: 10px;
+}
+
 .nav-back-btn:hover:not(.nav-back-btn--disabled),
 .nav-regen-btn:hover:not(.nav-back-btn--disabled),
+.nav-current-btn:hover:not(.nav-back-btn--disabled),
+.nav-scan-btn:hover,
 .upgrades-btn:hover,
 .delivery-btn:hover {
   color: rgba(0, 215, 255, 0.95);
@@ -429,4 +527,3 @@
 .ship-hud--alert .hud-outline {
   animation: hud-outline-alert 0.7s ease-out forwards;
 }
-

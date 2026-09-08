@@ -2,6 +2,8 @@ export const MILESTONE_IDS = [
   'first_habitable',
   'first_fabricator',
   'living_colony',
+  'first_new_galaxy',
+  'first_new_supercluster',
 ] as const;
 
 export type MilestoneId = typeof MILESTONE_IDS[number];
@@ -31,6 +33,18 @@ export const MILESTONES: MilestoneDef[] = [
     title: 'Founded a Colony',
     description: 'Deliver a charter and bring the Peregrine to found a human colony.',
     flavor: 'The charter is filed and the settlers are down. A colony now stands on the surface, independent of the ship.',
+  },
+  {
+    id: 'first_new_galaxy',
+    title: 'New Galaxy',
+    description: 'Travel to a galaxy beyond the Milky Way.',
+    flavor: 'The jump drive lands outside the Milky Way for the first time. No star chart back home covers this galaxy.',
+  },
+  {
+    id: 'first_new_supercluster',
+    title: 'New Supercluster',
+    description: 'Travel to a supercluster beyond Laniakea.',
+    flavor: 'The ship crosses into a supercluster beyond Laniakea. Every galaxy out here is unmapped.',
   },
 ];
 

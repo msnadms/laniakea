@@ -567,7 +567,7 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
     if (!c?.foundedAt || c.population <= 0 || !district || useUIStore.getState().destroyed) return false;
     if (colonyDistrictsUsed(c) >= colonyDistrictCapacity(c)) return false;
     if (!hasDistrictMaterials(district.builtWith)) { useUIStore.getState().triggerHudFlash(); return false; }
-    if (!trySpendTravelCost(districtBuildCost())) return false;
+    if (!trySpendTravelCost(districtBuildCost(), { allowEmergencyReserve: false, warnOnLowOperationalFuel: false })) return false;
     const stockpile = useStockpileStore.getState();
     const materials = { ...stockpile.materials };
     const rares = { ...stockpile.rares };
