@@ -9,8 +9,9 @@ import { AuthButton } from './ui/AuthButton';
 import { ShipHUD } from './ui/ShipHUD';
 import { PlanetPanel } from './ui/PlanetPanel';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
-import { useQuestPersist } from './hooks/useQuestPersist';
+import { useMilestonePersist } from './hooks/useMilestonePersist';
 import { useLogisticsAutomation } from './hooks/useLogisticsAutomation';
+import { MilestonePopup } from './ui/MilestonePopup';
 import { initAuth, useAuthStore } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
 import { BootSequence } from './ui/BootSequence';
@@ -66,7 +67,7 @@ function AddressBar() {
 
 export default function App() {
   useSettingsPersist();
-  useQuestPersist();
+  useMilestonePersist();
   useLogisticsAutomation();
   useEffect(() => initAuth(), []);
   const user = useAuthStore((s) => s.user);
@@ -107,6 +108,7 @@ export default function App() {
       {view === 'system' && <PlanetPanel />}
       <DeathOverlay />
       <StrikeWarning />
+      <MilestonePopup />
     </div>
   );
 }

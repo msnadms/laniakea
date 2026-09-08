@@ -5,7 +5,7 @@ import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAllExtractors } from '../firebase/extractors';
 import { loadAllFabricators, saveFabricatorState } from '../firebase/fabricators';
-import { loadQuests } from '../firebase/quests';
+import { loadMilestones } from '../firebase/milestones';
 import { loadLogisticsRoutes, saveLogisticsRoute } from '../firebase/logisticsRoutes';
 import { loadExtractorUpgrades, saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { loadStockpile, saveStockpile } from '../firebase/stockpile';
@@ -19,7 +19,7 @@ import { useColonyStore } from './colonyStore';
 import { loadAllColonies } from '../firebase/colonies';
 import { useLogisticsStore } from './logisticsStore';
 import { useStockpileStore } from './stockpileStore';
-import { useQuestStore } from './questStore';
+import { useMilestoneStore } from './milestoneStore';
 import { loadNav } from '../lib/navLocalStorage';
 import { loadResearch, saveResearch } from '../firebase/research';
 import { useResearchStore } from './researchStore';
@@ -49,12 +49,12 @@ export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const [baseSettings, discoveries, extractors, fabricators, quests, logisticsRoutes, extractorUpgrades, stockpile, colonies, research] = await Promise.all([
+        const [baseSettings, discoveries, extractors, fabricators, milestones, logisticsRoutes, extractorUpgrades, stockpile, colonies, research] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
           loadAllExtractors(user.uid),
           loadAllFabricators(user.uid),
-          loadQuests(user.uid),
+          loadMilestones(user.uid),
           loadLogisticsRoutes(user.uid),
           loadExtractorUpgrades(user.uid),
           loadStockpile(user.uid),
@@ -109,7 +109,7 @@ export function initAuth(): () => void {
           ]);
         }
         useCodexStore.getState().setAll(discoveries);
-        useQuestStore.getState().restoreQuests(quests);
+        useMilestoneStore.getState().restoreMilestones(milestones);
 
         const visitedSystems: Record<number, number[]> = {};
         const visitedGalaxies: Record<number, number[]> = {};

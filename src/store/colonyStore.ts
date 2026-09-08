@@ -9,7 +9,7 @@ import { useUIStore, FIRE_COOLDOWN_MS, WRECK_HEAT_PER_KILL, probeEscapes, probeE
 import { useFabricatorStore } from './fabricatorStore';
 import { useGameStore } from './gameStore';
 import { useExtractorStore, peekAccumulated, getExtractorMultipliers, ACCUMULATION_RATE_PER_MS } from './extractorStore';
-import { useQuestStore } from './questStore';
+import { useMilestoneStore } from './milestoneStore';
 import { useStockpileStore } from './stockpileStore';
 import { useResearchStore } from './researchStore';
 import { districtBuildCost, trySpendTravelCost } from './travelCosts';
@@ -51,7 +51,6 @@ export const DEFAULT_JOB_WEIGHT = 5;
 export const MAX_UNATTENDED_MS = 2 * HOUR;
 export const MAX_UNATTENDED_ESCAPES = 4;
 export const COLONY_HEAT_PER_INDUSTRY_HOUR = 4;
-export const COLONY_HEAT_DECAY_PER_HOUR = 2;
 export const COLONY_SUPPLY_WINDOW_MS = 15 * 60_000;
 // Arrivals are frequent, so one is worth well under an hour of one industry's signature.
 export const COLONY_ARRIVAL_HEAT = 0.01;
@@ -380,7 +379,7 @@ function tickLegacyColony(c: Colony, now: number, localFoodPerHour = 0, industry
   const stepMs = defense.cooldownMs;
   let heat = c.localHeat;
   // Every industry advertises, so the cost of defense rises smoothly with what the colony runs.
-  const heatPerMs = (industryCount * COLONY_HEAT_PER_INDUSTRY_HOUR - COLONY_HEAT_DECAY_PER_HOUR) / HOUR;
+  const heatPerMs = industryCount * COLONY_HEAT_PER_INDUSTRY_HOUR / HOUR;
   const escapeThreshold = probeEscapeThreshold(floor);
   let cursor = simStart;
   let fireAt = Math.max(c.lastFireAt + stepMs, simStart);
@@ -559,7 +558,7 @@ export const useColonyStore = create<ColonyState>((set, get) => ({
     };
     Object.defineProperty(founded, 'installed', { value: installed, enumerable: false });
     set({ colonies: { ...get().colonies, [key]: founded } });
-    useQuestStore.getState().completeQuest('living_colony');
+    useMilestoneStore.getState().completeMilestone('living_colony');
     return true;
   },
   buildDistrict: (key, id) => {

@@ -185,7 +185,7 @@ migrates older saves: `unitCap`→`materialDraw`, `overflow: 'next'`→`'stockpi
 `requireRecipeReady`→`batch`; edge priority, weight, per-edge reserves, and the `quiet` flag are
 dropped.
 An automated route that cannot afford fuel or would breach its probe attention ceiling **holds** (staying active
-and retrying as attention decays); only `pauseOnJam` deactivates it, since a jam needs the player.
+and retrying after railgun suppression or a purge creates headroom); only `pauseOnJam` deactivates it, since a jam needs the player.
 Route risk over 3 adds one probe attention point; it is not a probability roll.
 `useLogisticsAutomation` runs the same `dispatchRoute` path as manual operation and persists each
 completed run.
@@ -196,36 +196,32 @@ batch, so a trickle of demand cannot bleed a full dispatch fee. Extractors alrea
 from `lastCollectedAt`, but routes do not, so the automation hook's **first** tick calls
 `catchUpAutomation` instead of `runAutomation` — it re-dispatches until a pass yields nothing
 (bounded by `AUTOMATION_CATCHUP_PASSES`), converting a day of banked extractor output in one go
-rather than over an hour of real time. Because probe attention is charged per dispatch and cannot
-decay during a synchronous catch-up, the hook hands `catchUpAutomation` the offline span and it
-opens a `catchUpDetectionCredit` — the heat the ship *would* have shed while away, capped at
-`AUTOMATION_CATCHUP_CREDIT_CAP` — that each dispatch spends before charging real heat. Without it
-the headroom for converting an absence would be the constant `detectionCeiling` no matter how long
-that absence was, so a week away would pay no better than an hour. The credit is cleared when the
-catch-up returns. It terminates on its own because each pass drains the
+rather than over an hour of real time. Probe attention is charged normally during catch-up and does
+not decay passively, so the route's configured attention ceiling limits how much accumulated output
+can be converted before active suppression is required. Catch-up terminates on its own because each pass drains the
 extractors below `sourceFillPercent`, and it cannot run away because the probe attention ceiling holds
-the route once accumulated attention plus the thresholded increase crosses it (and the credit is finite). `AUTOMATION_POLL_MS` is 60s: an extractor
+the route once accumulated attention plus the thresholded increase crosses it. `AUTOMATION_POLL_MS` is 60s: an extractor
 gains a fraction of a unit per tick at any realistic rate, so polling faster buys nothing and
 multiplies the Firestore fan-out.
 
 **Detection risk** (`routeDetectionRisk`) is calculated for each extractor included in a route.
-Every extractor in the same galaxy contributes 1 to that routed extractor's risk, every extractor
-in another galaxy in the same supercluster contributes 0.5, and extractors in other superclusters
-contribute nothing. The routed extractor itself is included in the same-galaxy count. Route shape
+Extractors are grouped by system first, so a system with several extractors contributes once, not
+once per extractor. Every system in the same galaxy contributes 1 to that routed extractor's risk,
+every system in another galaxy in the same supercluster contributes 0.5, and systems in other
+superclusters contribute nothing. The routed extractor's own system is included in the same-galaxy
+count. Route shape
 and edge distance do not affect risk; distance is already paid in fuel by `hopExotic`. A raw risk
 over `PROBE_ATTENTION_RISK_THRESHOLD` (3) raises probe attention by exactly 1 when useful work is
 dispatched. Raw risk remains visible in the preview while the one-point increase is what automation
-checks against its probe attention ceiling and spends from offline catch-up credit.
+checks against its probe attention ceiling.
 
 A **Signal Dampener** scales only the equipped extractor's contribution: one module halves it and
 two modules reduce it to zero. Other extractors still count when determining that station's local
 traffic concentration, even when they are not themselves part of the route.
 
-Passive decay scales with the drone fleet: `computeDetectionDecayPerMs(logisticsA)` multiplies the
-base rate by `DETECTION_DECAY_LOGISTICS_MULT`. Decay is global while `logisticsA` also raises the
-route cap, so without this a player who bought more routes got heat they could not shed and the
-whole network parked at its ceiling — the upgrade paid for throughput the detection budget could
-not fund. `resolveAutomationPolicy` clamps `detectionCeiling` to `MAX_DETECTION_CEILING` (4), one
+Probe attention does not decay passively. It is removed by railgun suppression or an emergency
+purge, subject to the permanent Kardashev attention floor. `resolveAutomationPolicy` clamps
+`detectionCeiling` to `MAX_DETECTION_CEILING` (4), one
 bar clear of the lethal 5, so no automated dispatch can land on death.
 
 ### Recipe data

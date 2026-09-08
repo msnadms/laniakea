@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useQuestStore } from '../store/questStore';
-import { QUESTS } from '../game/quests';
+import { useMilestoneStore } from '../store/milestoneStore';
+import { MILESTONES } from '../game/milestones';
 import './InfoPanel.css';
 
-type SubviewKey = 'origins' | 'star-types' | 'phenomena' | 'species' | 'quests' | 'artifacts';
+type SubviewKey = 'origins' | 'star-types' | 'phenomena' | 'species' | 'milestones' | 'artifacts';
 
 interface StarTypeEntry {
   key: string;
@@ -18,7 +18,7 @@ interface StarTypeEntry {
 }
 
 const SUBVIEWS: { key: SubviewKey; label: string; icon: string }[] = [
-  { key: 'quests',     label: 'Quests',   icon: '◉' },
+  { key: 'milestones', label: 'Milestones', icon: '◉' },
   { key: 'origins',    label: 'Origins',  icon: '◎' },
   { key: 'star-types', label: 'Stars',    icon: '★' },
   { key: 'phenomena',  label: 'Phenom',   icon: '⌬' },
@@ -231,33 +231,33 @@ function SpeciesView() {
   );
 }
 
-function QuestsView() {
-  const completed = useQuestStore((s) => s.completed);
-  const active = QUESTS.filter((q) => !completed[q.id]);
-  const done = QUESTS.filter((q) => completed[q.id]);
+function MilestonesView() {
+  const completed = useMilestoneStore((s) => s.completed);
+  const active = MILESTONES.filter((m) => !completed[m.id]);
+  const done = MILESTONES.filter((m) => completed[m.id]);
 
   return (
     <div className="info-section">
-      <div className="info-section-title">Mission Objectives</div>
-      {active.map((q) => (
-        <div key={q.id} className="info-quest-entry">
-          <div className="info-quest-title">{q.title}</div>
-          <div className="info-quest-desc">{q.description}</div>
+      <div className="info-section-title">Milestones</div>
+      {active.map((m) => (
+        <div key={m.id} className="info-milestone-entry">
+          <div className="info-milestone-title">{m.title}</div>
+          <div className="info-milestone-desc">{m.description}</div>
         </div>
       ))}
       {done.length > 0 && (
         <>
           <div className="info-section-title info-section-title--completed">Completed</div>
-          {done.map((q) => (
-            <div key={q.id} className="info-quest-entry info-quest-entry--done">
-              <div className="info-quest-title"><span className="info-quest-check">✓</span> {q.title}</div>
-              <div className="info-quest-desc">{q.description}</div>
+          {done.map((m) => (
+            <div key={m.id} className="info-milestone-entry info-milestone-entry--done">
+              <div className="info-milestone-title"><span className="info-milestone-check">✓</span> {m.title}</div>
+              <div className="info-milestone-desc">{m.description}</div>
             </div>
           ))}
         </>
       )}
       {active.length === 0 && done.length === 0 && (
-        <div className="info-empty">No objectives assigned</div>
+        <div className="info-empty">No milestones tracked</div>
       )}
     </div>
   );
@@ -278,7 +278,7 @@ function SubviewContent({ subview }: { subview: SubviewKey }) {
     case 'star-types': return <StarTypesView />;
     case 'phenomena':  return <PhenomenaView />;
     case 'species':    return <SpeciesView />;
-    case 'quests':     return <QuestsView />;
+    case 'milestones': return <MilestonesView />;
     case 'artifacts':  return <ArtifactsView />;
   }
 }

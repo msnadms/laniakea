@@ -3,7 +3,7 @@ import type { Galaxy, StarSystem, SuperclusterData } from '../game/types';
 import { generateGalaxy } from '../game/galaxyGen';
 import { generateSupercluster } from '../game/superclusters';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
-import { useQuestStore } from './questStore';
+import { useMilestoneStore } from './milestoneStore';
 import { useUIStore } from './uiStore';
 import { MILKY_WAY_SEED, MILKY_WAY_NUM_ARMS, LANIAKEA_SEED } from '../game/hardcoded';
 
@@ -84,7 +84,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (useUIStore.getState().checkDetectionLethal()) return;
     const currentSeed = get().supercluster.seed;
     if (seed === undefined || seed !== currentSeed) {
-      useQuestStore.getState().completeQuest('new_supercluster');
       useUIStore.getState().raiseDetection(1.0);
     }
     get().restoreSupercluster(seed);
@@ -103,9 +102,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (useUIStore.getState().checkDetectionLethal()) return;
       const layout = generateSystemLayout(system.seed, system.starType);
       const planets = generatePlanets(layout);
-      const q = useQuestStore.getState();
-      q.completeQuest('first_system');
-      if (layout.planets.some((p) => p.zone === 'habitable')) q.completeQuest('first_habitable');
+      if (layout.planets.some((p) => p.zone === 'habitable')) useMilestoneStore.getState().completeMilestone('first_habitable');
       useUIStore.getState().raiseDetection(0.1);
       set({ system: { ...system, planets } });
     } else {
@@ -141,16 +138,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       return { galaxy: updatedGalaxy, system };
     });
-    if (restoredLayout) {
-      const q = useQuestStore.getState();
-      q.completeQuest('first_system');
-      if ((restoredLayout as ReturnType<typeof generateSystemLayout>).planets.some((p) => p.zone === 'habitable')) {
-        q.completeQuest('first_habitable');
-      }
+    if (restoredLayout && (restoredLayout as ReturnType<typeof generateSystemLayout>).planets.some((p) => p.zone === 'habitable')) {
+      useMilestoneStore.getState().completeMilestone('first_habitable');
     }
   },
   markDotVisited: (seed) => {
-    useQuestStore.getState().completeQuest('first_galaxy');
     set((state) => {
       const scSeed = state.supercluster.seed;
       const existing = state.visitedGalaxyBySuperclusterSeed[scSeed];

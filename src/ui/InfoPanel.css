@@ -322,16 +322,16 @@
   padding: 32px 0;
 }
 
-.info-quest-entry {
+.info-milestone-entry {
   padding: 10px 0;
   border-bottom: 1px solid rgba(0, 190, 230, 0.08);
 }
 
-.info-quest-entry:last-child {
+.info-milestone-entry:last-child {
   border-bottom: none;
 }
 
-.info-quest-title {
+.info-milestone-title {
   font-size: 11px;
   font-family: var(--font-mono);
   color: #00c8e8;
@@ -339,7 +339,7 @@
   margin-bottom: 4px;
 }
 
-.info-quest-desc {
+.info-milestone-desc {
   font-size: 10px;
   font-family: var(--font-mono);
   color: rgba(0, 180, 220, 0.45);
@@ -347,15 +347,15 @@
   line-height: 1.5;
 }
 
-.info-quest-entry--done .info-quest-title {
+.info-milestone-entry--done .info-milestone-title {
   color: #2a6a8a;
 }
 
-.info-quest-entry--done .info-quest-desc {
+.info-milestone-entry--done .info-milestone-desc {
   color: #1a4060;
 }
 
-.info-quest-check {
+.info-milestone-check {
   color: #44cc77;
   margin-right: 4px;
 }

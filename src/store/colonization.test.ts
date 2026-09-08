@@ -110,10 +110,10 @@ describe('colony population arithmetic', () => {
   it('raises local attention smoothly with every industry a colony runs', () => {
     const heat = (industries: number) => tickColony(makeLiving({ localHeat: 0, ...UNARMED }), NOW + HOUR / 4, 0, industries).colony.localHeat;
     expect(heat(0)).toBe(0);
-    expect(heat(1)).toBeCloseTo(0.5);
-    expect(heat(2)).toBeCloseTo(1.5);
-    expect(heat(3)).toBeCloseTo(2.5);
-    expect(heat(4)).toBeCloseTo(3.5);
+    expect(heat(1)).toBeCloseTo(1);
+    expect(heat(2)).toBeCloseTo(2);
+    expect(heat(3)).toBeCloseTo(3);
+    expect(heat(4)).toBeCloseTo(4);
   });
   it('kills probes while a sentinel battery stands and leaks once it is gone', () => {
     const defended = tickColony(makeLiving({ localHeat: 3 }), NOW + 30_000);
@@ -329,9 +329,9 @@ describe('civilization and strikes', () => {
     expect(evaluateKardashev(stars.map(c => ({ ...c, galaxySeed: c.systemId })), 1120, 2)).toBe(2);
     expect(evaluateKardashev([], 0, 3)).toBe(3);
   });
-  it('keeps detection floors through decay and emergency purge', () => {
+  it('keeps detection floors through synchronization and emergency purge', () => {
     useUIStore.setState({ kardashevTier: 3 });
-    useUIStore.getState().tickDetectionDecay();
+    useUIStore.getState().enforceDetectionFloor();
     expect(useUIStore.getState().detectionHeat).toBe(2);
     useUIStore.getState().purgeDetection();
     expect(useUIStore.getState().detectionHeat).toBe(2);

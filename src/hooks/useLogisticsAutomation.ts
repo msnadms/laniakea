@@ -59,8 +59,6 @@ export function useLogisticsAutomation() {
       const { user, settingsLoaded } = useAuthStore.getState();
       if (!cancelled && user && settingsLoaded) {
         const campaignBefore = campaignSignature();
-        const lastHeatChangeAt = useUIStore.getState().lastDetectionChangeAt;
-        const offlineMs = caughtUp || lastHeatChangeAt <= 0 ? 0 : Date.now() - lastHeatChangeAt;
         useUIStore.getState().tickRailgunSuppression();
         const colonyTick = useColonyStore.getState().tickColonies(Date.now());
         tickCivilization(Date.now());
@@ -70,7 +68,7 @@ export function useLogisticsAutomation() {
         const holdFed = useFabricatorStore.getState().runHoldFeeds();
         const results = caughtUp
           ? useLogisticsStore.getState().runAutomation()
-          : useLogisticsStore.getState().catchUpAutomation(offlineMs);
+          : useLogisticsStore.getState().catchUpAutomation();
         caughtUp = true;
         // Colony documents are written by the store subscription above, which sees every
         // mutation; passing their keys here as well would double every colony write.

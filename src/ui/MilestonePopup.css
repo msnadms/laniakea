@@ -1,0 +1,72 @@
+.milestone-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 6, 12, 0.72);
+  animation: milestone-fade-in 0.2s ease forwards;
+}
+
+.milestone-dialog {
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  padding: 24px 28px;
+  background: rgba(8, 14, 22, 0.96);
+  border: 1px solid rgba(0, 215, 255, 0.45);
+  box-shadow: 0 0 24px rgba(0, 200, 232, 0.25);
+  text-align: center;
+  animation: milestone-pop-in 0.25s ease forwards;
+}
+
+.milestone-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(0, 200, 232, 0.6);
+  margin-bottom: 8px;
+}
+
+.milestone-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  color: #e6faff;
+  margin-bottom: 14px;
+}
+
+.milestone-flavor {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(220, 240, 245, 0.85);
+  margin-bottom: 20px;
+}
+
+.milestone-dismiss {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #00d7ff;
+  background: rgba(0, 200, 232, 0.08);
+  border: 1px solid rgba(0, 215, 255, 0.5);
+  padding: 8px 22px;
+  cursor: pointer;
+}
+
+.milestone-dismiss:hover {
+  background: rgba(0, 215, 255, 0.18);
+}
+
+@keyframes milestone-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes milestone-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}

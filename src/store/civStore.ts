@@ -38,7 +38,7 @@ export function tickCivilization(now: number) {
   const tier = evaluateKardashev(colonies, useResearchStore.getState().points, ui.kardashevTier);
   if (tier !== ui.kardashevTier) {
     useUIStore.setState({ kardashevTier: tier });
-    ui.tickDetectionDecay();
+    ui.enforceDetectionFloor();
     ui.triggerHudNotify(`KARDASHEV TYPE ${['0', 'I', 'II', 'III'][tier]} — ATTENTION FLOOR ${detectionFloor(tier)}`);
   }
   if (ui.strike && now >= ui.strike.arrivesAt) {

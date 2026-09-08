@@ -6,7 +6,6 @@ import { materialName } from '../data/materials';
 import { useStockpileStore } from './stockpileStore';
 import { useUIStore, EXTRACTOR_HOLD_CAPS, LOGISTICS_B_RATE } from './uiStore';
 import { canBuildExtractor } from './colonyStore';
-import { useQuestStore } from './questStore';
 import { effectiveExtractionPerHour, EXTRACTION_UNITS_PER_RATING_PER_HOUR } from '../game/economy';
 
 export const ACCUMULATION_RATE_PER_MS = EXTRACTION_UNITS_PER_RATING_PER_HOUR / (60 * 60 * 1000);
@@ -85,7 +84,6 @@ export const useExtractorStore = create<ExtractorState>()(subscribeWithSelector(
     if (useUIStore.getState().checkDetectionLethal()) return;
     if (extractor.resourceType === 'alienMatter' || !canBuildExtractor(extractor.galaxySeed, extractor.systemId)) return;
     set((s) => ({ extractors: { ...s.extractors, [extractor.key]: extractor } }));
-    useQuestStore.getState().completeQuest('first_extractor');
   },
 
   collectExtractor: (key, maxAmount?, now = Date.now()) => {

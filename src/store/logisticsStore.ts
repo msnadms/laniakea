@@ -14,7 +14,7 @@ import {
 } from './fabricatorStore';
 import type { FeedResult, MaterialBudget, SlotRunResult } from './fabricatorStore';
 import { useStockpileStore } from './stockpileStore';
-import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, computeRouteCap, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR, decayDetectionHeat, computeDetectionDecayPerMs } from './uiStore';
+import { useUIStore, computeStorageCap, computeDriveMultiplier, computeMaterialBandwidth, computeRouteCap, resourceAmount, EXTRACTOR_HOLD_CAPS, DETECTION_HEAT_PER_BAR, detectionFloor } from './uiStore';
 import { galaxyTravelCost, superclusterTravelCost, flatTravelCost } from './travelCosts';
 import { getSuperclusterCoords } from '../game/superclusters';
 import { OBS_UNIVERSE_RADIUS } from '../game/constants';
@@ -34,14 +34,7 @@ export const ROUTE_HOP_DISCOUNT = 0.25;
 export const ROUTE_HELIUM_PER_HOP = 4;
 export const MIN_DISPATCH_UNITS = 25;
 export const AUTOMATION_CATCHUP_PASSES = 50;
-export const AUTOMATION_CATCHUP_CREDIT_CAP = 12;
 export const MAX_DETECTION_CEILING = 4;
-
-let catchUpDetectionCredit = 0;
-
-export function detectionCatchUpCredit(): number {
-  return catchUpDetectionCredit;
-}
 
 export const DEFAULT_AUTOMATION_POLICY: RouteAutomationPolicy = {
   dispatchMode: 'fill',
@@ -248,13 +241,19 @@ export function routeDetectionRisk(
   groups: Map<string, NodeGroup>,
 ): number {
   const { extractors, nodeEquipped } = useExtractorStore.getState();
-  const nearbyExtractors = Object.values(extractors);
+  const nearbySystems = new Map<string, { galaxySeed: number; superclusSeed: number }>();
+  for (const extractor of Object.values(extractors)) {
+    const key = extractorNodeId(extractor.galaxySeed, extractor.systemId);
+    if (!nearbySystems.has(key)) {
+      nearbySystems.set(key, { galaxySeed: extractor.galaxySeed, superclusSeed: extractor.superclusSeed });
+    }
+  }
   const routeExtractors = [...groups.values()].flatMap((group) => group.extractors);
   const galaxyRisk = new Map<number, number>();
   for (const routeExtractor of routeExtractors) {
-    const density = nearbyExtractors.reduce((sum, extractor) => {
-      if (extractor.galaxySeed === routeExtractor.galaxySeed) return sum + 1;
-      if (extractor.superclusSeed === routeExtractor.superclusSeed) return sum + 0.5;
+    const density = [...nearbySystems.values()].reduce((sum, system) => {
+      if (system.galaxySeed === routeExtractor.galaxySeed) return sum + 1;
+      if (system.superclusSeed === routeExtractor.superclusSeed) return sum + 0.5;
       return sum;
     }, 0);
     const contribution = density * getExtractorMultipliers(routeExtractor.key, nodeEquipped).signalRiskMultiplier;
@@ -337,6 +336,7 @@ export interface RoutePreview {
   islandNodes: string[];
   expectedBatches: number;
   expectedRecipes: string[];
+  expectedCollections: Partial<Record<Resource['type'], number>>;
   expectedOutputs: MaterialCost;
   expectedEdgeUse: Record<string, { used: number; capacity: number }>;
   shortages: string[];
@@ -925,7 +925,7 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const valid = routeIsValid(route.edges) && groups.size === nodes.length;
   const policy = resolveAutomationPolicy(route);
   const risk = routeDetectionRisk(route.edges, groups);
-  const attentionIncrease = Math.max(0, probeAttentionFromRisk(risk) - catchUpDetectionCredit);
+  const attentionIncrease = probeAttentionFromRisk(risk);
   const ui = useUIStore.getState();
   const cost = computeRouteCost(route.edges, extractors, fabricators, traversal.throughputUnits);
   const affordable = !!routeSponsor(groups, cost) || (ui.exoticMatter - cost.exotic >= policy.fuelReserveExotic
@@ -934,13 +934,16 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
   const storedHeat = Math.floor(ui.detectionHeat / DETECTION_HEAT_PER_BAR) === ui.detectionRating
     ? ui.detectionHeat
     : ui.detectionRating * DETECTION_HEAT_PER_BAR;
-  const effectiveHeat = decayDetectionHeat(
-    storedHeat, ui.lastDetectionChangeAt, Date.now(), computeDetectionDecayPerMs(ui.logisticsA),
-  ).detectionHeat;
+  const effectiveHeat = Math.max(detectionFloor(ui.kardashevTier), storedHeat);
   const hasConfiguredRecipe = routeFabricatorKeys(groups).some((key) =>
     (useFabricatorStore.getState().fabricatorStates[key]?.slots ?? []).some((slot) => !!slot.targetUpgradeId));
   const tank = computeStorageCap(ui.storageA);
   const exceedsTank = cost.exotic > tank || cost.helium > tank;
+  const expectedCollections: Partial<Record<Resource['type'], number>> = {};
+  for (const { key, amount } of traversal.collected) {
+    const type = extractors[key]?.resourceType;
+    if (type) expectedCollections[type] = (expectedCollections[type] ?? 0) + amount;
+  }
   if (!valid) reason = islands.length > 0 ? 'Disconnected route islands' : 'Incomplete or cyclic route';
   else if (!affordable) reason = exceedsTank ? 'Route costs more fuel than the hold can carry' : 'Insufficient route fuel';
   else if (effectiveHeat + attentionIncrease > policy.detectionCeiling * DETECTION_HEAT_PER_BAR) reason = 'Probe attention ceiling would be exceeded';
@@ -950,6 +953,7 @@ function optimizedRoutePreview(route: LogisticsRoute, force = false): RoutePrevi
     valid, canRun: reason === 'Ready', reason, cost, detectionRisk: risk, islandNodes: islands,
     expectedBatches: traversal.expectedBatches,
     expectedRecipes: traversal.expectedRecipes,
+    expectedCollections,
     expectedOutputs: traversal.expectedOutputs,
     expectedEdgeUse: Object.fromEntries(Object.entries(traversal.edgeFlows).map(([key, flow]) => [key, {
       used: flow.used + Object.values(flow.raw).reduce((sum, amount) => sum + (amount ?? 0), 0),
@@ -1074,9 +1078,8 @@ function executeRouteDispatch(id: string, automatic: boolean): DispatchResult | 
   const deliveries = traversal.endItems.length > 0
     ? useExtractorStore.getState().receiveFabricatorItems(traversal.endItems)
     : [];
-  const attentionIncrease = Math.max(0, probeAttentionFromRisk(preview.detectionRisk) - catchUpDetectionCredit);
+  const attentionIncrease = probeAttentionFromRisk(preview.detectionRisk);
   if (attentionIncrease > 0) useUIStore.getState().raiseDetectionHeat(attentionIncrease);
-  catchUpDetectionCredit = Math.max(0, catchUpDetectionCredit - probeAttentionFromRisk(preview.detectionRisk));
   const result: DispatchResult = {
     colonyKeys: [...groups.values()].flatMap(g => g.colonyKeys ?? []),
     order: traversal.order,
@@ -1114,10 +1117,10 @@ interface LogisticsState {
   removeRoute: (id: string) => void;
   setRouteActive: (id: string, active: boolean) => void;
   flushHeldCargo: (id: string, nodeId: string) => boolean;
-  previewRoute: (id: string) => RoutePreview | null;
+  previewRoute: (id: string, force?: boolean) => RoutePreview | null;
   dispatchRoute: (id: string, automatic?: boolean) => DispatchResult | false;
   runAutomation: () => DispatchResult[];
-  catchUpAutomation: (offlineMs?: number) => DispatchResult[];
+  catchUpAutomation: () => DispatchResult[];
   restoreRoutes: (routes: LogisticsRoute[]) => void;
 }
 
@@ -1158,9 +1161,9 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     previewCache.delete(id);
     return moved;
   },
-  previewRoute: (id) => {
+  previewRoute: (id, force = false) => {
     const route = get().routes.find((candidate) => candidate.id === id);
-    return route ? optimizedRoutePreview(route) : null;
+    return route ? optimizedRoutePreview(route, force) : null;
   },
 
   dispatchRoute: (id, automatic = false) => executeRouteDispatch(id, automatic),
@@ -1216,21 +1219,12 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
     return results;
   },
 
-  catchUpAutomation: (offlineMs = 0) => {
-    const ui = useUIStore.getState();
-    catchUpDetectionCredit = Math.min(
-      AUTOMATION_CATCHUP_CREDIT_CAP,
-      Math.max(0, offlineMs) * computeDetectionDecayPerMs(ui.logisticsA),
-    );
+  catchUpAutomation: () => {
     const results: DispatchResult[] = [];
-    try {
-      for (let pass = 0; pass < AUTOMATION_CATCHUP_PASSES; pass += 1) {
-        const batch = get().runAutomation();
-        if (batch.length === 0) break;
-        results.push(...batch);
-      }
-    } finally {
-      catchUpDetectionCredit = 0;
+    for (let pass = 0; pass < AUTOMATION_CATCHUP_PASSES; pass += 1) {
+      const batch = get().runAutomation();
+      if (batch.length === 0) break;
+      results.push(...batch);
     }
     return results;
   },

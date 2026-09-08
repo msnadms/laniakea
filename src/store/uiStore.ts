@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { AddressComponent, AddressComponentType, Resource, CannonStrike } from '../game/types';
 import type { UserSettings } from '../firebase/userDoc';
-import { useQuestStore } from './questStore';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
 import { purgeCost } from './travelCosts';
 import { beginDeathSequence } from './resetGame';
@@ -9,23 +8,10 @@ import { beginDeathSequence } from './resetGame';
 export type AppView = 'system' | 'galaxy' | 'supercluster';
 
 export const DETECTION_HEAT_PER_BAR = 1;
-export const DETECTION_HEAT_DECAY_PER_MS = DETECTION_HEAT_PER_BAR / (2 * 60 * 1000);
-export const DETECTION_DECAY_LOGISTICS_MULT = [1, 1.5, 2, 2.5, 3];
 export const PURGE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-
-export function computeDetectionDecayPerMs(logisticsA: number): number {
-  return DETECTION_HEAT_DECAY_PER_MS * (DETECTION_DECAY_LOGISTICS_MULT[logisticsA] ?? 1);
-}
 
 export function detectionRatingFromHeat(heat: number): number {
   return Math.min(5, Math.floor(Math.max(0, heat) / DETECTION_HEAT_PER_BAR));
-}
-
-export function decayDetectionHeat(heat: number, lastChangeAt: number, now: number, ratePerMs = DETECTION_HEAT_DECAY_PER_MS): { detectionHeat: number; detectionRating: number; lastDetectionChangeAt: number } {
-  if (heat <= 0) return { detectionHeat: 0, detectionRating: 0, lastDetectionChangeAt: lastChangeAt };
-  if (lastChangeAt <= 0) return { detectionHeat: heat, detectionRating: detectionRatingFromHeat(heat), lastDetectionChangeAt: now };
-  const detectionHeat = Math.max(0, heat - Math.max(0, now - lastChangeAt) * ratePerMs);
-  return { detectionHeat, detectionRating: detectionRatingFromHeat(detectionHeat), lastDetectionChangeAt: now };
 }
 
 // UPGRADE_POOL is the shared pool cap. Each path caps at UPGRADE_POOL-1. COSTS arrays need UPGRADE_POOL entries; stat/name arrays need UPGRADE_POOL.
@@ -159,7 +145,7 @@ interface UIState {
   raiseDetection: (chance: number) => void;
   raiseDetectionBy: (points: number) => void;
   raiseDetectionHeat: (heat: number) => void;
-  tickDetectionDecay: () => void;
+  enforceDetectionFloor: () => void;
   checkDetectionLethal: () => boolean;
   purgeDetection: () => boolean;
   tickRailgunSuppression: () => void;
@@ -250,7 +236,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   metallicHydrogen: 0,
   neutronStarMatter: 0,
   raiseDetection: (chance) => {
-    get().tickDetectionDecay();
     if (Math.random() >= chance) return;
     get().raiseDetectionBy(1);
   },
@@ -260,7 +245,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
   raiseDetectionHeat: (heat) => {
     if (heat <= 0) return;
-    get().tickDetectionDecay();
+    get().enforceDetectionFloor();
     const wasBelowMax = get().detectionHeat < 5 * DETECTION_HEAT_PER_BAR;
     const detectionHeat = Math.min(5 * DETECTION_HEAT_PER_BAR, get().detectionHeat + heat);
     set({ detectionHeat, detectionRating: detectionRatingFromHeat(detectionHeat), lastDetectionChangeAt: Date.now() });
@@ -268,35 +253,31 @@ export const useUIStore = create<UIState>((set, get) => ({
       get().triggerHudNotify('SIGNAL LOCKED — ALCUBIERRE CANNON CHARGING');
     }
   },
-  tickDetectionDecay: () => {
+  enforceDetectionFloor: () => {
     const s = get();
-    const now = Date.now();
     // Keep direct state restores and older tests/save paths compatible: if a
     // caller set bars without heat, the explicitly supplied bar count wins.
     const heat = detectionRatingFromHeat(s.detectionHeat) === s.detectionRating
       ? s.detectionHeat
       : s.detectionRating * DETECTION_HEAT_PER_BAR;
-    const next = decayDetectionHeat(heat, s.lastDetectionChangeAt, now, computeDetectionDecayPerMs(s.logisticsA));
-    next.detectionHeat = Math.max(detectionFloor(s.kardashevTier), next.detectionHeat);
-    next.detectionRating = detectionRatingFromHeat(next.detectionHeat);
-    if (next.detectionHeat !== s.detectionHeat || next.lastDetectionChangeAt !== s.lastDetectionChangeAt) {
-      set(next);
+    const detectionHeat = Math.max(detectionFloor(s.kardashevTier), heat);
+    const detectionRating = detectionRatingFromHeat(detectionHeat);
+    if (detectionHeat !== s.detectionHeat || detectionRating !== s.detectionRating) {
+      set({ detectionHeat, detectionRating });
     }
   },
   checkDetectionLethal: () => {
     if (get().destroyed) return true;
+    get().enforceDetectionFloor();
     if (get().detectionHeat >= 5 * DETECTION_HEAT_PER_BAR) {
       beginDeathSequence();
       return true;
     }
-    get().tickDetectionDecay();
-    if (get().detectionRating < 5) return false;
-    beginDeathSequence();
-    return true;
+    return false;
   },
   tickRailgunSuppression: () => {
     if (get().destroyed) return;
-    get().tickDetectionDecay();
+    get().enforceDetectionFloor();
     const s = get();
     const now = Date.now();
     if (s.lastFireAt <= 0) { set({ lastFireAt: now }); return; }
@@ -341,7 +322,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
   purgeDetection: () => {
     if (get().destroyed) return false;
-    get().tickDetectionDecay();
     const s = get();
     const now = Date.now();
     if (now - s.lastPurgeAt < PURGE_COOLDOWN_MS) return false;
@@ -374,7 +354,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     return patch;
   }),
   addCargo: (type, amount) => {
-    if (type === 'exotic') useQuestStore.getState().completeQuest('first_exotic');
     set((s) => {
       const cap = computeStorageCap(s.storageA);
       if (type === 'exotic') return { exoticMatter: Math.min(cap, s.exoticMatter + amount) };
@@ -454,7 +433,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.storageA[storageA];
     if (alloys < cost) return;
     set((s) => ({ storageA: s.storageA + 1, alloys: s.alloys - cost }));
-    useQuestStore.getState().completeQuest('upgrade_storage');
   },
   upgradeStorageB: () => {
     if (get().checkDetectionLethal()) return;
@@ -463,7 +441,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.storageB[storageB];
     if (alloys < cost) return;
     set((s) => ({ storageB: s.storageB + 1, alloys: s.alloys - cost }));
-    useQuestStore.getState().completeQuest('upgrade_storage');
   },
   upgradeDriveA: () => {
     if (get().checkDetectionLethal()) return;
@@ -472,9 +449,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.driveA[driveA];
     if (exoticMatter < cost) return;
     set((s) => ({ driveA: s.driveA + 1, exoticMatter: s.exoticMatter - cost }));
-    const s = get();
-    useQuestStore.getState().completeQuest('upgrade_drive');
-    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeDriveB: () => {
     if (get().checkDetectionLethal()) return;
@@ -483,9 +457,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.driveB[driveB];
     if (helium3Reserves < cost) return;
     set((s) => ({ driveB: s.driveB + 1, helium3Reserves: s.helium3Reserves - cost }));
-    const s = get();
-    useQuestStore.getState().completeQuest('upgrade_drive');
-    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeWeaponA: () => {
     if (get().checkDetectionLethal()) return;
@@ -510,8 +481,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.logisticsA[logisticsA];
     if (alloys < cost) return;
     set((s) => ({ logisticsA: s.logisticsA + 1, alloys: s.alloys - cost }));
-    const s = get();
-    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
   upgradeLogisticsB: () => {
     if (get().checkDetectionLethal()) return;
@@ -520,8 +489,6 @@ export const useUIStore = create<UIState>((set, get) => ({
     const cost = UPGRADE_COSTS.logisticsB[logisticsB];
     if (alloys < cost) return;
     set((s) => ({ logisticsB: s.logisticsB + 1, alloys: s.alloys - cost }));
-    const s = get();
-    if (s.driveA + s.driveB >= 3 && s.logisticsA + s.logisticsB >= 3) useQuestStore.getState().completeQuest('delivery_network');
   },
 }));
 

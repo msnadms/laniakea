@@ -73,6 +73,8 @@ type DispatchAnim = {
   done: boolean;
 };
 
+type ExpectedOutputLine = { key: string; text: string };
+
 
 const ROUTABLE_MATERIALS = [...new Set([...STOCKED_MATERIALS, ...RARE_RESOURCES].map((material) => material.id))];
 const DETAIL_POP_HEIGHT = 210;
@@ -223,6 +225,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const [rightPanel, setRightPanel] = useState<'resources' | 'materials' | 'modules'>('resources');
   const [pendingEquip, setPendingEquip] = useState<{ extractorKey: string; nodeName: string; resourceLabel: string; slot: 0 | 1 } | null>(null);
   const [dispatchAnim, setDispatchAnim] = useState<DispatchAnim | null>(null);
+  const [expectedOutputOpen, setExpectedOutputOpen] = useState(true);
   const [hoveredCard, setHoveredCard] = useState<{ id: string; top: number; left: number } | null>(null);
   const [routePolicyOpen, setRoutePolicyOpen] = useState(false);
   const now = useNow();
@@ -490,15 +493,39 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
   const routeSummaries = useMemo(() => {
     void fabricatorStates; void stockpileMaterials; void logisticsA; void logisticsB; void colonies; void stockpileRares;
     void exoticMatter; void helium3;
-    void driveA; void driveB; void previewWorldKey; void nodeEquipped;
+    void driveA; void driveB; void previewWorldKey; void nodeEquipped; void now;
     return new Map(routes.map((route) => {
-      const preview = previewRoute(route.id);
+      const preview = previewRoute(route.id, true);
       const groups = resolveNodeGroups(routeNodes(route.edges), extractors, fabricators);
       return [route.id, { preview, groups, valid: preview?.valid ?? routeIsValid(route.edges) }];
     }));
   }, [routes, previewRoute, extractors, fabricators, fabricatorStates, stockpileMaterials,
     logisticsA, logisticsB, exoticMatter, helium3,
-    driveA, driveB, previewWorldKey, nodeEquipped, colonies, stockpileRares]);
+    driveA, driveB, previewWorldKey, nodeEquipped, colonies, stockpileRares, now]);
+
+  const expectedOutputLines = useMemo(() => {
+    if (!editingId) return [];
+    const preview = routeSummaries.get(editingId)?.preview;
+    if (!preview) return [];
+
+    const lines: ExpectedOutputLine[] = [];
+    for (const type of RAW_TYPES) {
+      const amount = preview.expectedCollections[type] ?? 0;
+      if (amount > 0) lines.push({
+        key: `raw:${type}`,
+        text: `${fmt(amount)} ${RESOURCE_LABELS[type]}`,
+      });
+    }
+    for (const [id, count] of Object.entries(preview.expectedOutputs)
+      .filter(([, count]) => count > 0)
+      .sort(([a], [b]) => a.localeCompare(b))) {
+      lines.push({
+        key: `item:${id}`,
+        text: `${fmt(count)}x ${getCraftable(id)?.name ?? materialName(id)}`,
+      });
+    }
+    return lines;
+  }, [editingId, routeSummaries]);
 
   const heldByNode = useMemo(() => {
     const result: Record<string, { routeIds: string[]; raw: Partial<Record<Resource['type'], number>>; materials: MaterialCost }> = {};
@@ -772,6 +799,34 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
                                   </div>
                                 ))}
                             </div>
+                          </div>
+                        )}
+                        {!dispatchAnim && editingId && (
+                          <div className="dispatch-anim-overlay dispatch-anim-overlay--preview">
+                            <button
+                              type="button"
+                              className="dispatch-anim-head dispatch-preview-toggle"
+                              aria-expanded={expectedOutputOpen}
+                              aria-controls="expected-route-output"
+                              onClick={() => setExpectedOutputOpen((open) => !open)}
+                            >
+                              <span className="dispatch-anim-title">Expected Output</span>
+                              <svg className={`dispatch-preview-chevron${expectedOutputOpen ? ' dispatch-preview-chevron--open' : ''}`} viewBox="0 0 10 6" aria-hidden="true">
+                                <path d="M1 1 L5 5 L9 1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                              </svg>
+                            </button>
+                            {expectedOutputOpen && (
+                              <div id="expected-route-output" className="dispatch-anim-lines">
+                                {expectedOutputLines.length > 0 ? expectedOutputLines.map((line) => (
+                                  <div key={line.key} className="dispatch-anim-line dispatch-anim-line--collect">
+                                    <span className="dispatch-anim-sign">+</span>
+                                    <span className="dispatch-anim-text">{line.text}</span>
+                                  </div>
+                                )) : (
+                                  <div className="dispatch-anim-empty">No output expected</div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

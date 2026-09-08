@@ -8,13 +8,13 @@ import { deleteAllColonies } from '../firebase/colonies';
 import { useLogisticsStore } from './logisticsStore';
 import { useStockpileStore } from './stockpileStore';
 import { useCodexStore } from './codexStore';
-import { useQuestStore } from './questStore';
+import { useMilestoneStore } from './milestoneStore';
 import { defaultSettings, saveUserSettings } from '../firebase/userDoc';
 import { deleteAllExtractors } from '../firebase/extractors';
 import { deleteAllFabricators } from '../firebase/fabricators';
 import { deleteAllLogisticsRoutes } from '../firebase/logisticsRoutes';
 import { deleteAllDiscoveries } from '../firebase/discoveries';
-import { deleteQuests } from '../firebase/quests';
+import { deleteMilestones } from '../firebase/milestones';
 import { saveExtractorUpgrades } from '../firebase/extractorUpgrades';
 import { saveStockpile } from '../firebase/stockpile';
 import { clearFirstVisit } from '../lib/firstVisit';
@@ -57,7 +57,7 @@ export async function resetGame(): Promise<void> {
   useLogisticsStore.setState({ routes: [] });
   useStockpileStore.setState({ materials: {}, rares: {} });
   useCodexStore.getState().setAll([]);
-  useQuestStore.getState().resetQuests();
+  useMilestoneStore.getState().resetMilestones();
   useResearchStore.setState({ points: 0 });
 
   if (!user) return;
@@ -71,7 +71,7 @@ export async function resetGame(): Promise<void> {
     deleteAllColonies(user.uid),
     deleteAllLogisticsRoutes(user.uid),
     deleteAllDiscoveries(user.uid),
-    deleteQuests(user.uid),
+    deleteMilestones(user.uid),
     saveExtractorUpgrades(user.uid, { ownedUpgrades: [], nodeEquipped: {} }),
     saveStockpile(user.uid, {}, {}),
     deleteResearch(user.uid),

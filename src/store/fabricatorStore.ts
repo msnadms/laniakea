@@ -10,7 +10,7 @@ import {
 } from '../game/types';
 import { getCraftable } from '../data/upgrades';
 import type { Craftable } from '../data/upgrades';
-import { useQuestStore } from './questStore';
+import { useMilestoneStore } from './milestoneStore';
 import { useStockpileStore } from './stockpileStore';
 import { useUIStore, computeMaterialBandwidth, resourceAmount } from './uiStore';
 import { useExtractorStore } from './extractorStore';
@@ -451,7 +451,7 @@ export const useFabricatorStore = create<FabricatorStoreState>()(
           [fabricator.key]: { slots: makeSlots(includedFabricatorSlots(fabricator.tier)) },
         },
       }));
-      useQuestStore.getState().completeQuest('first_fabricator');
+      useMilestoneStore.getState().completeMilestone('first_fabricator');
     },
 
     upgradeFabricator: (key) => {
