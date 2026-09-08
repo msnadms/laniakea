@@ -396,7 +396,7 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
     const { extractors: liveExtractors } = useExtractorStore.getState();
     const liveFabricators = useFabricatorStore.getState().fabricators;
 
-    const cost = previewRoute(routeId, true).cost;
+    const cost = previewRoute(routeId, true)?.cost ?? { exotic: 0, helium: 0 };
     const groups = resolveNodeGroups(routeNodes(route.edges), liveExtractors, liveFabricators);
     const fabricatorKeys = routeFabricatorKeys(groups);
 
