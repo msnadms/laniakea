@@ -45,9 +45,5 @@ export const DEFAULT_ADDRESS: AddressComponent[] = [
 export const SOL_SYSTEM_PLANETS: Planet[] = solSystem.planets.map((p) => ({
   name: p.name,
   type: p.type as ZoneType,
-  resources: p.resources as Planet['resources'],
-  moons: p.moons.map((m) => ({
-    name: m.name,
-    resources: m.resources as Planet['resources'],
-  })),
+  moons: p.moons.map((m) => ({ name: m.name })),
 }));

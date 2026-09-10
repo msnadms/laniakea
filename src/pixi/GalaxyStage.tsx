@@ -4,7 +4,6 @@ import type { FederatedPointerEvent } from 'pixi.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
-import { galaxyTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import {
   GALAXY_RADIUS,
   GALAXY_RADIUS_LY,
@@ -179,15 +178,9 @@ export function GalaxyWorld() {
   const handleSelectSystem = useCallback((id: number | null) => {
     if (isAnimatingRef.current) return;
     if (id !== null) {
-      if (useUIStore.getState().checkDetectionLethal()) return;
       const gameState = useGameStore.getState();
       const sys = gameState.galaxy.systems[id];
       const activeSystem = gameState.system;
-      const fromX = activeSystem?.x ?? 0;
-      const fromY = activeSystem?.y ?? 0;
-      const isCurrent = sys.current === true;
-      const travelDist = Math.hypot(sys.x - fromX, sys.y - fromY);
-      if (!isCurrent && !trySpendTravelCost(galaxyTravelCost(travelDist))) return;
       if (activeSystem !== null) popAddress();
       gameState.markSystemVisited(sys.id);
       const galaxyName = generateGalaxyName(gameState.galaxy.seed);

@@ -1,5 +1,5 @@
 import { createRng } from "./galaxyGen";
-import type { Planet, Moon, Resource, StarType, ZoneType } from "./types";
+import type { Planet, StarType, ZoneType } from "./types";
 import { SOL_SEED, SOL_SYSTEM_LAYOUT, SOL_SYSTEM_PLANETS } from "./hardcoded";
 
 export interface MoonLayout {
@@ -140,108 +140,19 @@ function makePlanetName(rng: () => number): string {
   return `${prefix}${suffix}`;
 }
 
-// [base, spread]: generated count = base + Math.floor(rng() * spread), max = base + spread - 1
-const RC = {
-  hotAlloys:              [2, 4] as const,
-  marginalAlloys:         [1, 3] as const,
-  habitableNutrients:     [3, 5] as const,
-  habitableAlloys:        [1, 3] as const,
-  gasHelium3:             [3, 6] as const,
-  bdExotic:               [4, 7] as const,
-  iceHydrogen:            [1, 2] as const,
-  hotMoonAlloys:          [1, 2] as const,
-  marginalMoonAlloys:     [1, 2] as const,
-  habitableMoonNutrients: [1, 2] as const,
-  gasMoonHelium3:         [1, 3] as const,
-  iceMoonHydrogen:        [1, 2] as const,
-  nsmHot:                 [3, 7] as const,
-};
-
-const rcMax = ([base, spread]: readonly [number, number]) => base + spread - 1;
-const rcRoll = ([base, spread]: readonly [number, number], rng: () => number) =>
-  base + Math.floor(rng() * spread);
-
-export const RESOURCE_MAX_RATE: Record<Resource['type'], number> = {
-  alloys: Math.max(
-    rcMax(RC.hotAlloys) + getZoneConfig('hot').maxMoons * rcMax(RC.hotMoonAlloys),
-    rcMax(RC.marginalAlloys) + getZoneConfig('marginal').maxMoons * rcMax(RC.marginalMoonAlloys),
-    rcMax(RC.habitableAlloys)
-  ),
-  nutrients: rcMax(RC.habitableNutrients) + getZoneConfig('habitable').maxMoons * rcMax(RC.habitableMoonNutrients),
-  'helium-3': rcMax(RC.gasHelium3) + getZoneConfig('gas').maxMoons * rcMax(RC.gasMoonHelium3),
-  exotic: rcMax(RC.bdExotic),
-  metallicHydrogen: rcMax(RC.iceHydrogen) + getZoneConfig('ice').maxMoons * rcMax(RC.iceMoonHydrogen),
-  neutronStarMatter: rcMax(RC.nsmHot) * 4,
-  alienMatter: 0, // Salvaged from probes only; never included in planet generation.
-};
-
-function resourcesForZone(rng: () => number, zone: ZoneType, isBrownDwarf = false, isNeutronStar = false): Resource[] | null {
-  switch (zone) {
-    case 'hot':
-      if (rng() > 0.1) return null;
-      if (isNeutronStar) return [{ type: 'neutronStarMatter', count: rcRoll(RC.nsmHot, rng) }];
-      return [{ type: 'alloys', count: rcRoll(RC.hotAlloys, rng) }];
-    case 'marginal':
-      if (rng() > 0.1) return null;
-      return [{ type: 'alloys', count: rcRoll(RC.marginalAlloys, rng) }];
-    case 'habitable':
-      if (rng() > 0.5) return null;
-      return [
-        { type: 'nutrients', count: rcRoll(RC.habitableNutrients, rng) },
-        { type: 'alloys',    count: rcRoll(RC.habitableAlloys, rng) },
-      ];
-    case 'gas':
-      if (rng() > 0.1) return null;
-      return [{ type: 'helium-3', count: rcRoll(RC.gasHelium3, rng) }];
-    case 'ice':
-      if (rng() > (isBrownDwarf ? 0.4 : 0.1)) return null;
-      return isBrownDwarf
-        ? [{ type: 'exotic',    count: rcRoll(RC.bdExotic, rng) }]
-        : [{ type: 'metallicHydrogen', count: rcRoll(RC.iceHydrogen, rng) }];
-  }
-}
-
-function moonResourcesForZone(rng: () => number, zone: ZoneType): Resource[] | null {
-  if (rng() > 0.1) return null;
-  switch (zone) {
-    case 'hot':      return [{ type: 'alloys',    count: rcRoll(RC.hotMoonAlloys, rng) }];
-    case 'marginal': return [{ type: 'alloys',    count: rcRoll(RC.marginalMoonAlloys, rng) }];
-    case 'habitable':return [{ type: 'nutrients', count: rcRoll(RC.habitableMoonNutrients, rng) }];
-    case 'gas':      return [{ type: 'helium-3',  count: rcRoll(RC.gasMoonHelium3, rng) }];
-    case 'ice':      return [{ type: 'metallicHydrogen', count: rcRoll(RC.iceMoonHydrogen, rng) }];
-  }
-}
-
 export function generatePlanets(layout: SystemLayout): Planet[] {
   if (layout.seed === SOL_SEED) return SOL_SYSTEM_PLANETS;
-  const isBrownDwarf = layout.starType === 'L';
-  const isNeutronStar = layout.starType === 'N';
-  const rng = createRng(layout.seed);
   const nameRng = createRng((layout.seed ^ 0xb1a2c3d4) >>> 0);
 
   const usedNames = new Set<string>();
-  const planets = layout.planets.map((planet) => {
+  return layout.planets.map((planet) => {
     let planetName = makePlanetName(nameRng);
     while (usedNames.has(planetName)) planetName = makePlanetName(nameRng);
     usedNames.add(planetName);
-    const moons: Moon[] = planet.moons.map((_, m) => ({
-      name: `${planetName} ${ROMAN[m]}`,
-      resources: moonResourcesForZone(rng, planet.zone),
-    }));
     return {
       name: planetName,
       type: planet.zone,
-      resources: resourcesForZone(rng, planet.zone, isBrownDwarf, isNeutronStar),
-      moons,
+      moons: planet.moons.map((_, m) => ({ name: `${planetName} ${ROMAN[m]}` })),
     };
   });
-  if (isNeutronStar && !planets.some((planet) => planet.resources?.some((resource) => resource.type === 'neutronStarMatter'))) {
-    const sourceIndex = Math.floor(rng() * planets.length);
-    const source = planets[sourceIndex];
-    planets[sourceIndex] = {
-      ...source,
-      resources: [...(source.resources ?? []), { type: 'neutronStarMatter', count: rcRoll(RC.nsmHot, rng) }],
-    };
-  }
-  return planets;
 }

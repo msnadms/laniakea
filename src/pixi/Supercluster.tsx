@@ -4,7 +4,6 @@ import type { FederatedPointerEvent } from 'pixi.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
-import { superclusterTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
 import { buildAddressComponent, type SuperclusterDot } from '../game/types';
@@ -16,7 +15,6 @@ import {
   SC_WORLD_HALF_MLY,
   OBS_UNIVERSE_RADIUS,
 } from '../game/constants';
-import { MSG_DRIVE_REQUIRED_GALAXY } from '../ui/strings';
 import { animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
 import { useOrbit, isOrbitGesture } from './useOrbit';
@@ -301,19 +299,7 @@ export function SuperclusterWorld() {
         nearestY = projected.y;
       }
       if (!nearest) return;
-      if (useUIStore.getState().checkDetectionLethal()) return;
-      const currentGalaxySeed = useGameStore.getState().galaxy.seed;
-      const isCurrent = nearest.seed === currentGalaxySeed;
-      const currentDot = sc.dots.find(d => d.seed === currentGalaxySeed);
-      const travelDist = Math.hypot(nearest.x - (currentDot?.x ?? 0), nearest.y - (currentDot?.y ?? 0));
-      if (!isCurrent) {
-        const { driveA, triggerHudNotify } = useUIStore.getState();
-        if (driveA < 1) {
-          triggerHudNotify(MSG_DRIVE_REQUIRED_GALAXY);
-          return;
-        }
-        if (!trySpendTravelCost(superclusterTravelCost(travelDist))) return;
-      }
+      const isCurrent = nearest.seed === useGameStore.getState().galaxy.seed;
 
       markDotVisited(nearest.seed);
       useCodexStore.getState().addGalaxyRecord(sc.seed, sc.name, nearest.seed, nearest.name);

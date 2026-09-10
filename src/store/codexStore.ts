@@ -3,7 +3,6 @@ import type { StarSystem } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { LANIAKEA_SEED, LANIAKEA_NAME, MILKY_WAY_SEED, MILKY_WAY_NAME, SOL_SEED } from '../game/hardcoded';
 import { generateGalaxyName } from '../game/superclusters';
-import { useMilestoneStore } from './milestoneStore';
 
 interface CodexState {
   superclusters: Record<string, SuperclusterRecord>;
@@ -43,8 +42,6 @@ export const useCodexStore = create<CodexState>((set) => ({
       const scKey = String(superclusterSeed);
       const gKey = String(galaxySeed);
       if (state.superclusters[scKey]?.galaxies[gKey]) return state;
-      if (!state.superclusters[scKey]) useMilestoneStore.getState().completeMilestone('first_new_supercluster');
-      useMilestoneStore.getState().completeMilestone('first_new_galaxy');
       const galaxy: GalaxyRecord = { galaxySeed, galaxyName, discoveredAt: Date.now(), systems: {} };
       return { superclusters: upsertSupercluster(state.superclusters, superclusterSeed, superclusterName, gKey, galaxy) };
     }),

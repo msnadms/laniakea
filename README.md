@@ -1,49 +1,28 @@
 # Laniakea
 
-An interactive, procedurally generated universe explorer built with Vite, React 19, TypeScript, and PixiJS v8. Navigate from the scale of superclusters down to individual star systems, all rendered in real-time with animated nebulae, hyperlane networks, and orbiting planets.
+An interactive, procedurally generated universe explorer built with Vite, React 19, TypeScript, and PixiJS v8. Navigate from the scale of superclusters down to individual star systems, all rendered in real time with animated nebulae and orbiting planets.
 
 ## Overview
 
-The game lets you explore a simulated cosmos across three zoom levels:
+Explore a simulated cosmos across three zoom levels:
 
-1. **Supercluster view** — A 900-million-light-year wide field of thousands of galaxies grouped into clusters and filaments. Tap any galaxy dot to enter it.
-2. **Galaxy view** — A procedurally generated spiral galaxy with hundreds of named star systems connected by hyperlanes. Click a system to visit it.
-3. **System view** — An animated solar system for the selected star: 3–7 planets across four orbital zones (hot rocky inner planets, habitable worlds, gas giants, ice giants) with moons, rings, asteroid belts, a pulsing corona, and a nebula glow, all orbiting in real time.
+1. **Supercluster view** — A 900-million-light-year wide field of thousands of galaxies grouped around named attractors. Tap any galaxy dot to enter it.
+2. **Galaxy view** — A procedurally generated galaxy with hundreds of named star systems. Click a system to visit it.
+3. **System view** — An animated solar system for the selected star: planets across orbital zones (hot rocky inner planets, habitable worlds, gas giants, ice giants) with moons, rings, asteroid belts, a pulsing corona, and a nebula glow. Click a planet to see its zone and moons.
 
-A breadcrumb address bar tracks your position through the hierarchy: `Observable Universe > Supercluster > Attractor > Galaxy > System`.
+The navigation HUD tracks your position through the hierarchy (`Observable Universe > Supercluster > Attractor > Galaxy > System`) with coordinates, and holds the Codex, Back, and Jump controls.
 
 ## Features
 
-- **Fully deterministic generation** — Every galaxy, star, hyperlane, and planet is derived from a single integer seed using the mulberry32 PRNG. The same seed always produces the same universe.
-- **Spiral galaxy generation** — Configurable arm count (2–5), ellipse shape, and spiral twist. Stars are split across three populations: central bulge, spiral arms, and inter-arm disk.
-- **Star classification** — Five spectral types (A, F, G, K, M) with realistic color and size distributions: hot blue/white A-class stars in inner arms grading to cool red M-class dwarfs in the bulge and outer disk.
-- **Hyperlane network** — Lanes are derived from Delaunay triangulation with distance cutoffs: generous within arms, tight across arms, creating the feel of a real starmap.
-- **Animated nebulae** — Particle-based nebula rendered with blur and displacement filters that animate organically each frame. Inner arms are blue/violet; outer arms use a per-galaxy color palette; the galactic core glows warm white/gold.
-- **Supercluster simulation** — Galaxy dots are clustered around 12 named gravitational attractors and connected by filaments, scaled to 900 million light years across.
-- **Pan and zoom** — Cursor-anchored zoom via scroll wheel and pointer drag, across all three views.
-- **Procedural solar systems** — Each star generates 3–7 planets using zone-based rules: hot rocky inner planets, habitable worlds, gas giants, and ice giants. Orbital speed follows Kepler-like scaling. Planets can have rings (split back/front so the body renders inside the ring plane), moons, and atmospheric glow. A 40% chance asteroid belt is inserted between orbits using Gaussian radial particle distribution.
-- **Star rendering** — The sun is rendered with a texture-based gradient, a pulsing scale animation, and a procedural corona (12 long rays + 22 short white rays in screen blend mode that rotates and breathes). A large nebula glow sprite behind the system uses the star's color.
-- **Planet resources** — Each planet and moon carries typed resources matching its zone: alloys in the hot zone, nutrients + alloys in the habitable zone, exotic matter from gas and ice giants.
-- **Toggleable overlays** — Hyperlane network, attractor labels, and orbit rings can be toggled on/off from the config panel.
-- **Resource economy** — Place extractors on planet resources, build fabricators on habitable worlds, and automate connected production networks with drone routes (see [Gameplay: Extraction & Automation](#gameplay-extraction--automation) below).
-
-## Gameplay: Extraction & Automation
-
-Beyond exploring, you run a ship that mines and ferries resources across the galaxy.
-
-- **Mining stations** — Open a planet's panel and place a station (50 alloys) on one of its surface or moon resources. Each deposit-rating point produces 10 units per hour before upgrades. Stations accumulate up to a hold cap and must be collected before they fill up.
-- **Fabricators** — Build on a habitable planet to configure five basic recipe slots (six maximum), or upgrade to an eight-slot advanced production hub. Recipes process their entire feasible batch instantly when a route visits.
-- **Drone logistics** — The "AUTO" button opens a DAG editor for connected extraction and fabrication networks. Routes support demand-aware branches, cargo filters, priorities, weighted splits, reserves, per-edge bandwidth, dry runs, and automatic activation.
-
-### Tips for automating extraction
-
-- **Expand logistics as the network grows.** The starter drone link supports one route and five stations immediately. Each **Logistics-A** tier adds +3 stations and +1 route, reaching 17 stations and five routes at max tier.
-- **Logistics-B is throughput, not capacity.** It speeds up how fast stations fill (1.0×→2.0× at max tier) — invest here once you have more stations than your routes can keep collected.
-- **Build one connected network per route.** Every dispatch pays a flat base fee plus edge travel costs. Disconnected islands are rejected, and branch policy determines how much useful output one run produces.
-- **Dispatch is the production event.** A run collects cargo, processes all feasible fabricator batches in priority order, and carries output into later fabrication stages during the same traversal. An unchanged route does no work and spends no fuel.
-- **Mind route risk.** Each routed extractor gains 1 risk per extractor in its galaxy and 0.5 per extractor elsewhere in its supercluster; separate superclusters add none. Risk over 3 adds 1 probe attention on dispatch, and attention does not decay passively. Railgun suppression or an emergency purge is required to remove it. One **Signal Dampener** halves an extractor's risk, and two eliminate it.
-- **Upgrade modules come from fabricators, not a shop.** Assign a module recipe and route its inputs; the finished module can reach the ship in that dispatch. Each extractor has two module slots managed from the Logistics panel.
-- **Drive upgrades compound with logistics.** Drive-A/B reduce both the flat dispatch fee and per-hop travel cost, so they pay off fastest once your network spans multiple systems or galaxies.
+- **Fully deterministic generation** — Every galaxy, star, and planet is derived from a single integer seed using the mulberry32 PRNG. The same seed always produces the same universe.
+- **Galaxy generation** — Spiral, barred, elliptical, and irregular galaxies with configurable arm count, ellipse shape, and spiral twist.
+- **Star classification** — A, F, G, K, and M stars plus brown dwarfs and neutron stars, with realistic color and size distributions.
+- **Animated nebulae** — Particle-based gas rendered with blur and displacement filters. Inner arms are blue/violet, outer arms use a per-galaxy palette, and the core glows warm white/gold.
+- **3D views** — Shift-drag or right-drag to turn the supercluster field and the galaxy disk.
+- **Procedural solar systems** — Kepler-like orbital speeds, rings drawn around the planet body, moons, and Gaussian asteroid belts.
+- **Discovery Codex** — Every supercluster, galaxy, and star you visit is recorded, searchable, and one click away.
+- **Jump** — Generate a brand new supercluster from the supercluster view.
+- **Toggleable overlays** — Attractor labels, orbit rings, scan lines, and the HUD can be toggled from Settings.
 
 ## Getting Started
 
@@ -51,7 +30,7 @@ Beyond exploring, you run a ship that mines and ferries resources across the gal
 npm install
 npm run dev       # Start dev server with HMR at localhost:5173
 npm run build     # Type-check then build for production
-npm test          # Run focused production/logistics tests
+npm test          # Run generation and projection tests
 npm run preview   # Serve the production build locally
 npm run lint      # ESLint
 ```
@@ -64,16 +43,16 @@ npm run lint      # ESLint
 | UI framework | React 19 + TypeScript |
 | Rendering | PixiJS v8 via `@pixi/react` |
 | State | Zustand |
-| Spatial math | `d3-delaunay` (Delaunay triangulation for hyperlanes) |
+| Persistence | Firebase Auth + Firestore |
 
 ## Project Structure
 
 ```
 src/
   game/       — Pure logic, no rendering (generation, types, constants)
-  store/      — Zustand stores (gameStore, uiStore, extractorStore, settlementStore, logisticsStore)
-  pixi/       — PixiJS scene components (GalaxyStage, Supercluster, SolarSystem)
-  ui/         — React DOM overlay components (address bar, config panel)
+  store/      — Zustand stores (gameStore, uiStore, codexStore, authStore)
+  pixi/       — PixiJS scene components (Supercluster, GalaxyStage, SolarSystem)
+  ui/         — React DOM overlay components (HUD, Codex, planet panel, settings)
 ```
 
 ## Controls
@@ -82,10 +61,10 @@ src/
 |---|---|
 | Pan | Click and drag |
 | Zoom | Scroll wheel (cursor-anchored) |
+| Rotate view | Shift-drag or right-drag |
 | Enter galaxy | Click a supercluster dot (zoom ≥ 0.5) |
 | Enter system | Click a star in galaxy view |
-| Navigate back | Click any breadcrumb segment |
-| Toggle hyperlanes | Config panel |
-| Toggle labels | Config panel |
-| Toggle orbit rings | Config panel |
-| New galaxy | Config panel seed input |
+| Inspect planet | Click a planet in system view |
+| Navigate back | Back button |
+| New supercluster | Jump button (supercluster view) |
+| Revisit a location | Codex |

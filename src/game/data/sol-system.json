@@ -57,67 +57,32 @@
     }
   ],
   "planets": [
-    {
-      "name": "Mercury",
-      "type": "hot",
-      "resources": [{ "type": "alloys", "count": 3 }],
-      "moons": []
-    },
-    {
-      "name": "Venus",
-      "type": "hot",
-      "resources": null,
-      "moons": []
-    },
+    { "name": "Mercury", "type": "hot", "moons": [] },
+    { "name": "Venus", "type": "hot", "moons": [] },
     {
       "name": "Mars",
       "type": "marginal",
-      "resources": [{ "type": "alloys", "count": 2 }],
-      "moons": [
-        { "name": "Phobos", "resources": null },
-        { "name": "Deimos", "resources": null }
-      ]
+      "moons": [{ "name": "Phobos" }, { "name": "Deimos" }]
     },
     {
       "name": "Jupiter",
       "type": "gas",
-      "resources": [{ "type": "helium-3", "count": 6 }],
-      "moons": [
-        { "name": "Io",       "resources": null },
-        { "name": "Europa",   "resources": [{ "type": "nutrients", "count": 1 }] },
-        { "name": "Ganymede", "resources": null },
-        { "name": "Callisto", "resources": null }
-      ]
+      "moons": [{ "name": "Io" }, { "name": "Europa" }, { "name": "Ganymede" }, { "name": "Callisto" }]
     },
     {
       "name": "Saturn",
       "type": "gas",
-      "resources": [{ "type": "helium-3", "count": 5 }],
-      "moons": [
-        { "name": "Mimas",    "resources": null },
-        { "name": "Enceladus","resources": null },
-        { "name": "Rhea",     "resources": null },
-        { "name": "Titan",    "resources": [{ "type": "helium-3", "count": 2 }] }
-      ]
+      "moons": [{ "name": "Mimas" }, { "name": "Enceladus" }, { "name": "Rhea" }, { "name": "Titan" }]
     },
     {
       "name": "Uranus",
       "type": "ice",
-      "resources": [{ "type": "metallicHydrogen", "count": 2 }],
-      "moons": [
-        { "name": "Miranda", "resources": null },
-        { "name": "Titania", "resources": null },
-        { "name": "Oberon",  "resources": null }
-      ]
+      "moons": [{ "name": "Miranda" }, { "name": "Titania" }, { "name": "Oberon" }]
     },
     {
       "name": "Neptune",
       "type": "ice",
-      "resources": [{ "type": "metallicHydrogen", "count": 1 }],
-      "moons": [
-        { "name": "Triton",  "resources": null },
-        { "name": "Nereid",  "resources": null }
-      ]
+      "moons": [{ "name": "Triton" }, { "name": "Nereid" }]
     }
   ]
 }

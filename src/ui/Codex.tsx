@@ -3,15 +3,13 @@ import { createPortal } from 'react-dom';
 import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
-import { STAR_TYPE_LABELS } from '../game/types';
+import { STAR_TYPE_LABELS, type StarType } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import './Codex.css';
 import { useUIStore } from '../store/uiStore';
 import { fireCodexNavigate } from '../pixi/zoomAnim';
-import { useExtractorStore } from '../store/extractorStore';
-import { useFabricatorStore } from '../store/fabricatorStore';
-import { canTravelToSupercluster, canTravelToGalaxy, canTravelToSystem, travelToSupercluster, travelToGalaxy, travelToSystem } from './navigation';
+import { travelToSupercluster, travelToGalaxy, travelToSystem } from './navigation';
 
 interface EnrichedSystem extends SystemRecord {
   id: string;
@@ -60,8 +58,6 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
   const deleteSystem = useCodexStore((s) => s.deleteSystem);
   const deleteGalaxy = useCodexStore((s) => s.deleteGalaxy);
   const deleteSupercluster = useCodexStore((s) => s.deleteSupercluster);
-  const allExtractorKeys = useExtractorStore((s) => Object.keys(s.extractors).sort().join('\0'));
-  const allFabricatorKeys = useFabricatorStore((s) => Object.keys(s.fabricators).sort().join('\0'));
   const [query, setQuery] = useState('');
   const [deleteMode, setDeleteMode] = useState(false);
   const q = query.trim().toLowerCase();
@@ -127,8 +123,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
 
   const hasDiscoveries = enriched.length > 0;
 
-  function handleNavigate(preCheck: () => boolean, travel: () => void) {
-    if (!preCheck()) return;
+  function handleNavigate(travel: () => void) {
     onClose();
     const animated = fireCodexNavigate(
       () => useUIStore.getState().setViewTransitioning(true),
@@ -193,8 +188,6 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
                   supercluster={sc}
                   query={q}
                   deleteMode={deleteMode}
-                  allExtractorKeys={allExtractorKeys}
-                  allFabricatorKeys={allFabricatorKeys}
                   onNavigate={handleNavigate}
                   onDeleteSupercluster={handleDeleteSupercluster}
                   onDeleteGalaxy={handleDeleteGalaxy}
@@ -222,23 +215,17 @@ function highlight(text: string, query: string) {
   );
 }
 
-interface DeleteHandlers {
-  onNavigate: (preCheck: () => boolean, travel: () => void) => void;
+interface EntryHandlers {
+  onNavigate: (travel: () => void) => void;
   onDeleteSupercluster: (scSeed: number) => void;
   onDeleteGalaxy: (scSeed: number, galaxySeed: number) => void;
   onDeleteSystem: (scSeed: number, galaxySeed: number, systemId: string) => void;
 }
 
-function SuperclusterEntry({ supercluster, query, deleteMode, allExtractorKeys, allFabricatorKeys, onNavigate, onDeleteSupercluster, onDeleteGalaxy, onDeleteSystem }: { supercluster: EnrichedSupercluster; query: string; deleteMode: boolean; allExtractorKeys: string; allFabricatorKeys: string } & DeleteHandlers) {
+function SuperclusterEntry({ supercluster, query, deleteMode, onNavigate, onDeleteSupercluster, onDeleteGalaxy, onDeleteSystem }: { supercluster: EnrichedSupercluster; query: string; deleteMode: boolean } & EntryHandlers) {
   const [expanded, setExpanded] = useState(true);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
-  const hasActiveInstallation = useMemo(() => {
-    const galSeeds = supercluster.enrichedGalaxies.map((g) => `${g.galaxySeed}|`);
-    const keys = allExtractorKeys.split('\0');
-    const settKeys = allFabricatorKeys.split('\0');
-    return galSeeds.some((prefix) => keys.some((k) => k.startsWith(prefix)) || settKeys.some((k) => k.startsWith(prefix)));
-  }, [supercluster.enrichedGalaxies, allExtractorKeys, allFabricatorKeys]);
 
   return (
     <div className="codex-supercluster">
@@ -252,15 +239,14 @@ function SuperclusterEntry({ supercluster, query, deleteMode, allExtractorKeys, 
           {deleteMode ? (
             <button
               className="codex-delete-btn"
-              title={hasActiveInstallation ? 'Cannot forget: has active extraction station or fabricator' : 'Forget supercluster'}
-              disabled={hasActiveInstallation}
+              title="Forget supercluster"
               onClick={(e) => { e.stopPropagation(); onDeleteSupercluster(supercluster.superclusterSeed); }}
             >✕</button>
           ) : (
             <button
               className="codex-travel-btn"
               title="Travel to supercluster"
-              onClick={(e) => { e.stopPropagation(); onNavigate(() => canTravelToSupercluster(supercluster.superclusterSeed), () => travelToSupercluster(supercluster.superclusterSeed, supercluster.superclusterName)); }}
+              onClick={(e) => { e.stopPropagation(); onNavigate(() => travelToSupercluster(supercluster.superclusterSeed, supercluster.superclusterName)); }}
             >⊙</button>
           )}
         </div>
@@ -275,8 +261,6 @@ function SuperclusterEntry({ supercluster, query, deleteMode, allExtractorKeys, 
               superclusterSeed={supercluster.superclusterSeed}
               superclusterName={supercluster.superclusterName}
               deleteMode={deleteMode}
-              allExtractorKeys={allExtractorKeys}
-              allFabricatorKeys={allFabricatorKeys}
               onNavigate={onNavigate}
               onDeleteGalaxy={onDeleteGalaxy}
               onDeleteSystem={onDeleteSystem}
@@ -288,27 +272,13 @@ function SuperclusterEntry({ supercluster, query, deleteMode, allExtractorKeys, 
   );
 }
 
-function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, deleteMode, allExtractorKeys, allFabricatorKeys, onNavigate, onDeleteGalaxy, onDeleteSystem }: { galaxy: EnrichedGalaxy; query: string; superclusterSeed: number; superclusterName: string; deleteMode: boolean; allExtractorKeys: string; allFabricatorKeys: string } & Omit<DeleteHandlers, 'onDeleteSupercluster'>) {
+function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, deleteMode, onNavigate, onDeleteGalaxy, onDeleteSystem }: { galaxy: EnrichedGalaxy; query: string; superclusterSeed: number; superclusterName: string; deleteMode: boolean } & Omit<EntryHandlers, 'onDeleteSupercluster'>) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const hasHabitable = useMemo(
     () => galaxy.enrichedSystems.some((s) => systemHasHabitable(s.seed, s.starType)),
     [galaxy.enrichedSystems],
-  );
-  const hasMiningStation = useMemo(
-    () => {
-      const prefix = `${galaxy.galaxySeed}|`;
-      return allExtractorKeys.split('\0').some((k) => k.startsWith(prefix));
-    },
-    [allExtractorKeys, galaxy.galaxySeed],
-  );
-  const hasFabricator = useMemo(
-    () => {
-      const prefix = `${galaxy.galaxySeed}|`;
-      return allFabricatorKeys.split('\0').some((k) => k.startsWith(prefix));
-    },
-    [allFabricatorKeys, galaxy.galaxySeed],
   );
 
   return (
@@ -318,8 +288,6 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
         <span className="codex-galaxy-name">
           {highlight(galaxy.galaxyName, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
-          {hasMiningStation && <span className="codex-extractor-dot" title="Has mining station" />}
-          {hasFabricator && <span className="codex-fabricator-dot" title="Has fabricator" />}
         </span>
         <div className="codex-row-right">
           <span className="codex-galaxy-count">
@@ -328,15 +296,14 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
           {deleteMode ? (
             <button
               className="codex-delete-btn"
-              title={hasMiningStation || hasFabricator ? 'Cannot forget: has active extraction station or fabricator' : 'Forget galaxy'}
-              disabled={hasMiningStation || hasFabricator}
+              title="Forget galaxy"
               onClick={(e) => { e.stopPropagation(); onDeleteGalaxy(superclusterSeed, galaxy.galaxySeed); }}
             >✕</button>
           ) : (
             <button
               className="codex-travel-btn"
               title="Travel to galaxy"
-              onClick={(e) => { e.stopPropagation(); onNavigate(() => canTravelToGalaxy(superclusterSeed, galaxy.galaxySeed), () => travelToGalaxy(superclusterSeed, superclusterName, galaxy.galaxySeed, galaxy.galaxyName)); }}
+              onClick={(e) => { e.stopPropagation(); onNavigate(() => travelToGalaxy(superclusterSeed, superclusterName, galaxy.galaxySeed, galaxy.galaxyName)); }}
             >⊙</button>
           )}
         </div>
@@ -353,8 +320,6 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
               galaxySeed={galaxy.galaxySeed}
               galaxyName={galaxy.galaxyName}
               deleteMode={deleteMode}
-              allExtractorKeys={allExtractorKeys}
-              allFabricatorKeys={allFabricatorKeys}
               onNavigate={onNavigate}
               onDeleteSystem={onDeleteSystem}
             />
@@ -365,37 +330,23 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   );
 }
 
-function systemHasHabitable(seed: number, starType?: import('../game/types').StarType): boolean {
+function systemHasHabitable(seed: number, starType?: StarType): boolean {
   if (starType === 'L') return false;
   return generateSystemLayout(seed, starType).planets.some((p) => p.zone === 'habitable');
 }
 
-function SystemPlanets({ seed, starType, query, galaxySeed, systemId, allExtractorKeys, allFabricatorKeys }: { seed: number; starType?: import('../game/types').StarType; query: string; galaxySeed: number; systemId: string; allExtractorKeys: string; allFabricatorKeys: string }) {
+function SystemPlanets({ seed, starType, query }: { seed: number; starType?: StarType; query: string }) {
   const planets = useMemo(
     () => generatePlanets(generateSystemLayout(seed, starType)),
     [seed, starType],
   );
-  const systemPrefix = `${galaxySeed}|${systemId}|`;
-  const systemExtractors = useMemo(
-    () => new Set(allExtractorKeys.split('\0').filter((k) => k.startsWith(systemPrefix))),
-    [allExtractorKeys, systemPrefix],
-  );
-  const systemFabricators = useMemo(
-    () => new Set(allFabricatorKeys.split('\0').filter((k) => k.startsWith(systemPrefix))),
-    [allFabricatorKeys, systemPrefix],
-  );
   return (
     <div className="codex-planets">
-      {planets.map((planet) => {
-        const hasExtractor = systemExtractors.has(`${systemPrefix}${planet.name}`);
-        const hasFabricator = systemFabricators.has(`${systemPrefix}${planet.name}`);
-        return (
+      {planets.map((planet) => (
         <div key={planet.name} className="codex-planet">
           <div className="codex-planet-row">
             <span className={`codex-zone-dot ${planet.type}`} />
             <span className="codex-planet-name">{highlight(planet.name, query)}</span>
-            {hasExtractor && <span className="codex-extractor-dot" title="Mining station active" />}
-            {hasFabricator && <span className="codex-fabricator-dot" title="Fabricator established" />}
           </div>
           {planet.moons.length > 0 && (
             <div className="codex-moons">
@@ -407,31 +358,16 @@ function SystemPlanets({ seed, starType, query, galaxySeed, systemId, allExtract
             </div>
           )}
         </div>
-        );
-      })}
+      ))}
     </div>
   );
 }
 
-function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, deleteMode, allExtractorKeys, allFabricatorKeys, onNavigate, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; deleteMode: boolean; allExtractorKeys: string; allFabricatorKeys: string; onNavigate: DeleteHandlers['onNavigate']; onDeleteSystem: DeleteHandlers['onDeleteSystem'] }) {
+function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, deleteMode, onNavigate, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; deleteMode: boolean; onNavigate: EntryHandlers['onNavigate']; onDeleteSystem: EntryHandlers['onDeleteSystem'] }) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType), [system.seed, system.starType]);
-  const hasMiningStation = useMemo(
-    () => {
-      const prefix = `${galaxySeed}|${system.id}|`;
-      return allExtractorKeys.split('\0').some((k) => k.startsWith(prefix));
-    },
-    [allExtractorKeys, galaxySeed, system.id],
-  );
-  const hasFabricator = useMemo(
-    () => {
-      const prefix = `${galaxySeed}|${system.id}|`;
-      return allFabricatorKeys.split('\0').some((k) => k.startsWith(prefix));
-    },
-    [allFabricatorKeys, galaxySeed, system.id],
-  );
 
   return (
     <div className="codex-system">
@@ -440,28 +376,25 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
         <span className="codex-system-name">
           {highlight(system.name, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
-          {hasMiningStation && <span className="codex-extractor-dot" title="Has mining station" />}
-          {hasFabricator && <span className="codex-fabricator-dot" title="Has fabricator" />}
         </span>
         <div className="codex-row-right">
           <span className="codex-star-type">{STAR_TYPE_LABELS[system.starType]}</span>
           {deleteMode ? (
             <button
               className="codex-delete-btn"
-              title={hasMiningStation || hasFabricator ? 'Cannot forget: has active extraction station or fabricator' : 'Forget system'}
-              disabled={hasMiningStation || hasFabricator}
+              title="Forget system"
               onClick={(e) => { e.stopPropagation(); onDeleteSystem(superclusterSeed, galaxySeed, system.id); }}
             >✕</button>
           ) : (
             <button
               className="codex-travel-btn"
               title="Travel to system"
-              onClick={(e) => { e.stopPropagation(); onNavigate(() => canTravelToSystem(superclusterSeed, galaxySeed, system.id), () => travelToSystem(superclusterSeed, superclusterName, galaxySeed, galaxyName, system.id, system.name)); }}
+              onClick={(e) => { e.stopPropagation(); onNavigate(() => travelToSystem(superclusterSeed, superclusterName, galaxySeed, galaxyName, system.id, system.name)); }}
             >⊙</button>
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} query={query} galaxySeed={galaxySeed} systemId={system.id} allExtractorKeys={allExtractorKeys} allFabricatorKeys={allFabricatorKeys} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} query={query} />}
     </div>
   );
 }

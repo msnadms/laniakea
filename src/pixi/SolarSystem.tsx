@@ -5,14 +5,9 @@ import { CAMERA_INITIAL_SCALE, SYSTEM_CAMERA_MIN_SCALE } from '../game/constants
 import { createRng } from '../game/galaxyGen';
 import { generateSystemLayout, MOON_K, ORBITAL_K } from '../game/planetGen';
 import type { PlanetLayout } from '../game/planetGen';
-import { makeExtractorKey, makeFabricatorKey } from '../game/types';
-import { useExtractorStore } from '../store/extractorStore';
-import { useFabricatorStore } from '../store/fabricatorStore';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import { BackgroundStars } from './BackgroundStars';
-import { createExtractorGfx } from './extractorGfx';
-import { createFabricatorGfx } from './fabricatorGfx';
 import { ScaleBar } from './ScaleBar';
 import { createMoonOrbitGraphics, createSystemOrbitGraphics } from './systemOrbitGraphics';
 import {
@@ -195,8 +190,6 @@ export function SolarSystem() {
   const showOrbitRings = useUIStore((state) => state.showOrbitRings);
   const showOrbitRingsRef = useRef(showOrbitRings);
   const orbitGfxRef = useRef<Graphics[]>([]);
-  const extractorGfxRef = useRef<Map<string, Graphics>>(new Map());
-  const fabricatorGfxRef = useRef<Map<string, Graphics>>(new Map());
   const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
 
   useEffect(() => {
@@ -216,8 +209,6 @@ export function SolarSystem() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current || !system) return;
     const world = worldRef.current;
-    const extractorGfx = extractorGfxRef.current;
-    const fabricatorGfx = fabricatorGfxRef.current;
     const layout = generateSystemLayout(system.seed, system.starType);
     const systemCamera = createSystemCamera(layout);
     const targetTilt = systemCamera.tilt;
@@ -238,7 +229,6 @@ export function SolarSystem() {
     const allOrbitGfx = [...systemOrbitGfx];
     const bodyTextures: Texture[] = [];
     const shadowTexture = createBodyShadowTexture();
-    const galaxySeed = useGameStore.getState().galaxy.seed;
     const generatedPlanets = system.planets ?? [];
 
     for (const orbitGfx of systemOrbitGfx) depthScene.addChild(orbitGfx);
@@ -328,76 +318,20 @@ export function SolarSystem() {
         }
       }
 
-      if (generatedPlanets[ring]) {
-        const planetData = generatedPlanets[ring];
-        const extractorKey = makeExtractorKey(galaxySeed, system.id, planetData.name);
-        const fabricatorKey = makeFabricatorKey(galaxySeed, system.id, planetData.name);
+      const planetData = generatedPlanets[ring];
+      if (planetData) {
         planetVisual.hitArea = new Circle(0, 0, radius * 1.5);
         planetVisual.eventMode = 'static';
         planetVisual.cursor = 'pointer';
         planetVisual.on('pointerdown', (event) => {
           event.stopPropagation();
-          useUIStore.getState().setSelectedPlanet(extractorKey);
+          useUIStore.getState().setSelectedPlanet(planetData.name);
         });
-        if (useExtractorStore.getState().extractors[extractorKey]) {
-          const stationGfx = createExtractorGfx(radius);
-          planetVisual.addChild(stationGfx);
-          extractorGfx.set(extractorKey, stationGfx);
-        }
-        const fabricator = useFabricatorStore.getState().fabricators[fabricatorKey];
-        if (planetLayout.zone === 'habitable' && fabricator) {
-          const factoryGfx = createFabricatorGfx(radius, fabricator.tier ?? 1);
-          planetVisual.addChild(factoryGfx);
-          fabricatorGfx.set(fabricatorKey, factoryGfx);
-        }
       }
 
       depthScene.addChild(planetVisual);
       planets.push(planet);
     }
-
-    const unsubExtractors = useExtractorStore.subscribe(
-      (state) => Object.keys(state.extractors).sort().join('\0'),
-      () => {
-        const { extractors } = useExtractorStore.getState();
-        for (let ring = 0; ring < generatedPlanets.length; ring++) {
-          const key = makeExtractorKey(galaxySeed, system.id, generatedPlanets[ring].name);
-          const existing = extractorGfx.get(key);
-          if (extractors[key] && !existing) {
-            const stationGfx = createExtractorGfx(layout.planets[ring].radius);
-            planets[ring].visual.addChild(stationGfx);
-            extractorGfx.set(key, stationGfx);
-          } else if (!extractors[key] && existing) {
-            existing.destroy();
-            extractorGfx.delete(key);
-          }
-        }
-      },
-    );
-
-    const unsubFabricators = useFabricatorStore.subscribe(
-      (state) => Object.entries(state.fabricators)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, fabricator]) => `${key}\0${fabricator.tier ?? 1}`)
-        .join('\x01'),
-      () => {
-        const { fabricators } = useFabricatorStore.getState();
-        for (let ring = 0; ring < generatedPlanets.length; ring++) {
-          if (layout.planets[ring].zone !== 'habitable') continue;
-          const key = makeFabricatorKey(galaxySeed, system.id, generatedPlanets[ring].name);
-          const existing = fabricatorGfx.get(key);
-          if (fabricators[key]) {
-            existing?.destroy();
-            const factoryGfx = createFabricatorGfx(layout.planets[ring].radius, fabricators[key].tier ?? 1);
-            planets[ring].visual.addChild(factoryGfx);
-            fabricatorGfx.set(key, factoryGfx);
-          } else if (existing) {
-            existing.destroy();
-            fabricatorGfx.delete(key);
-          }
-        }
-      },
-    );
 
     for (const gfx of allOrbitGfx) gfx.visible = showOrbitRingsRef.current;
     orbitGfxRef.current = allOrbitGfx;
@@ -509,17 +443,12 @@ export function SolarSystem() {
       nebulaSprite.alpha = 0.65 + 0.15 * Math.sin(elapsed * 0.22);
       if (asteroidBelt) asteroidBelt.rotation += 0.025 * dt;
       updateBodies(dt);
-      for (const gfx of extractorGfx.values()) gfx.rotation += 0.004 * dt;
     };
     Ticker.shared.add(onTick);
 
     return () => {
-      unsubExtractors();
-      unsubFabricators();
       Ticker.shared.remove(onTick);
       orbitGfxRef.current = [];
-      extractorGfx.clear();
-      fabricatorGfx.clear();
       world.removeChild(systemRoot);
       systemRoot.destroy({ children: true });
       sunTexture.destroy(true);
