@@ -19,6 +19,7 @@ import { LoginScreen } from './ui/LoginScreen';
 import { TopNavBar } from './ui/TopNavBar';
 import { DeathOverlay } from './ui/DeathOverlay';
 import { StrikeWarning } from './ui/ColonyPanel';
+import { DispatchNotifyHUD } from './ui/DispatchNotifyHUD';
 import { consumeFirstVisit } from './lib/firstVisit';
 
 const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
@@ -94,6 +95,7 @@ export default function App() {
       <InfoPanel open={infoOpen} onOpenChange={setInfoOpen} />
       <div className="top-left">
         <ConfigPanel hidden={infoOpen} />
+        {showHUD && <DispatchNotifyHUD />}
       </div>
       <div className="top-right">
         <AuthButton />

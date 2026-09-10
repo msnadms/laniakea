@@ -20,6 +20,7 @@ import { getSuperclusterCoords } from '../game/superclusters';
 import { OBS_UNIVERSE_RADIUS } from '../game/constants';
 import { useColonyStore, colonyDemand, deliverColony, colonyFuelCap, colonyExport, colonyRawExport, usesDistrictModel } from './colonyStore';
 import { RARE_RESOURCES } from '../data/rareResources';
+import { useDispatchNotifyStore } from './dispatchNotifyStore';
 const rareIds = new Set(RARE_RESOURCES.map(r => r.id));
 
 const FABRICATOR_PREFIX = 'fabricator:';
@@ -1251,6 +1252,14 @@ export const useLogisticsStore = create<LogisticsState>()((set, get) => ({
       if (result) {
         results.push(result);
         set((state) => ({ automationNotices: { ...state.automationNotices, [route.id]: '' } }));
+        if (!useUIStore.getState().logisticsPanelOpen) {
+          useDispatchNotifyStore.getState().pushDispatchNotification({
+            id: `${route.id}-${Date.now()}`,
+            routeName: route.name,
+            result,
+            cost: preview.cost,
+          });
+        }
       }
     }
     return results;

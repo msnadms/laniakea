@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, type ReactNode } from 'react';
 import { useUIStore, computeStorageCap, computeWeaponCap } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { flatTravelCost, trySpendTravelCost } from '../store/travelCosts';
@@ -235,10 +235,11 @@ const LogisticsButton = memo(function LogisticsButton({ open, onToggle }: { open
 });
 
 function LogisticsSystem() {
-  const [open, setOpen] = useState(false);
+  const open = useUIStore((s) => s.logisticsPanelOpen);
+  const setOpen = useUIStore((s) => s.setLogisticsPanelOpen);
   return (
     <>
-      <LogisticsButton open={open} onToggle={() => setOpen((o) => !o)} />
+      <LogisticsButton open={open} onToggle={() => setOpen(!open)} />
       {open && <LogisticsModal onClose={() => setOpen(false)} />}
     </>
   );

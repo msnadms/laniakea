@@ -60,13 +60,13 @@ import { getSystemKey, getSystemName, projectNodes } from './logisticsProject';
 import type { ProjectedMapNode } from './logisticsProject';
 import { useNow } from './useNow';
 import { TutorialPanel } from './TutorialPanel';
+import { buildDispatchLines, type AnimLine } from './dispatchLines';
 import './LogisticsModal.css';
 import './LogisticsPolicies.css';
 import { useColonyStore } from '../store/colonyStore';
 import { useGameStore } from '../store/gameStore';
 import { ColonyDetails } from './ColonyPanel';
 
-type AnimLine = { text: string; isCost: boolean; revealStep: number };
 type DispatchAnim = {
   orderedNodeIds: string[];
   step: number;
@@ -402,66 +402,24 @@ function LogisticsModalInner({ onClose }: { onClose: () => void }) {
 
     const result = dispatchRoute(routeId);
     if (result !== false) {
-      const { collected, deliveries, order, carried, materialsMoved } = result;
       const holdFed = useFabricatorStore.getState().runHoldFeeds();
       if (user) {
         persistFabricatorRun(user.uid, {
-          extractorKeys: collected.map(({ key }) => key),
+          extractorKeys: result.collected.map(({ key }) => key),
           fabricatorKeys: [...new Set([...fabricatorKeys, ...holdFed])],
           colonyKeys: result.colonyKeys,
           campaign: true,
         });
       }
 
-      const orderedNodeIds = order;
-      const nodeCollected = new Map<string, Map<string, number>>();
-      for (const { key, amount } of collected) {
-        const ext = liveExtractors[key];
-        if (!ext || amount <= 0) continue;
-        const nid = getSystemKey(ext);
-        if (!nodeCollected.has(nid)) nodeCollected.set(nid, new Map());
-        const resMap = nodeCollected.get(nid)!;
-        resMap.set(ext.resourceType, (resMap.get(ext.resourceType) ?? 0) + amount);
-      }
-
-      const lines: AnimLine[] = [];
-      if (cost.exotic > 0) lines.push({ text: `-${fmt(cost.exotic)} EM`, isCost: true, revealStep: 0 });
-      if (cost.helium > 0) lines.push({ text: `-${fmt(cost.helium)} He-3`, isCost: true, revealStep: 0 });
-      for (let i = 0; i < orderedNodeIds.length; i++) {
-        const resMap = nodeCollected.get(orderedNodeIds[i]);
-        if (resMap) {
-          for (const [resType, amt] of resMap) {
-            lines.push({
-              text: `+${fmt(amt)} ${RESOURCE_LABELS[resType as keyof typeof RESOURCE_LABELS] ?? resType}`,
-              isCost: false,
-              revealStep: i,
-            });
-          }
-        }
-      }
-
-      const lastStep = Math.max(0, orderedNodeIds.length - 1);
-      for (const [matId, count] of Object.entries(carried)) {
-        if (count > 0) {
-          lines.push({ text: `⇢ ${count}x ${materialName(matId)} carried`, isCost: false, revealStep: lastStep });
-        }
-      }
-      for (const d of deliveries) {
-        lines.push({
-          text: `+${d.count}x ${d.name}`,
-          isCost: false,
-          revealStep: lastStep,
-        });
-      }
-      if (materialsMoved > 0) {
-        lines.push({ text: `${materialsMoved} material-edge units moved - ${bandwidth} cap/edge`, isCost: true, revealStep: lastStep });
-      }
+      const orderedNodeIds = result.order;
+      const lines = buildDispatchLines(result, cost, liveExtractors);
 
       if (orderedNodeIds.length > 0) {
         setDispatchAnim({ orderedNodeIds, step: 0, lines, done: false });
       }
     }
-  }, [routes, dispatchRoute, user, bandwidth]);
+  }, [routes, dispatchRoute, user]);
 
   function handleDelete(routeId: string) {
     if (editingId === routeId) {

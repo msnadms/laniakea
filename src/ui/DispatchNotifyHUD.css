@@ -1,0 +1,73 @@
+.dispatch-notify-hud {
+  min-width: 168px;
+  max-width: 220px;
+  pointer-events: none;
+  border: 1px solid rgba(0, 190, 230, 0.4);
+  background: rgba(2, 14, 28, 0.88);
+  box-shadow: 0 0 18px rgba(0, 140, 190, 0.2);
+  animation: dispatch-notify-in 0.2s ease-out both;
+}
+
+.dispatch-notify-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 9px;
+  border-bottom: 1px solid rgba(0, 150, 195, 0.3);
+  background: rgba(0, 80, 120, 0.3);
+}
+
+.dispatch-notify-title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(120, 225, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dispatch-notify-sub {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(0, 190, 230, 0.55);
+  white-space: nowrap;
+}
+
+.dispatch-notify-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px 7px;
+}
+
+.dispatch-notify-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.dispatch-notify-sign {
+  font-size: 12px;
+  width: 8px;
+  flex-shrink: 0;
+}
+
+.dispatch-notify-line--cost {
+  color: #ff8a52;
+  text-shadow: 0 0 8px rgba(200, 70, 30, 0.5);
+}
+
+.dispatch-notify-line--collect {
+  color: #4ce68a;
+  text-shadow: 0 0 8px rgba(40, 200, 80, 0.45);
+}
+
+@keyframes dispatch-notify-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
