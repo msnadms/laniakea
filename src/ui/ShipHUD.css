@@ -93,7 +93,7 @@
 }
 
 .nav-back-btn {
-  left: 107%;
+  left: calc(100% - 19px);
   height: calc(55% - 5px);
   bottom: auto;
   box-sizing: border-box;
@@ -101,7 +101,7 @@
 }
 
 .nav-regen-btn {
-  left: 107%;
+  left: calc(100% - 20px);
   top: calc(55% + 5px);
   box-sizing: border-box;
   padding-right: 10px;
