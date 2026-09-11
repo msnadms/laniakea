@@ -380,23 +380,9 @@
   flex-shrink: 0;
 }
 
-.codex-extractor-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #00c8e8;
-  box-shadow: 0 0 5px rgba(0, 200, 232, 0.75);
-  flex-shrink: 0;
-}
-
-.codex-fabricator-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 1px;
-  background: #44cc77;
-  box-shadow: 0 0 5px rgba(68, 204, 119, 0.75);
+.codex-anomaly-marker {
+  font-size: 10px;
+  line-height: 1;
   flex-shrink: 0;
 }
 

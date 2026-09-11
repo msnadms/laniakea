@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { PixiApp } from './pixi/PixiApp';
 import { ConfigPanel } from './ui/ConfigPanel';
 import { useUIStore } from './store/uiStore';
@@ -9,29 +9,22 @@ import { AuthButton } from './ui/AuthButton';
 import { ShipHUD } from './ui/ShipHUD';
 import { PlanetPanel } from './ui/PlanetPanel';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
-import { useMilestonePersist } from './hooks/useMilestonePersist';
-import { useLogisticsAutomation } from './hooks/useLogisticsAutomation';
-import { MilestonePopup } from './ui/MilestonePopup';
 import { initAuth, useAuthStore } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
-import { BootSequence } from './ui/BootSequence';
 import { LoginScreen } from './ui/LoginScreen';
 import { TopNavBar } from './ui/TopNavBar';
-import { DeathOverlay } from './ui/DeathOverlay';
-import { StrikeWarning } from './ui/ColonyPanel';
-import { DispatchNotifyHUD } from './ui/DispatchNotifyHUD';
-import { consumeFirstVisit } from './lib/firstVisit';
-
-const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
+import { AnomalyPanel } from './ui/AnomalyPanel';
+import { AnomalyToast } from './ui/AnomalyToast';
+import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
 
 const ViewTitle = memo(function ViewTitle() {
   const view = useUIStore((s) => s.view);
-  const supercluterName = useGameStore((s) => s.supercluster.name);
+  const superclusterName = useGameStore((s) => s.supercluster.name);
   const galaxyName = useGameStore((s) => generateGalaxyName(s.galaxy.seed));
   const systemName = useGameStore((s) => s.system?.name ?? null);
 
   const title =
-    view === 'supercluster' ? supercluterName :
+    view === 'supercluster' ? superclusterName :
     view === 'galaxy' ? galaxyName :
     systemName;
 
@@ -43,33 +36,9 @@ const ViewTitle = memo(function ViewTitle() {
   );
 });
 
-function AddressBar() {
-  const address = useUIStore((s) => s.address);
-  const coords = address
-    .filter((s) => COORD_TYPES.has(s.type))
-    .map((s) => { const z = Math.round(s.z); return `${Math.round(s.x)}.${Math.round(s.y)}${z !== 0 ? `.${z}` : ''}`; })
-    .join(':');
-  return (
-    <div className="hud-address-bar">
-      <div className="hud-address-breadcrumb">
-        {address.map((segment, i) => (
-          <span key={i}>
-            {i > 0 && <span className="hud-address-sep">›</span>}
-            <span className={`hud-address-seg${i === address.length - 1 ? ' hud-address-seg--current' : ''}`}>
-              {segment.name}
-            </span>
-          </span>
-        ))}
-      </div>
-      {coords && <div className="hud-address-coords">{coords}</div>}
-    </div>
-  );
-}
-
 export default function App() {
   useSettingsPersist();
-  useMilestonePersist();
-  useLogisticsAutomation();
+  useAnomalyWatcher();
   useEffect(() => initAuth(), []);
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
@@ -77,12 +46,6 @@ export default function App() {
   const showHUD = useUIStore((s) => s.showHUD);
   const showScanlines = useUIStore((s) => s.showScanlines);
   const [infoOpen, setInfoOpen] = useState(false);
-  const showBoot = useUIStore((s) => s.showBootSequence);
-  const [isFirstVisit] = useState(consumeFirstVisit);
-
-  const handleBootComplete = useCallback(() => {
-    if (isFirstVisit) setInfoOpen(true);
-  }, [isFirstVisit]);
 
   if (authLoading || !user) return <LoginScreen />;
 
@@ -90,12 +53,10 @@ export default function App() {
     <div className="app">
       <PixiApp />
       {showScanlines && <div className="app-scanlines" />}
-      {showBoot && <BootSequence onComplete={handleBootComplete} isFirstVisit={isFirstVisit} />}
       <TopNavBar />
       <InfoPanel open={infoOpen} onOpenChange={setInfoOpen} />
       <div className="top-left">
         <ConfigPanel hidden={infoOpen} />
-        {showHUD && <DispatchNotifyHUD />}
       </div>
       <div className="top-right">
         <AuthButton />
@@ -105,12 +66,10 @@ export default function App() {
           <ShipHUD />
         </div>
       )}
-      {showHUD && <AddressBar />}
       <ViewTitle />
+      <AnomalyToast />
       {view === 'system' && <PlanetPanel />}
-      <DeathOverlay />
-      <StrikeWarning />
-      <MilestonePopup />
+      {view === 'system' && <AnomalyPanel />}
     </div>
   );
 }

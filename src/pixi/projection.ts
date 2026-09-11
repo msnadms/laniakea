@@ -49,6 +49,7 @@ interface ProjectionLayout {
     orbitRadius: number;
     moons: Array<{ dist: number }>;
   }>;
+  extraExtent?: number;
 }
 
 // A point level with or behind the focus would invert, so depth is clamped short of it.
@@ -195,7 +196,7 @@ export function getSystemExtent(layout: ProjectionLayout): number {
     for (const moon of planet.moons) largestMoonDistance = Math.max(largestMoonDistance, moon.dist);
     extent = Math.max(extent, planet.orbitRadius + largestMoonDistance);
   }
-  return extent > 0 ? extent : DEFAULT_EXTENT;
+  return Math.max(extent > 0 ? extent : DEFAULT_EXTENT, layout.extraExtent ?? 0);
 }
 
 export function createSystemCamera(layout: ProjectionLayout): Camera3D {

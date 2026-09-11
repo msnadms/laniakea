@@ -3,26 +3,13 @@ import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebas
 import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
-import { loadAllExtractors } from '../firebase/extractors';
-import { loadAllFabricators, saveFabricatorState } from '../firebase/fabricators';
-import { loadMilestones } from '../firebase/milestones';
-import { loadLogisticsRoutes, saveLogisticsRoute } from '../firebase/logisticsRoutes';
-import { loadExtractorUpgrades, saveExtractorUpgrades } from '../firebase/extractorUpgrades';
-import { loadStockpile, saveStockpile } from '../firebase/stockpile';
+import { loadAnomalies } from '../firebase/anomalies';
+import { useAnomalyStore } from './anomalyStore';
 import { applyUserSettings, useUIStore } from './uiStore';
-import { cancelDeathSequence } from './resetGame';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
-import { useExtractorStore } from './extractorStore';
-import { useFabricatorStore } from './fabricatorStore';
-import { useColonyStore } from './colonyStore';
-import { loadAllColonies } from '../firebase/colonies';
-import { useLogisticsStore } from './logisticsStore';
-import { useStockpileStore } from './stockpileStore';
-import { useMilestoneStore } from './milestoneStore';
 import { loadNav } from '../lib/navLocalStorage';
-import { loadResearch, saveResearch } from '../firebase/research';
-import { useResearchStore } from './researchStore';
+import { getSuperclusterCoords } from '../game/superclusters';
 
 interface AuthState {
   user: User | null;
@@ -49,67 +36,18 @@ export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const [baseSettings, discoveries, extractors, fabricators, milestones, logisticsRoutes, extractorUpgrades, stockpile, colonies, research] = await Promise.all([
+        const [baseSettings, discoveries, anomalies] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
-          loadAllExtractors(user.uid),
-          loadAllFabricators(user.uid),
-          loadMilestones(user.uid),
-          loadLogisticsRoutes(user.uid),
-          loadExtractorUpgrades(user.uid),
-          loadStockpile(user.uid),
-          loadAllColonies(user.uid),
-          loadResearch(user.uid),
+          loadAnomalies(user.uid),
         ]);
         // localStorage nav is more recent than Firebase's debounced write — prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
         const localNav = loadNav(user.uid);
-        const settings = localNav
-          ? {
-              ...baseSettings,
-              lastView: localNav.lastView,
-              lastSuperclusterSeed: localNav.lastSuperclusterSeed,
-              lastGalaxySeed: localNav.lastGalaxySeed,
-              lastSystemId: localNav.lastSystemId,
-              address: localNav.address,
-            }
-          : baseSettings;
+        const settings = localNav ? { ...baseSettings, ...localNav } : baseSettings;
         applyUserSettings(settings);
-        useExtractorStore.getState().restoreExtractors(extractors);
-        useExtractorStore.getState().restoreUpgrades(extractorUpgrades.ownedUpgrades, extractorUpgrades.nodeEquipped);
-        useFabricatorStore.getState().restoreFabricators(fabricators.fabricators);
-        useFabricatorStore.getState().restoreFabricatorStates(fabricators.fabricatorStates);
-        useColonyStore.getState().restoreColonies(colonies);
-        useLogisticsStore.getState().restoreRoutes(logisticsRoutes);
-        const legacyDataCores = stockpile.materials.data_core ?? 0;
-        const stockpileMaterials = { ...stockpile.materials };
-        delete stockpileMaterials.data_core;
-        useStockpileStore.getState().restoreStockpile(stockpileMaterials, stockpile.rares);
-        useResearchStore.getState().restoreResearch(research, legacyDataCores);
-        const legacyProductionItems = [
-          ...fabricators.legacyProductionItems,
-          ...(extractorUpgrades.legacyProductionItems ?? []),
-        ];
-        const migratedRoutes = logisticsRoutes.some((route) => route.legacyNodeKeys !== undefined);
-        const migratedResearch = research.points === undefined || legacyDataCores > 0;
-        if (legacyProductionItems.length > 0 || migratedRoutes || migratedResearch) {
-          useExtractorStore.getState().receiveFabricatorItems(legacyProductionItems);
-          const normalizedStates = useFabricatorStore.getState().fabricatorStates;
-          const migratedStockpile = useStockpileStore.getState();
-          const migratedUpgrades = useExtractorStore.getState();
-          await Promise.all([
-            ...Object.entries(normalizedStates).map(([key, state]) => saveFabricatorState(user.uid, key, state)),
-            saveStockpile(user.uid, migratedStockpile.materials, migratedStockpile.rares),
-            saveResearch(user.uid, { points: useResearchStore.getState().points }),
-            saveExtractorUpgrades(user.uid, {
-              ownedUpgrades: migratedUpgrades.ownedUpgrades,
-              nodeEquipped: migratedUpgrades.nodeEquipped,
-            }),
-            ...useLogisticsStore.getState().routes.map((route) => saveLogisticsRoute(user.uid, route)),
-          ]);
-        }
         useCodexStore.getState().setAll(discoveries);
-        useMilestoneStore.getState().restoreMilestones(milestones);
+        useAnomalyStore.getState().setAll(anomalies);
 
         const visitedSystems: Record<number, number[]> = {};
         const visitedGalaxies: Record<number, number[]> = {};
@@ -124,11 +62,9 @@ export function initAuth(): () => void {
         }
         useGameStore.getState().restoreVisited(visitedSystems, visitedGalaxies);
 
-        const lastSuperclusterSeed = settings.lastSuperclusterSeed;
-        const lastGalaxySeed = settings.lastGalaxySeed;
-        const lastSystemId = settings.lastSystemId;
+        const { lastSuperclusterSeed, lastGalaxySeed, lastSystemId } = settings;
 
-        useGameStore.getState().restoreSupercluster(lastSuperclusterSeed);
+        useGameStore.getState().regenerateSupercluster(lastSuperclusterSeed);
         useGameStore.setState((state) => ({
           supercluster: {
             ...state.supercluster,
@@ -144,7 +80,11 @@ export function initAuth(): () => void {
         const restoredView = settings.lastView === 'system' && restoredSystem === null
           ? 'galaxy'
           : settings.lastView;
-        useUIStore.setState({ view: restoredView, address: settings.address });
+        const [scX, scY, scZ] = getSuperclusterCoords(lastSuperclusterSeed);
+        const address = settings.address.map((a) =>
+          a.type === 'supercluster' ? { ...a, x: scX, y: scY, z: scZ } : a,
+        );
+        useUIStore.setState({ view: restoredView, address });
 
         useAuthStore.setState({ user, loading: false, settingsLoaded: true });
       } catch (err) {
@@ -152,7 +92,6 @@ export function initAuth(): () => void {
         useAuthStore.setState({ user, loading: false, settingsLoaded: false });
       }
     } else {
-      cancelDeathSequence();
       useAuthStore.setState({ user: null, loading: false, settingsLoaded: false });
     }
   });

@@ -1,0 +1,66 @@
+@keyframes anomaly-toast-life {
+  0%   { opacity: 0; transform: translate(-50%, 6px); }
+  6%   { opacity: 1; transform: translate(-50%, 0); }
+  88%  { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0); }
+}
+
+.anomaly-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 214px;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  animation-name: anomaly-toast-life;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+.anomaly-toast-rule {
+  width: 72px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 190, 230, 0.6));
+}
+
+.anomaly-toast-rule:last-child {
+  background: linear-gradient(90deg, rgba(0, 190, 230, 0.6), transparent);
+}
+
+.anomaly-toast-label {
+  color: rgba(0, 190, 230, 0.85);
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.4);
+}
+
+.anomaly-toast-sep {
+  color: rgba(0, 180, 220, 0.45);
+}
+
+.anomaly-toast-name {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+}
+
+.anomaly-tier-phenomenon {
+  color: #c9b8ff;
+  text-shadow: 0 0 8px rgba(170, 150, 255, 0.5);
+}
+
+.anomaly-tier-relic {
+  color: #ffc27a;
+  text-shadow: 0 0 8px rgba(255, 170, 90, 0.45);
+}
+
+.anomaly-tier-mythic {
+  color: #ff7a62;
+  text-shadow: 0 0 10px rgba(255, 90, 60, 0.6);
+}

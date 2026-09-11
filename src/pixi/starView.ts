@@ -10,6 +10,12 @@ export interface StarView {
 
 export type StarViews = Map<number, StarView>;
 
+export interface StarDisplay {
+  color: number;
+  size: number;
+  shrouded: boolean;
+}
+
 // Stars are re-projected on every frame the disk turns, so their transforms are
 // written straight to the display objects rather than through a React render.
 export function applyStarProjection(view: StarView, projected: ProjectedPoint): void {

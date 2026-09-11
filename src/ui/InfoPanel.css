@@ -82,56 +82,6 @@
   flex-shrink: 0;
 }
 
-.info-subview-btns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 14px 14px 10px;
-  border-bottom: 1px solid rgba(0, 190, 230, 0.18);
-  flex-shrink: 0;
-}
-
-.info-subview-btn {
-  width: 52px;
-  height: 52px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  background: transparent;
-  border: 1px solid rgba(0, 190, 230, 0.3);
-  color: rgba(0, 180, 220, 0.5);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-
-.info-subview-btn:hover {
-  border-color: rgba(0, 190, 230, 0.6);
-  color: rgba(0, 215, 255, 0.85);
-  background: rgba(0, 190, 230, 0.06);
-}
-
-.info-subview-btn--active {
-  border-color: rgba(0, 190, 230, 0.75);
-  color: #00c8e8;
-  background: rgba(0, 190, 230, 0.1);
-  text-shadow: 0 0 8px rgba(0, 200, 232, 0.5);
-}
-
-.info-subview-icon {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.info-subview-label {
-  font-size: 7px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  line-height: 1;
-}
-
 .info-panel-content {
   flex: 1;
   overflow-y: auto;
@@ -167,17 +117,6 @@
   margin-bottom: 10px;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(0, 190, 230, 0.12);
-}
-
-.info-lore {
-  font-size: 14px;
-  line-height: 1.7;
-  color: rgba(0, 180, 220, 0.5);
-  font-family: var(--font-mono);
-  text-indent: 20px;
-  display: flex;
-  gap: 10px;
-  flex-direction: column;
 }
 
 .info-stat-row {
@@ -312,56 +251,47 @@
   font-family: var(--font-mono);
 }
 
-.info-empty {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  color: #2a6a8a;
+.info-anomaly-glyph {
+  font-size: 11px;
+  line-height: 1;
+  width: 24px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.info-anomaly-glyph--unknown {
+  color: rgba(0, 180, 220, 0.3);
+}
+
+.info-anomaly-name {
+  flex: 1;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   font-family: var(--font-mono);
-  text-align: center;
-  padding: 32px 0;
 }
 
-.info-milestone-entry {
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(0, 190, 230, 0.08);
-}
-
-.info-milestone-entry:last-child {
-  border-bottom: none;
-}
-
-.info-milestone-title {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: #00c8e8;
-  letter-spacing: 0.08em;
-  margin-bottom: 4px;
-}
-
-.info-milestone-desc {
-  font-size: 10px;
-  font-family: var(--font-mono);
+.info-anomaly-name--unknown {
   color: rgba(0, 180, 220, 0.45);
-  letter-spacing: 0.04em;
-  line-height: 1.5;
+  letter-spacing: 0.18em;
 }
 
-.info-milestone-entry--done .info-milestone-title {
-  color: #2a6a8a;
+.info-anomaly-row--unknown {
+  cursor: default;
 }
 
-.info-milestone-entry--done .info-milestone-desc {
-  color: #1a4060;
+.info-anomaly-row--unknown:hover {
+  background: transparent;
 }
 
-.info-milestone-check {
-  color: #44cc77;
-  margin-right: 4px;
-}
-
-.info-section-title--completed {
-  margin-top: 18px;
+.info-anomaly-rumour {
+  margin: 0;
+  padding: 0 4px 9px 38px;
+  font-size: 10px;
+  line-height: 1.6;
+  font-style: italic;
+  color: rgba(0, 180, 220, 0.42);
+  font-family: var(--font-mono);
 }
 
 .info-log-entry {

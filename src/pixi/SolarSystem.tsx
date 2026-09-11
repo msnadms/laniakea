@@ -5,14 +5,9 @@ import { CAMERA_INITIAL_SCALE, SYSTEM_CAMERA_MIN_SCALE } from '../game/constants
 import { createRng } from '../game/galaxyGen';
 import { generateSystemLayout, MOON_K, ORBITAL_K } from '../game/planetGen';
 import type { PlanetLayout } from '../game/planetGen';
-import { makeExtractorKey, makeFabricatorKey } from '../game/types';
-import { useExtractorStore } from '../store/extractorStore';
-import { useFabricatorStore } from '../store/fabricatorStore';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import { BackgroundStars } from './BackgroundStars';
-import { createExtractorGfx } from './extractorGfx';
-import { createFabricatorGfx } from './fabricatorGfx';
 import { ScaleBar } from './ScaleBar';
 import { createMoonOrbitGraphics, createSystemOrbitGraphics } from './systemOrbitGraphics';
 import {
@@ -39,6 +34,7 @@ import {
 } from './textures';
 import { useCamera } from './useCamera';
 import { useZoomController } from './useZoomController';
+import { createAnomalyVisual } from './anomalies';
 
 type MoonState = {
   visual: Container;
@@ -195,9 +191,7 @@ export function SolarSystem() {
   const showOrbitRings = useUIStore((state) => state.showOrbitRings);
   const showOrbitRingsRef = useRef(showOrbitRings);
   const orbitGfxRef = useRef<Graphics[]>([]);
-  const extractorGfxRef = useRef<Map<string, Graphics>>(new Map());
-  const fabricatorGfxRef = useRef<Map<string, Graphics>>(new Map());
-  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
+  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
 
   useEffect(() => {
     showOrbitRingsRef.current = showOrbitRings;
@@ -216,17 +210,35 @@ export function SolarSystem() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current || !system) return;
     const world = worldRef.current;
-    const extractorGfx = extractorGfxRef.current;
-    const fabricatorGfx = fabricatorGfxRef.current;
-    const layout = generateSystemLayout(system.seed, system.starType);
-    const systemCamera = createSystemCamera(layout);
+    const anomaly = useGameStore.getState().galaxyAnomalies.byHost.get(system.id);
+    const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind);
+    const isBrownDwarf = system.starType === 'L';
+    const isNeutronStar = system.starType === 'N';
+    const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
+    const planetExtent = getSystemExtent(layout);
+    const anomalyVisual = anomaly
+      ? createAnomalyVisual({
+        anomaly,
+        sunRadius,
+        starColor: system.color,
+        innermostOrbit: layout.planets[0]?.orbitRadius ?? planetExtent,
+        planetExtent,
+        onSelect: () => {
+          if (hasDragged.current) return;
+          useUIStore.getState().setSelectedPlanet(null);
+          useUIStore.getState().setAnomalyPanelOpen(true);
+        },
+      })
+      : null;
+    const projectionLayout = { planets: layout.planets, extraExtent: anomalyVisual?.extent };
+    const systemCamera = createSystemCamera(projectionLayout);
     const targetTilt = systemCamera.tilt;
     const targetTiltCos = Math.cos(targetTilt);
     const introTilt = targetTilt - 8 * Math.PI / 180;
     const orbitCamera = { ...systemCamera };
     systemCamera.tilt = introTilt;
     const projectionBasis = updateProjectionBasis(systemCamera);
-    const systemExtent = getSystemExtent(layout);
+    const systemExtent = getSystemExtent(projectionLayout);
     const systemRoot = new Container();
     const nebulaLayer = new Container();
     const depthScene = new Container();
@@ -238,7 +250,6 @@ export function SolarSystem() {
     const allOrbitGfx = [...systemOrbitGfx];
     const bodyTextures: Texture[] = [];
     const shadowTexture = createBodyShadowTexture();
-    const galaxySeed = useGameStore.getState().galaxy.seed;
     const generatedPlanets = system.planets ?? [];
 
     for (const orbitGfx of systemOrbitGfx) depthScene.addChild(orbitGfx);
@@ -328,76 +339,21 @@ export function SolarSystem() {
         }
       }
 
-      if (generatedPlanets[ring]) {
-        const planetData = generatedPlanets[ring];
-        const extractorKey = makeExtractorKey(galaxySeed, system.id, planetData.name);
-        const fabricatorKey = makeFabricatorKey(galaxySeed, system.id, planetData.name);
+      const planetData = generatedPlanets[ring];
+      if (planetData) {
         planetVisual.hitArea = new Circle(0, 0, radius * 1.5);
         planetVisual.eventMode = 'static';
         planetVisual.cursor = 'pointer';
         planetVisual.on('pointerdown', (event) => {
           event.stopPropagation();
-          useUIStore.getState().setSelectedPlanet(extractorKey);
+          useUIStore.getState().setAnomalyPanelOpen(false);
+          useUIStore.getState().setSelectedPlanet(planetData.name);
         });
-        if (useExtractorStore.getState().extractors[extractorKey]) {
-          const stationGfx = createExtractorGfx(radius);
-          planetVisual.addChild(stationGfx);
-          extractorGfx.set(extractorKey, stationGfx);
-        }
-        const fabricator = useFabricatorStore.getState().fabricators[fabricatorKey];
-        if (planetLayout.zone === 'habitable' && fabricator) {
-          const factoryGfx = createFabricatorGfx(radius, fabricator.tier ?? 1);
-          planetVisual.addChild(factoryGfx);
-          fabricatorGfx.set(fabricatorKey, factoryGfx);
-        }
       }
 
       depthScene.addChild(planetVisual);
       planets.push(planet);
     }
-
-    const unsubExtractors = useExtractorStore.subscribe(
-      (state) => Object.keys(state.extractors).sort().join('\0'),
-      () => {
-        const { extractors } = useExtractorStore.getState();
-        for (let ring = 0; ring < generatedPlanets.length; ring++) {
-          const key = makeExtractorKey(galaxySeed, system.id, generatedPlanets[ring].name);
-          const existing = extractorGfx.get(key);
-          if (extractors[key] && !existing) {
-            const stationGfx = createExtractorGfx(layout.planets[ring].radius);
-            planets[ring].visual.addChild(stationGfx);
-            extractorGfx.set(key, stationGfx);
-          } else if (!extractors[key] && existing) {
-            existing.destroy();
-            extractorGfx.delete(key);
-          }
-        }
-      },
-    );
-
-    const unsubFabricators = useFabricatorStore.subscribe(
-      (state) => Object.entries(state.fabricators)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, fabricator]) => `${key}\0${fabricator.tier ?? 1}`)
-        .join('\x01'),
-      () => {
-        const { fabricators } = useFabricatorStore.getState();
-        for (let ring = 0; ring < generatedPlanets.length; ring++) {
-          if (layout.planets[ring].zone !== 'habitable') continue;
-          const key = makeFabricatorKey(galaxySeed, system.id, generatedPlanets[ring].name);
-          const existing = fabricatorGfx.get(key);
-          if (fabricators[key]) {
-            existing?.destroy();
-            const factoryGfx = createFabricatorGfx(layout.planets[ring].radius, fabricators[key].tier ?? 1);
-            planets[ring].visual.addChild(factoryGfx);
-            fabricatorGfx.set(key, factoryGfx);
-          } else if (existing) {
-            existing.destroy();
-            fabricatorGfx.delete(key);
-          }
-        }
-      },
-    );
 
     for (const gfx of allOrbitGfx) gfx.visible = showOrbitRingsRef.current;
     orbitGfxRef.current = allOrbitGfx;
@@ -414,9 +370,6 @@ export function SolarSystem() {
       depthScene.addChild(asteroidProjection);
     }
 
-    const isBrownDwarf = system.starType === 'L';
-    const isNeutronStar = system.starType === 'N';
-    const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
     const sunTexture = isBrownDwarf
       ? createBrownDwarfTexture(system.seed)
       : isNeutronStar
@@ -435,7 +388,14 @@ export function SolarSystem() {
     starVisual.eventMode = 'none';
     depthScene.addChild(starVisual);
 
-    const nebulaSprite = createNebulaSprite(system.color, sunRadius);
+    const coronaAlpha = anomalyVisual?.coronaAlpha ?? 1;
+    if (anomalyVisual) {
+      for (const node of anomalyVisual.nodes) depthScene.addChild(node);
+      sunSprite.alpha = anomalyVisual.starAlpha;
+      if (corona) corona.visible = coronaAlpha > 0;
+    }
+
+    const nebulaSprite = createNebulaSprite(anomalyVisual?.nebulaColor ?? system.color, sunRadius);
     const nebulaTexture = nebulaSprite.texture;
     nebulaSprite.eventMode = 'none';
     nebulaLayer.addChild(nebulaSprite);
@@ -492,6 +452,7 @@ export function SolarSystem() {
 
     updateProjectionPresentation();
     updateBodies(0);
+    anomalyVisual?.update(0, 0, projectionBasis);
     let elapsed = 0;
     const onTick = (ticker: Ticker) => {
       const dt = ticker.deltaMS / 1000;
@@ -504,22 +465,19 @@ export function SolarSystem() {
       sunSprite.scale.set(sunBaseScale * (1 + Math.sin(elapsed * 0.9) * 0.07));
       if (corona) {
         corona.rotation += 0.018 * dt;
-        corona.alpha = 0.8 + 0.2 * Math.sin(elapsed * 0.55);
+        corona.alpha = coronaAlpha * (0.8 + 0.2 * Math.sin(elapsed * 0.55));
       }
       nebulaSprite.alpha = 0.65 + 0.15 * Math.sin(elapsed * 0.22);
       if (asteroidBelt) asteroidBelt.rotation += 0.025 * dt;
       updateBodies(dt);
-      for (const gfx of extractorGfx.values()) gfx.rotation += 0.004 * dt;
+      anomalyVisual?.update(dt, elapsed, projectionBasis);
     };
     Ticker.shared.add(onTick);
 
     return () => {
-      unsubExtractors();
-      unsubFabricators();
       Ticker.shared.remove(onTick);
+      anomalyVisual?.destroy();
       orbitGfxRef.current = [];
-      extractorGfx.clear();
-      fabricatorGfx.clear();
       world.removeChild(systemRoot);
       systemRoot.destroy({ children: true });
       sunTexture.destroy(true);
@@ -527,7 +485,7 @@ export function SolarSystem() {
       shadowTexture.destroy(true);
       for (const texture of bodyTextures) texture.destroy(true);
     };
-  }, [system, isInitialised]);
+  }, [system, isInitialised, hasDragged]);
 
   return (
     <>

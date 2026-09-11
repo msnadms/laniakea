@@ -95,6 +95,7 @@ export function pushAttractorAddress(
 // Derives a stable observable-universe position for a supercluster from its seed.
 // Uses a XOR-offset seed so this never interferes with generateSupercluster's RNG sequence.
 export function getSuperclusterCoords(seed: number): [number, number, number] {
+  if (seed === LANIAKEA_SEED) return [0, 0, 0];
   const rng = createRng((seed ^ 0x5a3c9f12) >>> 0);
   const span = OBS_UNIVERSE_RADIUS * 2;
   return [

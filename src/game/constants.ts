@@ -1,4 +1,5 @@
 import type { GalaxyType } from './types';
+import type { AnomalyKind } from './anomalies';
 
 // ─── Galaxy shape ────────────────────────────────────────────────────────────
 
@@ -389,3 +390,44 @@ export const GALAXY_PICK_MAX_WORLD = 25;
 // Pointer must move more than this many pixels before a press is treated as a
 // drag rather than a click.
 export const DRAG_THRESHOLD_PX = 4;
+
+export const ANOMALY_CIVILIZATION_CHANCE = 0.05;
+export const ANOMALY_HOME_RADIUS = 0.25 * GALAXY_RADIUS;
+export const ANOMALY_HOME_OUTER_ARM_FRACTION = 0.45;
+
+export const ANOMALY_DYSON_MIN = 1;
+export const ANOMALY_DYSON_MAX = 3;
+export const ANOMALY_DYSON_EDGE_WEIGHT = 0.15;
+
+export const ANOMALY_SHKADOV_CHANCE = 0.4;
+export const ANOMALY_SHKADOV_HEIGHT_FRACTION = 0.05;
+
+export const ANOMALY_BEAM_CHANCE = 0.4;
+export const ANOMALY_BEAM_RIM_MIN = 0.8;
+export const ANOMALY_BEAM_RIM_MAX = 1.2;
+
+export const ANOMALY_BRAIN_CHANCE = 0.12;
+export const ANOMALY_BRAIN_MIN_DYSON_SPHERES = 2;
+
+export const ANOMALY_BLACK_HOLE_REACH = 0.12 * GALAXY_RADIUS;
+export const ANOMALY_BLACK_HOLE_CHANCE = 0.012;
+export const ANOMALY_BLACK_HOLE_ACTIVE_CHANCE = 0.35;
+
+export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> = {
+  blackHole: [1, 1],
+  dysonSphere: [0.25, 0.6],
+  shkadovThruster: [0.5, 0.8],
+  nicollDysonBeam: [0.4, 0.7],
+  matrioshkaBrain: [0.85, 0.97],
+};
+
+export const ANOMALY_SIGN_MIN_SCALE = 1.1;
+export const ANOMALY_BEAM_SIGN_MIN_SCALE = 0.45;
+export const ANOMALY_SIGN_FADE_SPAN = 0.5;
+export const ANOMALY_BEAM_SIGN_LENGTH = 0.8 * GALAXY_RADIUS;
+export const ANOMALY_BEAM_SIGN_SEGMENTS = 12;
+
+export const SC_CIVILIZATION_TINT = 0xff4a2a;
+export const SC_CIVILIZATION_TINT_STRENGTH = 0.6;
+export const SC_CIVILIZATION_TINT_MIN_SCALE = 1.4;
+export const SC_CIVILIZATION_TINT_FULL_SCALE = 2.6;

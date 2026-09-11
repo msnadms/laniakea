@@ -2,28 +2,33 @@ import { memo, useLayoutEffect, useCallback, useRef } from 'react';
 import { Texture } from 'pixi.js';
 import type { Container, Graphics, Sprite } from 'pixi.js';
 import type { StarSystem } from '../game/types';
-import { createStarTexture } from './textures';
+import { createShroudedStarTexture, createStarTexture } from './textures';
 import { galaxyDepthAlpha, galaxyDepthScale, type ProjectedPoint } from './projection';
-import { applyStarProjection, STAR_SPRITE_SCALE, type StarViews } from './starView';
+import { applyStarProjection, STAR_SPRITE_SCALE, type StarDisplay, type StarViews } from './starView';
 
 export const StarNode = memo(function StarNode({
   system,
   projected,
   views,
+  display,
 }: {
   system: StarSystem;
   projected: ProjectedPoint;
   views: StarViews;
+  display?: StarDisplay;
 }) {
   const isVisited = system.visited;
   const isCurrent = system.current;
+  const color = display?.color ?? system.color;
+  const size = display?.size ?? system.size;
+  const shrouded = display?.shrouded ?? false;
 
   const containerRef = useRef<Container>(null);
   const glowSpriteRef = useRef<Sprite>(null);
 
   useLayoutEffect(() => {
     const sprite = glowSpriteRef.current;
-    const texture = createStarTexture(system.color, system.size);
+    const texture = shrouded ? createShroudedStarTexture(size) : createStarTexture(color, size);
     if (!sprite) {
       texture.destroy(true);
       return;
@@ -33,7 +38,7 @@ export const StarNode = memo(function StarNode({
       if (sprite.texture === texture) sprite.texture = Texture.EMPTY;
       texture.destroy(true);
     };
-  }, [system.color, system.size]);
+  }, [color, size, shrouded]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -51,20 +56,20 @@ export const StarNode = memo(function StarNode({
     (gfx: Graphics) => {
       gfx.clear();
       if (isVisited && !isCurrent) {
-        gfx.circle(0, 0, system.size + 7);
+        gfx.circle(0, 0, size + 7);
         gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
-        gfx.circle(0, 0, system.size + 11);
+        gfx.circle(0, 0, size + 11);
         gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
       }
       if (isCurrent) {
         gfx.clear();
-        gfx.circle(0, 0, system.size + 7);
+        gfx.circle(0, 0, size + 7);
         gfx.stroke({ color: 0x00c8e8, width: 1.5, alpha: 0.75 });
-        gfx.circle(0, 0, system.size + 11);
+        gfx.circle(0, 0, size + 11);
         gfx.stroke({ color: 0x00c8e8, width: 0.5, alpha: 0.25 });
       }
     },
-    [system.size, isVisited, isCurrent],
+    [size, isVisited, isCurrent],
   );
 
   return (

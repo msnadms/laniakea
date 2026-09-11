@@ -4,7 +4,6 @@ import type { FederatedPointerEvent } from 'pixi.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
-import { galaxyTravelCost, trySpendTravelCost } from '../store/travelCosts';
 import {
   GALAXY_RADIUS,
   GALAXY_RADIUS_LY,
@@ -30,7 +29,10 @@ import { createDisplacementSetup } from './textures';
 import { createRng } from '../game/galaxyGen';
 import { nebulaClouds, coreGlow, rotate } from '../game/galaxyShapes';
 import { StarNode } from './StarNode';
-import { applyStarProjection, type StarViews } from './starView';
+import { applyStarProjection, type StarDisplay, type StarViews } from './starView';
+import { createAnomalySigns } from './anomalySigns';
+import { createGalaxyAnomalyDebug } from './anomalyDebug';
+import { mixColor, scaleColor } from './anomalies/shared';
 import {
   clampGalaxyTilt,
   createGalaxyCamera,
@@ -55,6 +57,10 @@ import { saveSystemDiscovery } from '../firebase/discoveries';
 import { generateGalaxyName } from '../game/superclusters';
 
 const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000];
+
+const DYSON_SIGN_TINT = 0x9a3a1c;
+const DYSON_SIGN_SIZE = 0.55;
+const BRAIN_SIGN_SIZE = 2.4;
 
 const GALAXY_ORBIT: OrbitConfig = {
   createCamera: createGalaxyCamera,
@@ -146,6 +152,8 @@ export function GalaxyWorld() {
   const galaxyConfig = useGameStore((s) => s.galaxy.config);
   const galaxySystems = useGameStore((s) => s.galaxy.systems);
   const galaxyBackgroundStars = useGameStore((s) => s.galaxy.backgroundStars);
+  const galaxyAnomalies = useGameStore((s) => s.galaxyAnomalies);
+  const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
   const setSystem = useGameStore((s) => s.setSystem);
   const pushAddress = useUIStore((s) => s.pushAddress);
   const popAddress = useUIStore((s) => s.popAddress);
@@ -179,15 +187,9 @@ export function GalaxyWorld() {
   const handleSelectSystem = useCallback((id: number | null) => {
     if (isAnimatingRef.current) return;
     if (id !== null) {
-      if (useUIStore.getState().checkDetectionLethal()) return;
       const gameState = useGameStore.getState();
       const sys = gameState.galaxy.systems[id];
       const activeSystem = gameState.system;
-      const fromX = activeSystem?.x ?? 0;
-      const fromY = activeSystem?.y ?? 0;
-      const isCurrent = sys.current === true;
-      const travelDist = Math.hypot(sys.x - fromX, sys.y - fromY);
-      if (!isCurrent && !trySpendTravelCost(galaxyTravelCost(travelDist))) return;
       if (activeSystem !== null) popAddress();
       gameState.markSystemVisited(sys.id);
       const galaxyName = generateGalaxyName(gameState.galaxy.seed);
@@ -242,6 +244,24 @@ export function GalaxyWorld() {
   useLayoutEffect(() => {
     starProjectionsRef.current = starProjections;
   }, [starProjections]);
+
+  const starDisplays = useMemo(() => {
+    const systems = useGameStore.getState().galaxy.systems;
+    const displays = new Map<number, StarDisplay>();
+    for (const anomaly of galaxyAnomalies.byHost.values()) {
+      const host = systems[anomaly.hostId];
+      if (anomaly.kind === 'dysonSphere') {
+        displays.set(host.id, {
+          color: mixColor(scaleColor(host.color, 0.75), DYSON_SIGN_TINT, 0.5),
+          size: host.size * DYSON_SIGN_SIZE,
+          shrouded: false,
+        });
+      } else if (anomaly.kind === 'matrioshkaBrain') {
+        displays.set(host.id, { color: host.color, size: host.size * BRAIN_SIGN_SIZE, shrouded: true });
+      }
+    }
+    return displays;
+  }, [galaxyAnomalies]);
 
   useEffect(() => {
     if (!isInitialised || !isReady) return;
@@ -381,6 +401,7 @@ export function GalaxyWorld() {
     galaxyRoot.addChild(nebulaLayer.container);
     galaxyRoot.addChild(coreLayer.container);
 
+    const signs = createAnomalySigns(galaxyRoot, useGameStore.getState().galaxy.systems, galaxyAnomalies);
     // World distance from the galactic centre to where the depth fade clamps, which
     // is where the disk's own depth reaches GALAXY_DEPTH_HALF.
     let fadeHalfSpan = GALAXY_DEPTH_HALF;
@@ -397,6 +418,7 @@ export function GalaxyWorld() {
         const view = starViews.get(system.id);
         if (view) applyStarProjection(view, projected);
       }
+      signs.project(basis);
     };
 
     orient();
@@ -416,12 +438,14 @@ export function GalaxyWorld() {
       }
 
       depthFade.setRamp(camera.current.y, fadeHalfSpan * camera.current.scale);
+      signs.tick(elapsedSecs, camera.current.scale);
     };
 
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
+      signs.destroy();
       galaxyRoot.removeChild(nebulaLayer.container);
       galaxyRoot.removeChild(coreLayer.container);
       nebulaLayer.container.destroy({ children: true });
@@ -431,7 +455,29 @@ export function GalaxyWorld() {
       depthFade.destroy();
       disp.destroy();
     };
-  }, [galaxySeed, config, isInitialised, camera, orbitCamera, galaxyProjection, starViews]);
+  }, [galaxySeed, config, isInitialised, camera, orbitCamera, galaxyProjection, starViews, galaxyAnomalies]);
+
+  useEffect(() => {
+    if (!showAnomalyDebug || !isInitialised || !galaxyRootRef.current) return;
+    const debug = createGalaxyAnomalyDebug(galaxyRootRef.current, useGameStore.getState().galaxy.systems, galaxyAnomalies);
+    const basis = updateProjectionBasis(orbitCamera.current);
+    let lastYaw = NaN;
+    let lastTilt = NaN;
+    const tick = () => {
+      const { yaw, tilt } = orbitCamera.current;
+      if (yaw !== lastYaw || tilt !== lastTilt) {
+        lastYaw = yaw;
+        lastTilt = tilt;
+        debug.project(updateProjectionBasis(orbitCamera.current, basis));
+      }
+      debug.tick(camera.current.scale);
+    };
+    Ticker.shared.add(tick);
+    return () => {
+      Ticker.shared.remove(tick);
+      debug.destroy();
+    };
+  }, [showAnomalyDebug, galaxyAnomalies, isInitialised, camera, orbitCamera]);
 
   return (
     <>
@@ -439,7 +485,7 @@ export function GalaxyWorld() {
       <pixiContainer ref={worldRef} visible={isReady}>
         <pixiContainer ref={galaxyRootRef} sortableChildren>
           {starProjections.map(({ system, projected }) => (
-            <StarNode key={system.id} system={system} projected={projected} views={starViews} />
+            <StarNode key={system.id} system={system} projected={projected} views={starViews} display={starDisplays.get(system.id)} />
           ))}
         </pixiContainer>
       </pixiContainer>

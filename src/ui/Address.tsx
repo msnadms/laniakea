@@ -8,7 +8,7 @@ export function Address() {
 
     const coords = address
         .filter(s => COORD_TYPES.has(s.type))
-        .map(s => { const z = Math.round(s.z); return `${Math.round(s.x)}.${Math.round(s.y)}${z !== 0 ? `.${z}` : ''}`; })
+        .map(s => `${Math.round(s.x)}.${Math.round(s.y)}.${Math.round(s.z)}`)
         .join(':');
 
     return (
