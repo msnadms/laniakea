@@ -69,6 +69,28 @@
   margin-top: 4px;
 }
 
+.hud-anomaly {
+  position: relative;
+  align-self: center;
+  margin-top: 8px;
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(0, 190, 230, 0.18);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.hud-anomaly:hover {
+  opacity: 1;
+}
+
 .side-btn {
   position: absolute;
   top: 0;

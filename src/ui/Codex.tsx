@@ -6,7 +6,12 @@ import { generateSystemLayout, generatePlanets } from '../game/planetGen';
 import { STAR_TYPE_LABELS, type StarType } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
+import { anomalyRecordKey, deleteAnomalyDiscoveries, type AnomalyRecord } from '../firebase/anomalies';
+import { ANOMALY_LORE } from '../game/anomalyLore';
+import type { AnomalyKind } from '../game/anomalies';
+import { useAnomalyStore } from '../store/anomalyStore';
 import './Codex.css';
+import './AnomalyToast.css';
 import { useUIStore } from '../store/uiStore';
 import { fireCodexNavigate } from '../pixi/zoomAnim';
 import { travelToSupercluster, travelToGalaxy, travelToSystem } from './navigation';
@@ -58,22 +63,30 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
   const deleteSystem = useCodexStore((s) => s.deleteSystem);
   const deleteGalaxy = useCodexStore((s) => s.deleteGalaxy);
   const deleteSupercluster = useCodexStore((s) => s.deleteSupercluster);
+  const anomalyRecords = useAnomalyStore((s) => s.records);
   const [query, setQuery] = useState('');
   const [deleteMode, setDeleteMode] = useState(false);
   const q = query.trim().toLowerCase();
 
+  function forgetAnomalies(keys: string[]) {
+    if (user && keys.length > 0) deleteAnomalyDiscoveries(user.uid, keys);
+  }
+
   function handleDeleteSystem(scSeed: number, galaxySeed: number, systemId: string) {
     deleteSystem(scSeed, galaxySeed, systemId);
+    forgetAnomalies(useAnomalyStore.getState().removeSystem(galaxySeed, Number(systemId)));
     if (user) deleteSystemDiscovery(user.uid, scSeed, galaxySeed, systemId);
   }
 
   function handleDeleteGalaxy(scSeed: number, galaxySeed: number) {
     deleteGalaxy(scSeed, galaxySeed);
+    forgetAnomalies(useAnomalyStore.getState().removeGalaxy(scSeed, galaxySeed));
     if (user) deleteGalaxyDiscovery(user.uid, scSeed, galaxySeed);
   }
 
   function handleDeleteSupercluster(scSeed: number) {
     deleteSupercluster(scSeed);
+    forgetAnomalies(useAnomalyStore.getState().removeSupercluster(scSeed));
     if (user) deleteSuperclusterDiscovery(user.uid, scSeed);
   }
 
@@ -109,7 +122,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
     return enriched.flatMap((sc) => {
       const matchingGalaxies = sc.enrichedGalaxies.flatMap((g) => {
         const matchingSystems = g.enrichedSystems.filter((sys) =>
-          sys.name.toLowerCase().includes(q),
+          sys.name.toLowerCase().includes(q) || anomalyNameMatches(anomalyRecords, g.galaxySeed, sys.id, q),
         );
         const galMatches = g.galaxyName.toLowerCase().includes(q);
         if (!galMatches && matchingSystems.length === 0) return [];
@@ -119,7 +132,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
       if (!scMatches && matchingGalaxies.length === 0) return [];
       return [{ ...sc, enrichedGalaxies: scMatches ? sc.enrichedGalaxies : matchingGalaxies }];
     });
-  }, [enriched, q]);
+  }, [enriched, q, anomalyRecords]);
 
   const hasDiscoveries = enriched.length > 0;
 
@@ -155,7 +168,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
               <input
                 className="codex-search-input"
                 type="text"
-                placeholder="Search superclusters, galaxies, stars…"
+                placeholder="Search superclusters, galaxies, stars, anomalies…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 autoComplete="off"
@@ -200,6 +213,11 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
       )}
     </div>
   );
+}
+
+function anomalyNameMatches(records: Record<string, AnomalyRecord>, galaxySeed: number, systemId: string, query: string): boolean {
+  const record = records[anomalyRecordKey(galaxySeed, systemId)];
+  return !!record && ANOMALY_LORE[record.kind].name.toLowerCase().includes(query);
 }
 
 function highlight(text: string, query: string) {
@@ -276,10 +294,18 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
+  const anomalyRecords = useAnomalyStore((s) => s.records);
   const hasHabitable = useMemo(
-    () => galaxy.enrichedSystems.some((s) => systemHasHabitable(s.seed, s.starType)),
-    [galaxy.enrichedSystems],
+    () => galaxy.enrichedSystems.some((s) => systemHasHabitable(
+      s.seed,
+      s.starType,
+      anomalyRecords[anomalyRecordKey(galaxy.galaxySeed, s.id)]?.kind,
+    )),
+    [galaxy.enrichedSystems, galaxy.galaxySeed, anomalyRecords],
   );
+  const hasAnomaly = useAnomalyStore((s) => Object.values(s.records).some(
+    (record) => record.superclusterSeed === superclusterSeed && record.galaxySeed === galaxy.galaxySeed,
+  ));
 
   return (
     <div className="codex-galaxy">
@@ -288,6 +314,7 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
         <span className="codex-galaxy-name">
           {highlight(galaxy.galaxyName, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
+          {hasAnomaly && <span className="codex-anomaly-marker anomaly-tier-relic" title="Hosts a catalogued anomaly">◬</span>}
         </span>
         <div className="codex-row-right">
           <span className="codex-galaxy-count">
@@ -330,15 +357,15 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   );
 }
 
-function systemHasHabitable(seed: number, starType?: StarType): boolean {
+function systemHasHabitable(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null): boolean {
   if (starType === 'L') return false;
-  return generateSystemLayout(seed, starType).planets.some((p) => p.zone === 'habitable');
+  return generateSystemLayout(seed, starType, anomalyKind).planets.some((p) => p.zone === 'habitable');
 }
 
-function SystemPlanets({ seed, starType, query }: { seed: number; starType?: StarType; query: string }) {
+function SystemPlanets({ seed, starType, anomalyKind, query }: { seed: number; starType?: StarType; anomalyKind: AnomalyKind | null; query: string }) {
   const planets = useMemo(
-    () => generatePlanets(generateSystemLayout(seed, starType)),
-    [seed, starType],
+    () => generatePlanets(generateSystemLayout(seed, starType, anomalyKind)),
+    [seed, starType, anomalyKind],
   );
   return (
     <div className="codex-planets">
@@ -367,7 +394,9 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
-  const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType), [system.seed, system.starType]);
+  const anomalyKind = useAnomalyStore((s) => s.records[anomalyRecordKey(galaxySeed, system.id)]?.kind ?? null);
+  const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType, anomalyKind), [system.seed, system.starType, anomalyKind]);
+  const anomalyLore = anomalyKind ? ANOMALY_LORE[anomalyKind] : null;
 
   return (
     <div className="codex-system">
@@ -376,6 +405,9 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
         <span className="codex-system-name">
           {highlight(system.name, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
+          {anomalyLore && (
+            <span className={`codex-anomaly-marker anomaly-tier-${anomalyLore.tier.toLowerCase()}`} title={anomalyLore.name}>◬</span>
+          )}
         </span>
         <div className="codex-row-right">
           <span className="codex-star-type">{STAR_TYPE_LABELS[system.starType]}</span>
@@ -394,7 +426,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} query={query} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} anomalyKind={anomalyKind} query={query} />}
     </div>
   );
 }

@@ -34,6 +34,7 @@ export interface StarSystem {
   color: number;
   size: number;
   arm: number | null;
+  population: StarPopulation;
   seed: number;
   visited: boolean;
   current: boolean;

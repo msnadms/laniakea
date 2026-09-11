@@ -1,5 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { ANOMALY_KINDS, type AnomalyKind } from '../game/anomalies';
+import { ANOMALY_LORE } from '../game/anomalyLore';
+import type { AnomalyRecord } from '../firebase/anomalies';
+import { useAnomalyStore } from '../store/anomalyStore';
 import './InfoPanel.css';
+import './AnomalyToast.css';
 
 interface StarTypeEntry {
   key: string;
@@ -147,6 +152,77 @@ function StarTypesView() {
   );
 }
 
+function InfoStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="info-stat-row">
+      <span className="info-stat-label">{label}</span>
+      <span className="info-stat-value">{value}</span>
+    </div>
+  );
+}
+
+function AnomaliesView() {
+  const records = useAnomalyStore((s) => s.records);
+  const [expanded, setExpanded] = useState<AnomalyKind | null>(null);
+  const foundByKind = useMemo(() => {
+    const byKind = new Map<AnomalyKind, AnomalyRecord[]>();
+    for (const record of Object.values(records)) byKind.set(record.kind, [...(byKind.get(record.kind) ?? []), record]);
+    for (const found of byKind.values()) found.sort((a, b) => a.discoveredAt - b.discoveredAt);
+    return byKind;
+  }, [records]);
+
+  return (
+    <div className="info-section">
+      <div className="info-section-title">Anomalies</div>
+      {ANOMALY_KINDS.map((kind) => {
+        const lore = ANOMALY_LORE[kind];
+        const found = foundByKind.get(kind) ?? [];
+        if (found.length === 0) {
+          return (
+            <div key={kind} className="info-star-row info-anomaly-row--unknown">
+              <div className="info-star-row-header">
+                <span className="info-anomaly-glyph info-anomaly-glyph--unknown">◬</span>
+                <span className="info-anomaly-name info-anomaly-name--unknown">Uncatalogued</span>
+              </div>
+              <p className="info-anomaly-rumour">{lore.rumour}</p>
+            </div>
+          );
+        }
+        const first = found[0];
+        const isOpen = expanded === kind;
+        const tierClass = `anomaly-tier-${lore.tier.toLowerCase()}`;
+        return (
+          <div key={kind} className={`info-star-row${isOpen ? ' info-star-row--open' : ''}`} onClick={() => setExpanded(isOpen ? null : kind)}>
+            <div className="info-star-row-header">
+              <span className={`info-anomaly-glyph ${tierClass}`}>◬</span>
+              <span className={`info-anomaly-name ${tierClass}`}>{lore.name}</span>
+              <span className="info-table-temp">{found.length} found</span>
+              <span className="info-star-chevron">{isOpen ? '▲' : '▼'}</span>
+            </div>
+            {isOpen && (
+              <div className="info-star-detail">
+                <p className="info-star-lore">{lore.lore}</p>
+                <div className="info-star-stats">
+                  <InfoStat label="Tier" value={lore.tier} />
+                  <InfoStat label="Catalogued" value={String(found.length)} />
+                  <InfoStat label="First Found" value={`${first.systemName} · ${first.galaxyName}`} />
+                  <InfoStat label="Supercluster" value={first.superclusterName} />
+                </div>
+                <div className="info-star-notes">
+                  <div className="info-star-notes-title">Survey Notes</div>
+                  {lore.notes.map((note) => (
+                    <div key={note} className="info-star-note">— {note}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function InfoPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <div className="info-panel-wrap">
@@ -155,6 +231,7 @@ export function InfoPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
           <div className="info-panel-header">Stellar Archive</div>
           <div className="info-panel-content">
             <StarTypesView />
+            <AnomaliesView />
           </div>
         </div>
       )}

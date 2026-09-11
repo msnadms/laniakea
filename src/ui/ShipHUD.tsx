@@ -3,7 +3,9 @@ import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
+import { ANOMALY_LORE } from '../game/anomalyLore';
 import './ShipHUD.css';
+import './AnomalyToast.css';
 
 const COORD_TYPES = new Set(['supercluster', 'galaxy', 'system']);
 const HUD_SLANT_PX = 27;
@@ -82,7 +84,7 @@ function AddressReadout() {
   const address = useUIStore((s) => s.address);
   const coords = address
     .filter((s) => COORD_TYPES.has(s.type))
-    .map((s) => { const z = Math.round(s.z); return `${Math.round(s.x)}.${Math.round(s.y)}${z !== 0 ? `.${z}` : ''}`; })
+    .map((s) => `${Math.round(s.x)}.${Math.round(s.y)}.${Math.round(s.z)}`)
     .join(':');
   return (
     <div className="hud-address">
@@ -98,6 +100,24 @@ function AddressReadout() {
       </div>
       {coords && <div className="hud-address-coords">{coords}</div>}
     </div>
+  );
+}
+
+function AnomalyReadout() {
+  const view = useUIStore((s) => s.view);
+  const kind = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id)?.kind : undefined) ?? null);
+  if (view !== 'system' || !kind) return null;
+  const lore = ANOMALY_LORE[kind];
+
+  function openPanel() {
+    useUIStore.getState().setSelectedPlanet(null);
+    useUIStore.getState().setAnomalyPanelOpen(true);
+  }
+
+  return (
+    <button className={`hud-anomaly anomaly-tier-${lore.tier.toLowerCase()}`} onClick={openPanel}>
+      ◬ {lore.name}
+    </button>
   );
 }
 
@@ -142,6 +162,7 @@ export function ShipHUD() {
       <HudOutline />
       <div className="hud-header">Navigation</div>
       <AddressReadout />
+      <AnomalyReadout />
     </div>
   );
 }

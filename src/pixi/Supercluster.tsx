@@ -13,8 +13,14 @@ import {
   SC_DOT_TEXTURE_RADIUS,
   SC_WORLD_HALF,
   SC_WORLD_HALF_MLY,
-  OBS_UNIVERSE_RADIUS,
+  SC_CIVILIZATION_TINT,
+  SC_CIVILIZATION_TINT_FULL_SCALE,
+  SC_CIVILIZATION_TINT_MIN_SCALE,
+  SC_CIVILIZATION_TINT_STRENGTH,
 } from '../game/constants';
+import { hasCivilization } from '../game/anomalies';
+import { mixColor, smoothstep } from './anomalies/shared';
+import { createSuperclusterAnomalyDebug } from './anomalyDebug';
 import { animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
 import { useOrbit, isOrbitGesture } from './useOrbit';
@@ -27,12 +33,11 @@ import {
   type ProjectionBasis,
 } from './projection';
 import { ScaleBar } from './ScaleBar';
-import { createRng } from '../game/galaxyGen';
 import { createPointerLabel } from './labels';
 import { createSuperclusterDotTexture } from './textures';
 import { BackgroundStars } from './BackgroundStars';
 import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
-import { pushAttractorAddress } from '../game/superclusters';
+import { getSuperclusterCoords, pushAttractorAddress } from '../game/superclusters';
 
 const SC_NICE_VALUES = [5, 10, 25, 50, 100, 150, 200, 300, 500];
 
@@ -83,6 +88,7 @@ export function SuperclusterWorld() {
   const pushAddress = useUIStore((s) => s.pushAddress);
   const removeAddressType = useUIStore((s) => s.removeAddressType);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
+  const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
 
   const worldRef = useRef<Container>(null);
   const { orbitCamera, didOrbit } = useOrbit();
@@ -113,9 +119,7 @@ export function SuperclusterWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
-    const rng = createRng(scSeed);
-    const obsUniverseCoords = () => rng() * OBS_UNIVERSE_RADIUS * 2 - OBS_UNIVERSE_RADIUS;
-    const [x, y, z] = [obsUniverseCoords(), obsUniverseCoords(), obsUniverseCoords()];
+    const [x, y, z] = getSuperclusterCoords(scSeed);
     pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'));
 
     const tiers = getBrightnessTiers(scSeed);
@@ -135,6 +139,8 @@ export function SuperclusterWorld() {
     const depthAlpha = new Float32Array(count);
     const depthScale = new Float32Array(count);
     const particles: Particle[] = new Array(count);
+    const civilizationDots: number[] = [];
+    const civilizationTints: number[] = [];
 
     const dotTexture = createSuperclusterDotTexture();
     for (let i = 0; i < count; i++) {
@@ -152,6 +158,10 @@ export function SuperclusterWorld() {
         anchorY: 0.5,
         tint: tier.color,
       });
+      if (hasCivilization(dot.seed)) {
+        civilizationDots.push(i);
+        civilizationTints.push(tier.color);
+      }
     }
 
     const scContainer = new Container();
@@ -185,6 +195,7 @@ export function SuperclusterWorld() {
     const basis = updateProjectionBasis(orbitCamera.current);
     const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
     const blink = new Float32Array(N_BLINK_GROUPS);
+    let civilizationBlend = 0;
 
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
@@ -207,6 +218,15 @@ export function SuperclusterWorld() {
         particle.alpha = baseAlpha[i] * blink[blinkGroup[i]] * depthAlpha[i];
       }
 
+      const blend = SC_CIVILIZATION_TINT_STRENGTH
+        * smoothstep(SC_CIVILIZATION_TINT_MIN_SCALE, SC_CIVILIZATION_TINT_FULL_SCALE, camera.current.scale);
+      if (blend !== civilizationBlend) {
+        civilizationBlend = blend;
+        for (let k = 0; k < civilizationDots.length; k++) {
+          particles[civilizationDots[k]].tint = mixColor(civilizationTints[k], SC_CIVILIZATION_TINT, blend);
+        }
+      }
+
       drawVisited(visitedGfx, visitedDotsRef.current, basis, projected);
       drawCurrent(currentGfx, currentDotRef.current, basis, projected, elapsedSecs);
     };
@@ -219,7 +239,22 @@ export function SuperclusterWorld() {
       blurFilter.destroy();
       dotTexture.destroy(true);
     };
-  }, [scSeed, scName, pushAddress, app, isInitialised, orbitCamera]);
+  }, [scSeed, scName, pushAddress, app, isInitialised, orbitCamera, camera]);
+
+  useEffect(() => {
+    if (!showAnomalyDebug || !isInitialised || !worldRef.current) return;
+    const world = worldRef.current;
+    const debug = createSuperclusterAnomalyDebug(useGameStore.getState().supercluster.dots);
+    world.addChild(debug.node);
+    const basis = updateProjectionBasis(orbitCamera.current);
+    const tick = () => debug.draw(updateProjectionBasis(orbitCamera.current, basis), camera.current.scale);
+    Ticker.shared.add(tick);
+    return () => {
+      Ticker.shared.remove(tick);
+      world.removeChild(debug.node);
+      debug.node.destroy();
+    };
+  }, [showAnomalyDebug, scSeed, isInitialised, camera, orbitCamera]);
 
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;

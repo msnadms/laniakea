@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `laniakea-explore-version` is an **exploration-only** cut of the galaxy game: supercluster, galaxy and system views, the Codex, and the navigation HUD. There is no economy, logistics, fabrication, colonies, research, milestones, fuel, travel cost or probe detection — do not reintroduce them here.
 
-It deliberately **shares the main game's Firebase project and save**: Google login, `users/{uid}/discoveries`, and the navigation fields of `users/{uid}.settings` (`lastView`, `lastSuperclusterSeed`, `lastGalaxySeed`, `lastSystemId`, `address`, plus the display toggles). Settings are written with `merge: true`, so game-only settings fields are left untouched. Because the save is shared, planet names and system layouts must stay RNG-identical to the game's generators.
+Saves live in Firebase behind Google login: `users/{uid}/discoveries`, `users/{uid}/anomalies`, and the navigation fields of `users/{uid}.settings` (`lastView`, `lastSuperclusterSeed`, `lastGalaxySeed`, `lastSystemId`, `address`, plus the display toggles), written with `merge: true`. Discovery records point at systems by id, name and seed, so the generators' RNG sequences must stay stable — `galaxyGen.test.ts` guards this.
 
 ## Commands
 
@@ -17,7 +17,7 @@ npm run lint      # ESLint
 npm run preview   # Serve the production build locally
 ```
 
-`npm test` runs the vitest suite (galaxy generation, galaxy shapes, projection).
+`npm test` runs the vitest suite (galaxy generation, galaxy shapes, projection, anomalies). `ANOMALY_ODDS=1 npx vitest run src/game/anomalies.odds.test.ts --silent=false` prints how often each anomaly turns up over 3,000 galaxies against its target.
 
 ## Code style
 
@@ -80,9 +80,9 @@ Being baked flat, the gas cannot carry a per-particle depth tint, so `DepthFadeF
 - `gas` (50–75%) — large gas giants with banded textures, rings common, up to 5 moons
 - `ice` (75–100%) — ice giants, ringed, up to 3 moons, blue/violet palette
 
-Brown dwarfs (`L`) get 2–4 ice planets; neutron stars (`N`) get 2–4 moonless hot planets. Orbit radii grow by a factor of 1.55–2.2 per ring from a base of ~380–500 units. A 70% chance asteroid belt is inserted after a random planet. Sol uses the hand-authored `SOL_SYSTEM_LAYOUT` / `SOL_SYSTEM_PLANETS` from `hardcoded.ts`.
+Brown dwarfs (`L`) get 2–4 ice planets; neutron stars (`N`) get 2–4 moonless hot planets. Passing a `dysonSphere` or `matrioshkaBrain` anomaly kind as the third argument turns every hot and habitable ring into `marginal`, so every caller (gameStore, `SolarSystem`, Codex) must pass the host's kind. Orbit radii grow by a factor of 1.55–2.2 per ring from a base of ~380–500 units. A 70% chance asteroid belt is inserted after a random planet. Sol uses the hand-authored `SOL_SYSTEM_LAYOUT` / `SOL_SYSTEM_PLANETS` from `hardcoded.ts`.
 
-`generatePlanets(layout)` names planets and moons from a separate name RNG (`seed ^ 0xb1a2c3d4`), with moons numbered by Roman numeral (`Planet I`, `Planet II`). Keep that RNG isolated so names match the main game.
+`generatePlanets(layout)` names planets and moons from a separate name RNG (`seed ^ 0xb1a2c3d4`), with moons numbered by Roman numeral (`Planet I`, `Planet II`). Keep that RNG isolated so names stay stable for existing saves.
 
 **Orbital speeds** use Kepler-like constants: `ORBITAL_K = 3500` for planets, `MOON_K = 430` for moons (both `/ orbitRadius^1.5`).
 
@@ -98,16 +98,40 @@ Brown dwarfs (`L`) get 2–4 ice planets; neutron stars (`N`) get 2–4 moonless
 
 ### Zustand stores
 
-- `gameStore` — the active `Galaxy`, `supercluster`, `system` (active `StarSystem | null`, with generated `planets`), visited sets per galaxy/supercluster seed, and `regenerateGalaxy(seed?)`, `regenerateSupercluster(seed?)`, `setSystem`, `restoreGalaxyAndSystem`, `markDotVisited`, `markSystemVisited`, `restoreVisited`
-- `uiStore` — `view` (`'supercluster' | 'galaxy' | 'system'`), transition flags, `showAttractorLabels`, `showOrbitRings`, `showHUD`, `showScanlines`, `selectedPlanetName`, and the address breadcrumb stack (`pushAddress`, `popAddress`, `removeAddressType`, `clearAddress`)
+- `gameStore` — the active `Galaxy` and its derived `galaxyAnomalies`, `supercluster`, `system` (active `StarSystem | null`, with generated `planets`), visited sets per galaxy/supercluster seed, and `regenerateGalaxy(seed?)`, `regenerateSupercluster(seed?)`, `setSystem`, `restoreGalaxyAndSystem`, `markDotVisited`, `markSystemVisited`, `restoreVisited`
+- `uiStore` — `view` (`'supercluster' | 'galaxy' | 'system'`), transition flags, `showAttractorLabels`, `showOrbitRings`, `showHUD`, `showScanlines`, `showAnomalyDebug` (unsaved; `anomalyDebug.ts` rings civilisation galaxies and labels anomaly hosts), `selectedPlanetName`, `anomalyPanelOpen`, and the address breadcrumb stack (`pushAddress`, `popAddress`, `removeAddressType`, `clearAddress`)
 - `codexStore` — discovery records (supercluster → galaxy → system), seeded with Laniakea / Milky Way / Sol
-- `authStore` — Firebase user; `initAuth` loads settings and discoveries, restores visited flags, and restores the last supercluster/galaxy/system and view. A fresh `localStorage` nav entry (`lib/navLocalStorage.ts`, < 30s old) wins over Firestore's debounced write
+- `anomalyStore` — catalogued `AnomalyRecord`s keyed `${galaxySeed}-${systemId}`, plus `latest` for the toast; `remove*` return the removed keys so the Codex can delete them in Firestore
+- `authStore` — Firebase user; `initAuth` loads settings, discoveries and anomalies, restores visited flags, and restores the last supercluster/galaxy/system and view. A fresh `localStorage` nav entry (`lib/navLocalStorage.ts`, < 30s old) wins over Firestore's debounced write
 
 `useSettingsPersist` mirrors navigation and display settings to `localStorage` synchronously and to Firestore on a 2s debounce.
 
 ### Navigation
 
 `ui/navigation.ts` holds `travelToSupercluster`, `travelToGalaxy` and `travelToSystem`, used by the Codex to jump anywhere it has recorded; each rebuilds the address stack from scratch. Travel is free.
+
+### Anomalies
+
+Five rare finds: black holes, ruined Dyson spheres, Matrioshka brains, Nicoll-Dyson beams and Shkadov thrusters. `src/game/anomalies.ts → generateAnomalies(galaxy)` places them, and every rate lives in `constants.ts` (`ANOMALY_*`). They are derived, never stored on the galaxy: `gameStore.galaxyAnomalies` is recomputed wherever `makeGalaxy` runs, and an anomaly never changes its host's data — every difference is applied while rendering. The Milky Way hosts none.
+
+**Placement.** The four megastructures belong to at most one lost civilisation per galaxy (`ANOMALY_CIVILIZATION_CHANCE`), whose home region (`ANOMALY_HOME_RADIUS`) is centred on a G/K star in the disk, bar or outer arm — or on any G/K star outside the bulge and starbursts, which is how ellipticals get one. Distances are in the plane.
+- Ruined Dyson sphere — 1–3 F/G/K stars inside the region, never bulge or starburst, weighted toward the centre.
+- Matrioshka brain — the non-bulge, non-starburst K star nearest the centre, only when at least two Dyson spheres were placed.
+- Shkadov thruster — among F/G/K stars outside the region in the top 5% of `relativeHeight` (|z| over the population's scale height), the one nearest the region. `direction` is its heading away from home.
+- Nicoll-Dyson beam — an F/G/K star 0.8–1.2 region radii from the centre. `direction` points at the brain if there is one, otherwise at the centre.
+- Black holes are independent of civilisations: every non-L/N star within `ANOMALY_BLACK_HOLE_REACH` of a neutron star rolls `ANOMALY_BLACK_HOLE_CHANCE`, then active or quiescent.
+
+**RNG isolation.** Anomalies never draw from the galaxy or planet RNGs. The civilisation RNG is `seed ^ 0x6c8e9cf5`, and its first draw is the civilisation roll so `hasCivilization(seed)` answers without generating the galaxy; black holes use `seed ^ 0x3c6ef372`; each anomaly's seed is `galaxySeed ^ imul(hostId, 0x165667b1)`, which fixes integrity and the active flag, while render detail comes from `anomalyVisualRng`. Reordering the draws in `placeCivilization` moves anomalies in galaxies players have already explored. `anomalies.test.ts` checks every host against its rule.
+
+**Catalogue.** `useAnomalyWatcher` (mounted in `App`) subscribes to `gameStore.system`: entering an uncatalogued host adds a record to `anomalyStore`, saves it to `users/{uid}/anomalies/{galaxySeed}-{systemId}` (`firebase/anomalies.ts`) and sets `latest`, which `AnomalyToast` shows for five seconds. That covers galaxy taps, Codex travel and restores in one place. `initAuth` calls `anomalyStore.setAll` before `restoreGalaxyAndSystem` so restoring into a host does not toast again. Codex forget removes the records inside whatever was forgotten, locally and in Firestore. Names, tiers, lore, rumours and survey notes live in `anomalyLore.ts`.
+
+**System view** (`src/pixi/anomalies/`). `createAnomalyVisual` returns an `AnomalyVisual`: `nodes` added to `depthScene`, an `extent` passed to `createSystemCamera` as `extraExtent`, star and corona alpha, an optional nebula colour, and a per-tick `update`. Dyson shells, the brain's nested shells and the Shkadov mirror are `shellLattice.ts` panel sets with a clustered integrity mask, redrawn every frame into a back `Graphics` at `zIndex -SHELL_Z` and a front one at `+SHELL_Z`; for anything outside the sphere that split around the star at 0 is exact. Loose bodies — debris, the black hole, the lens, beam and jet segments — take `zIndex` from their own depth. The accretion disk is 16 wedges, each in its own squash container, so the half behind the horizon sorts under it. Every structure is selectable and opens `AnomalyPanel`, and `ShipHUD` shows a line for it in the system view.
+
+**Galaxy view.** Dyson hosts are drawn dimmer, redder and smaller, and brain hosts with `createShroudedStarTexture`, through `StarNode`'s `display` override (`starDisplays` in `GalaxyWorld`). `anomalySigns.ts` adds the black hole's X-ray flicker, the Shkadov wake and the 12-segment beam straight to `galaxyRoot`, so they sort through the disk; they are re-projected in `orient()` and fade in above `ANOMALY_SIGN_MIN_SCALE` (`ANOMALY_BEAM_SIGN_MIN_SCALE` for the beam). Picking is unchanged, since every anomaly sits on a star.
+
+**Supercluster.** Dots whose seed passes `hasCivilization` are collected when the field is built, and the tick blends their tint toward `SC_CIVILIZATION_TINT` between `SC_CIVILIZATION_TINT_MIN_SCALE` and `SC_CIVILIZATION_TINT_FULL_SCALE`.
+
+**Archive and Codex.** `InfoPanel`'s Anomalies section shows one rumour for each uncatalogued kind, and the lore, count and first find once one is catalogued. Codex galaxy and system rows get a `◬` marker, and search matches anomaly names.
 
 ### Nebula color design
 
@@ -169,5 +193,6 @@ Bottom-of-screen trapezoid panel (SVG outline + tick marks), hidden when `showHU
 ### Other overlays
 
 - `ConfigPanel` — HUD, scan lines, attractor labels (supercluster view) and orbit rings (system view) toggles, plus the per-view `TutorialPanel`.
-- `InfoPanel` — the "Stellar Archive" drawer describing each spectral class.
+- `InfoPanel` — the "Stellar Archive" drawer describing each spectral class and the Anomaly Archive.
+- `AnomalyPanel` / `AnomalyToast` — the anomaly detail panel (opened by `uiStore.anomalyPanelOpen`) and the first-discovery banner above the HUD.
 - `LoginScreen` / `AuthButton` — Google sign-in gate and sign-out.

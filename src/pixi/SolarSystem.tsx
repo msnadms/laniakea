@@ -34,6 +34,7 @@ import {
 } from './textures';
 import { useCamera } from './useCamera';
 import { useZoomController } from './useZoomController';
+import { createAnomalyVisual } from './anomalies';
 
 type MoonState = {
   visual: Container;
@@ -190,7 +191,7 @@ export function SolarSystem() {
   const showOrbitRings = useUIStore((state) => state.showOrbitRings);
   const showOrbitRingsRef = useRef(showOrbitRings);
   const orbitGfxRef = useRef<Graphics[]>([]);
-  const { camera, isReady } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
+  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
 
   useEffect(() => {
     showOrbitRingsRef.current = showOrbitRings;
@@ -209,15 +210,35 @@ export function SolarSystem() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current || !system) return;
     const world = worldRef.current;
-    const layout = generateSystemLayout(system.seed, system.starType);
-    const systemCamera = createSystemCamera(layout);
+    const anomaly = useGameStore.getState().galaxyAnomalies.byHost.get(system.id);
+    const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind);
+    const isBrownDwarf = system.starType === 'L';
+    const isNeutronStar = system.starType === 'N';
+    const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
+    const planetExtent = getSystemExtent(layout);
+    const anomalyVisual = anomaly
+      ? createAnomalyVisual({
+        anomaly,
+        sunRadius,
+        starColor: system.color,
+        innermostOrbit: layout.planets[0]?.orbitRadius ?? planetExtent,
+        planetExtent,
+        onSelect: () => {
+          if (hasDragged.current) return;
+          useUIStore.getState().setSelectedPlanet(null);
+          useUIStore.getState().setAnomalyPanelOpen(true);
+        },
+      })
+      : null;
+    const projectionLayout = { planets: layout.planets, extraExtent: anomalyVisual?.extent };
+    const systemCamera = createSystemCamera(projectionLayout);
     const targetTilt = systemCamera.tilt;
     const targetTiltCos = Math.cos(targetTilt);
     const introTilt = targetTilt - 8 * Math.PI / 180;
     const orbitCamera = { ...systemCamera };
     systemCamera.tilt = introTilt;
     const projectionBasis = updateProjectionBasis(systemCamera);
-    const systemExtent = getSystemExtent(layout);
+    const systemExtent = getSystemExtent(projectionLayout);
     const systemRoot = new Container();
     const nebulaLayer = new Container();
     const depthScene = new Container();
@@ -325,6 +346,7 @@ export function SolarSystem() {
         planetVisual.cursor = 'pointer';
         planetVisual.on('pointerdown', (event) => {
           event.stopPropagation();
+          useUIStore.getState().setAnomalyPanelOpen(false);
           useUIStore.getState().setSelectedPlanet(planetData.name);
         });
       }
@@ -348,9 +370,6 @@ export function SolarSystem() {
       depthScene.addChild(asteroidProjection);
     }
 
-    const isBrownDwarf = system.starType === 'L';
-    const isNeutronStar = system.starType === 'N';
-    const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
     const sunTexture = isBrownDwarf
       ? createBrownDwarfTexture(system.seed)
       : isNeutronStar
@@ -369,7 +388,14 @@ export function SolarSystem() {
     starVisual.eventMode = 'none';
     depthScene.addChild(starVisual);
 
-    const nebulaSprite = createNebulaSprite(system.color, sunRadius);
+    const coronaAlpha = anomalyVisual?.coronaAlpha ?? 1;
+    if (anomalyVisual) {
+      for (const node of anomalyVisual.nodes) depthScene.addChild(node);
+      sunSprite.alpha = anomalyVisual.starAlpha;
+      if (corona) corona.visible = coronaAlpha > 0;
+    }
+
+    const nebulaSprite = createNebulaSprite(anomalyVisual?.nebulaColor ?? system.color, sunRadius);
     const nebulaTexture = nebulaSprite.texture;
     nebulaSprite.eventMode = 'none';
     nebulaLayer.addChild(nebulaSprite);
@@ -426,6 +452,7 @@ export function SolarSystem() {
 
     updateProjectionPresentation();
     updateBodies(0);
+    anomalyVisual?.update(0, 0, projectionBasis);
     let elapsed = 0;
     const onTick = (ticker: Ticker) => {
       const dt = ticker.deltaMS / 1000;
@@ -438,16 +465,18 @@ export function SolarSystem() {
       sunSprite.scale.set(sunBaseScale * (1 + Math.sin(elapsed * 0.9) * 0.07));
       if (corona) {
         corona.rotation += 0.018 * dt;
-        corona.alpha = 0.8 + 0.2 * Math.sin(elapsed * 0.55);
+        corona.alpha = coronaAlpha * (0.8 + 0.2 * Math.sin(elapsed * 0.55));
       }
       nebulaSprite.alpha = 0.65 + 0.15 * Math.sin(elapsed * 0.22);
       if (asteroidBelt) asteroidBelt.rotation += 0.025 * dt;
       updateBodies(dt);
+      anomalyVisual?.update(dt, elapsed, projectionBasis);
     };
     Ticker.shared.add(onTick);
 
     return () => {
       Ticker.shared.remove(onTick);
+      anomalyVisual?.destroy();
       orbitGfxRef.current = [];
       world.removeChild(systemRoot);
       systemRoot.destroy({ children: true });
@@ -456,7 +485,7 @@ export function SolarSystem() {
       shadowTexture.destroy(true);
       for (const texture of bodyTextures) texture.destroy(true);
     };
-  }, [system, isInitialised]);
+  }, [system, isInitialised, hasDragged]);
 
   return (
     <>

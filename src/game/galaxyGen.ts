@@ -192,6 +192,7 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
       color: STAR_COLORS[starType],
       size: lerp(minSize * STAR_SIZE_MULTIPLIER, maxSize * STAR_SIZE_MULTIPLIER, rng()) * sizeScale,
       arm: armIndices[id],
+      population: populations[id],
       seed: (seed ^ (id * 2654435761)) >>> 0,
       visited: false,
       current: false,
@@ -211,6 +212,7 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
       systems[s.id] = {
         ...s,
         z: systems[s.id].z,
+        population: systems[s.id].population,
         seed: (seed ^ (s.id * 2654435761)) >>> 0,
         visited: false,
         current: false,

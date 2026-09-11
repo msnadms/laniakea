@@ -13,6 +13,9 @@ import { initAuth, useAuthStore } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
 import { LoginScreen } from './ui/LoginScreen';
 import { TopNavBar } from './ui/TopNavBar';
+import { AnomalyPanel } from './ui/AnomalyPanel';
+import { AnomalyToast } from './ui/AnomalyToast';
+import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
 
 const ViewTitle = memo(function ViewTitle() {
   const view = useUIStore((s) => s.view);
@@ -35,6 +38,7 @@ const ViewTitle = memo(function ViewTitle() {
 
 export default function App() {
   useSettingsPersist();
+  useAnomalyWatcher();
   useEffect(() => initAuth(), []);
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
@@ -63,7 +67,9 @@ export default function App() {
         </div>
       )}
       <ViewTitle />
+      <AnomalyToast />
       {view === 'system' && <PlanetPanel />}
+      {view === 'system' && <AnomalyPanel />}
     </div>
   );
 }

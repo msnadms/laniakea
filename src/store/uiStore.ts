@@ -14,8 +14,12 @@ interface UIState {
   toggleHUD: () => void;
   showScanlines: boolean;
   toggleScanlines: () => void;
+  showAnomalyDebug: boolean;
+  toggleAnomalyDebug: () => void;
   selectedPlanetName: string | null;
   setSelectedPlanet: (name: string | null) => void;
+  anomalyPanelOpen: boolean;
+  setAnomalyPanelOpen: (open: boolean) => void;
   view: AppView;
   setView: (view: AppView) => void;
   viewTransitioning: boolean;
@@ -52,8 +56,12 @@ export const useUIStore = create<UIState>((set) => ({
   toggleHUD: () => set((s) => ({ showHUD: !s.showHUD })),
   showScanlines: true,
   toggleScanlines: () => set((s) => ({ showScanlines: !s.showScanlines })),
+  showAnomalyDebug: false,
+  toggleAnomalyDebug: () => set((s) => ({ showAnomalyDebug: !s.showAnomalyDebug })),
   selectedPlanetName: null,
   setSelectedPlanet: (name) => set({ selectedPlanetName: name }),
+  anomalyPanelOpen: false,
+  setAnomalyPanelOpen: (open) => set({ anomalyPanelOpen: open }),
   view: 'system',
   setView: (view) => set({ view }),
   viewTransitioning: false,
@@ -73,5 +81,6 @@ export function applyUserSettings(settings: UserSettings): void {
     showAttractorLabels: settings.showAttractorLabels,
     showHUD: settings.showHUD,
     selectedPlanetName: null,
+    anomalyPanelOpen: false,
   });
 }

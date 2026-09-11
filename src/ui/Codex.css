@@ -380,6 +380,12 @@
   flex-shrink: 0;
 }
 
+.codex-anomaly-marker {
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .codex-planet-name {
   color: #2a6a8a;
   font-size: 10px;

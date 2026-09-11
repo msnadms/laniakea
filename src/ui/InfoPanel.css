@@ -251,6 +251,49 @@
   font-family: var(--font-mono);
 }
 
+.info-anomaly-glyph {
+  font-size: 11px;
+  line-height: 1;
+  width: 24px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.info-anomaly-glyph--unknown {
+  color: rgba(0, 180, 220, 0.3);
+}
+
+.info-anomaly-name {
+  flex: 1;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.info-anomaly-name--unknown {
+  color: rgba(0, 180, 220, 0.45);
+  letter-spacing: 0.18em;
+}
+
+.info-anomaly-row--unknown {
+  cursor: default;
+}
+
+.info-anomaly-row--unknown:hover {
+  background: transparent;
+}
+
+.info-anomaly-rumour {
+  margin: 0;
+  padding: 0 4px 9px 38px;
+  font-size: 10px;
+  line-height: 1.6;
+  font-style: italic;
+  color: rgba(0, 180, 220, 0.42);
+  font-family: var(--font-mono);
+}
+
 .info-log-entry {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,47 @@
+.anomaly-panel-glyph {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.anomaly-panel .planet-panel-name.anomaly-tier-phenomenon,
+.anomaly-panel .planet-panel-name.anomaly-tier-relic,
+.anomaly-panel .planet-panel-name.anomaly-tier-mythic {
+  font-size: 15px;
+}
+
+.anomaly-panel-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+
+.anomaly-panel-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.anomaly-panel-stat-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: #2a6a8a;
+  text-transform: uppercase;
+}
+
+.anomaly-panel-stat-value {
+  font-size: 12px;
+  color: #00c8e8;
+  text-shadow: 0 0 6px rgba(0, 200, 232, 0.45);
+}
+
+.anomaly-panel-lore {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #7ab0c8;
+  margin: 0 0 16px;
+}
+
+.anomaly-panel-note {
+  line-height: 1.6;
+}

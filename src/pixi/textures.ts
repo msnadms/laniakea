@@ -186,6 +186,28 @@ export function createStarTexture(color: number, size: number): Texture {
   return Texture.from(canvas, true);
 }
 
+export function createShroudedStarTexture(size: number): Texture {
+  const radius = size * 2.2 * 4;
+  const canvasSize = Math.ceil(radius * 2) + 2;
+  const center = canvasSize / 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+  const ctx = canvas.getContext('2d')!;
+
+  const gradient = ctx.createRadialGradient(center, center, 0, center, center, radius);
+  gradient.addColorStop(0,    'rgba(255,180,120,0.8)');
+  gradient.addColorStop(0.2,  'rgba(240,100,50,0.65)');
+  gradient.addColorStop(0.45, 'rgba(190,48,22,0.32)');
+  gradient.addColorStop(0.75, 'rgba(140,28,12,0.1)');
+  gradient.addColorStop(1,    'rgba(90,16,8,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvasSize, canvasSize);
+
+  return Texture.from(canvas, true);
+}
+
 function makeCircleCanvas(size: number, baseColor: number) {
   const canvas = document.createElement('canvas');
   canvas.width = size;

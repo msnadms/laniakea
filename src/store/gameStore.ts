@@ -4,9 +4,11 @@ import { generateGalaxy } from '../game/galaxyGen';
 import { generateSupercluster } from '../game/superclusters';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
 import { MILKY_WAY_SEED, MILKY_WAY_NUM_ARMS, LANIAKEA_SEED } from '../game/hardcoded';
+import { generateAnomalies, type GalaxyAnomalies } from '../game/anomalies';
 
 interface GameState {
   galaxy: Galaxy;
+  galaxyAnomalies: GalaxyAnomalies;
   supercluster: SuperclusterData;
   system: StarSystem | null;
   visitedSystemsByGalaxySeed: Record<number, Set<number>>;
@@ -28,8 +30,9 @@ function makeGalaxy(seed?: number): Galaxy {
   return generateGalaxy(s, s === MILKY_WAY_SEED ? { numArms: MILKY_WAY_NUM_ARMS, type: 'barred' } : undefined);
 }
 
-function withPlanets(system: StarSystem): StarSystem {
-  return { ...system, planets: generatePlanets(generateSystemLayout(system.seed, system.starType)) };
+function withPlanets(system: StarSystem, anomalies: GalaxyAnomalies): StarSystem {
+  const layout = generateSystemLayout(system.seed, system.starType, anomalies.byHost.get(system.id)?.kind);
+  return { ...system, planets: generatePlanets(layout) };
 }
 
 function applyVisited(galaxy: Galaxy, visited: Set<number> | undefined): Galaxy {
@@ -58,16 +61,20 @@ const _initialSupercluster = (() => {
   return { ...sc, dots: sc.dots.map((d) => d.seed === MILKY_WAY_SEED ? { ...d, visited: true, current: true } : d) };
 })();
 
+const _initialAnomalies = generateAnomalies(_initialGalaxy);
+
 export const useGameStore = create<GameState>((set) => ({
   galaxy: _initialGalaxy,
+  galaxyAnomalies: _initialAnomalies,
   supercluster: _initialSupercluster,
-  system: withPlanets(_initialGalaxy.systems[0]),
+  system: withPlanets(_initialGalaxy.systems[0], _initialAnomalies),
   visitedSystemsByGalaxySeed: { [MILKY_WAY_SEED]: new Set([0]) },
   visitedGalaxyBySuperclusterSeed: { [LANIAKEA_SEED]: new Set([MILKY_WAY_SEED]) },
   regenerateGalaxy: (seed) => set((state) => {
     const galaxy = makeGalaxy(seed);
     return {
       galaxy: applyVisited(galaxy, state.visitedSystemsByGalaxySeed[galaxy.seed]),
+      galaxyAnomalies: generateAnomalies(galaxy),
       system: null,
     };
   }),
@@ -75,9 +82,10 @@ export const useGameStore = create<GameState>((set) => ({
     const sc = seed === state.supercluster.seed ? state.supercluster : generateSupercluster(seed);
     return { supercluster: applyVisitedDots(sc, state.visitedGalaxyBySuperclusterSeed[sc.seed]) };
   }),
-  setSystem: (system) => set({ system: system ? withPlanets(system) : null }),
+  setSystem: (system) => set((state) => ({ system: system ? withPlanets(system, state.galaxyAnomalies) : null })),
   restoreGalaxyAndSystem: (galaxySeed, systemId) => set((state) => {
-    const baseGalaxy = state.galaxy.seed === galaxySeed ? state.galaxy : makeGalaxy(galaxySeed);
+    const isSameGalaxy = state.galaxy.seed === galaxySeed;
+    const baseGalaxy = isSameGalaxy ? state.galaxy : makeGalaxy(galaxySeed);
     const visitedIds = state.visitedSystemsByGalaxySeed[baseGalaxy.seed];
     const galaxy = {
       ...baseGalaxy,
@@ -90,7 +98,12 @@ export const useGameStore = create<GameState>((set) => ({
       }),
     };
     const found = systemId !== null ? galaxy.systems.find((s) => s.id === systemId) : undefined;
-    return { galaxy, system: found ? withPlanets(found) : null };
+    const galaxyAnomalies = isSameGalaxy ? state.galaxyAnomalies : generateAnomalies(baseGalaxy);
+    return {
+      galaxy,
+      galaxyAnomalies,
+      system: found ? withPlanets(found, galaxyAnomalies) : null,
+    };
   }),
   markDotVisited: (seed) => {
     set((state) => {

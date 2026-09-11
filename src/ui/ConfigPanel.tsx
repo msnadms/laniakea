@@ -30,6 +30,8 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
   const toggleHUD = useUIStore((s) => s.toggleHUD);
   const showScanlines = useUIStore((s) => s.showScanlines);
   const toggleScanlines = useUIStore((s) => s.toggleScanlines);
+  const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
+  const toggleAnomalyDebug = useUIStore((s) => s.toggleAnomalyDebug);
   const view = useUIStore((s) => s.view);
 
   if (hidden) return null;
@@ -55,6 +57,9 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           )}
           {view === 'system' && (
             <ConfigToggle label="Orbit Rings" checked={showOrbitRings} onChange={toggleOrbitRings} />
+          )}
+          {view !== 'system' && (
+            <ConfigToggle label="Anomaly Debug" checked={showAnomalyDebug} onChange={toggleAnomalyDebug} />
           )}
         </div>
       )}
