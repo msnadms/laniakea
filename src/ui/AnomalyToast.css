@@ -16,7 +16,7 @@
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -42,6 +42,23 @@
 
 .anomaly-toast-sep {
   color: rgba(0, 180, 220, 0.45);
+}
+
+.anomaly-toast--living .anomaly-toast-rule {
+  background: linear-gradient(90deg, transparent, rgba(255, 200, 120, 0.7));
+}
+
+.anomaly-toast--living .anomaly-toast-rule:last-child {
+  background: linear-gradient(90deg, rgba(255, 200, 120, 0.7), transparent);
+}
+
+.anomaly-toast--living .anomaly-toast-label {
+  color: rgba(255, 205, 130, 0.9);
+  text-shadow: 0 0 8px rgba(255, 190, 100, 0.45);
+}
+
+.anomaly-toast--living .anomaly-toast-sep {
+  color: rgba(255, 190, 110, 0.5);
 }
 
 .anomaly-toast-name {

@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import type { Anomaly } from '../game/anomalies';
-import { ANOMALY_LORE } from '../game/anomalyLore';
+import { getAnomalyLore } from '../game/anomalyLore';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import './PlanetPanel.css';
@@ -23,10 +23,16 @@ function AnomalyStats({ anomaly }: { anomaly: Anomaly }) {
           <span className="anomaly-panel-stat-value">{anomaly.active ? 'Active' : 'Quiescent'}</span>
         </div>
       ) : (
-        <div className="anomaly-panel-stat">
-          <span className="anomaly-panel-stat-label">Integrity</span>
-          <span className="anomaly-panel-stat-value">{Math.round(anomaly.integrity * 100)}%</span>
-        </div>
+        <>
+          <div className="anomaly-panel-stat">
+            <span className="anomaly-panel-stat-label">Status</span>
+            <span className="anomaly-panel-stat-value">{anomaly.living ? 'Inhabited' : 'Ruined'}</span>
+          </div>
+          <div className="anomaly-panel-stat">
+            <span className="anomaly-panel-stat-label">Integrity</span>
+            <span className="anomaly-panel-stat-value">{Math.round(anomaly.integrity * 100)}%</span>
+          </div>
+        </>
       )}
       {heading && (
         <div className="anomaly-panel-stat">
@@ -44,7 +50,7 @@ export function AnomalyPanel() {
   const anomaly = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id) : undefined) ?? null);
 
   if (!open || !anomaly) return null;
-  const lore = ANOMALY_LORE[anomaly.kind];
+  const lore = getAnomalyLore(anomaly);
 
   return createPortal(
     <div className="planet-panel-overlay" onClick={() => setOpen(false)}>

@@ -17,7 +17,7 @@
   border: 1px solid #1a3a5c;
   box-shadow: 0 0 24px rgba(0, 160, 200, 0.18), inset 0 0 40px rgba(0, 0, 0, 0.4);
   padding: 18px 20px 20px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   color: #c0dde8;
   user-select: none;
 }

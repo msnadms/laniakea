@@ -3,7 +3,7 @@ import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
-import { ANOMALY_LORE } from '../game/anomalyLore';
+import { getAnomalyLore } from '../game/anomalyLore';
 import './ShipHUD.css';
 import './AnomalyToast.css';
 
@@ -105,9 +105,9 @@ function AddressReadout() {
 
 function AnomalyReadout() {
   const view = useUIStore((s) => s.view);
-  const kind = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id)?.kind : undefined) ?? null);
-  if (view !== 'system' || !kind) return null;
-  const lore = ANOMALY_LORE[kind];
+  const anomaly = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id) : undefined) ?? null);
+  if (view !== 'system' || !anomaly) return null;
+  const lore = getAnomalyLore(anomaly);
 
   function openPanel() {
     useUIStore.getState().setSelectedPlanet(null);

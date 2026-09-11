@@ -421,6 +421,15 @@ export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> =
   matrioshkaBrain: [0.85, 0.97],
 };
 
+export const ANOMALY_LIVING_CHANCE = 0.2;
+
+export const ANOMALY_INTEGRITY_LIVING: Partial<Record<AnomalyKind, readonly [number, number]>> = {
+  dysonSphere: [0.9, 1],
+  shkadovThruster: [0.85, 0.98],
+  nicollDysonBeam: [0.85, 0.98],
+  matrioshkaBrain: [0.95, 1],
+};
+
 export const ANOMALY_SIGN_MIN_SCALE = 1.1;
 export const ANOMALY_BEAM_SIGN_MIN_SCALE = 0.45;
 export const ANOMALY_SIGN_FADE_SPAN = 0.5;

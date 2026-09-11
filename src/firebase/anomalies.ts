@@ -4,6 +4,7 @@ import type { AnomalyKind } from '../game/anomalies';
 
 export interface AnomalyRecord {
   kind: AnomalyKind;
+  living: boolean;
   superclusterSeed: number;
   superclusterName: string;
   galaxySeed: number;
@@ -30,6 +31,7 @@ export async function loadAnomalies(uid: string): Promise<AnomalyRecord[]> {
     const data = anomalyDoc.data();
     return {
       kind: data.kind as AnomalyKind,
+      living: (data.living as boolean) ?? false,
       superclusterSeed: data.superclusterSeed as number,
       superclusterName: data.superclusterName as string,
       galaxySeed: data.galaxySeed as number,

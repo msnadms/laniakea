@@ -7,7 +7,7 @@ import { STAR_TYPE_LABELS, type StarType } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import { anomalyRecordKey, deleteAnomalyDiscoveries, type AnomalyRecord } from '../firebase/anomalies';
-import { ANOMALY_LORE } from '../game/anomalyLore';
+import { getAnomalyLore } from '../game/anomalyLore';
 import type { AnomalyKind } from '../game/anomalies';
 import { useAnomalyStore } from '../store/anomalyStore';
 import './Codex.css';
@@ -217,7 +217,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
 
 function anomalyNameMatches(records: Record<string, AnomalyRecord>, galaxySeed: number, systemId: string, query: string): boolean {
   const record = records[anomalyRecordKey(galaxySeed, systemId)];
-  return !!record && ANOMALY_LORE[record.kind].name.toLowerCase().includes(query);
+  return !!record && getAnomalyLore(record).name.toLowerCase().includes(query);
 }
 
 function highlight(text: string, query: string) {
@@ -394,9 +394,10 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
-  const anomalyKind = useAnomalyStore((s) => s.records[anomalyRecordKey(galaxySeed, system.id)]?.kind ?? null);
+  const anomalyRecord = useAnomalyStore((s) => s.records[anomalyRecordKey(galaxySeed, system.id)] ?? null);
+  const anomalyKind = anomalyRecord?.kind ?? null;
   const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType, anomalyKind), [system.seed, system.starType, anomalyKind]);
-  const anomalyLore = anomalyKind ? ANOMALY_LORE[anomalyKind] : null;
+  const anomalyLore = anomalyRecord ? getAnomalyLore(anomalyRecord) : null;
 
   return (
     <div className="codex-system">

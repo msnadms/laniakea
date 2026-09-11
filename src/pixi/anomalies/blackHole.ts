@@ -1,7 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
 import { anomalyVisualRng } from '../../game/anomalies';
-import { ORBITAL_K } from '../../game/planetGen';
-import { orbitPoint, projectSystemPointWithBasis, type Point3D, type ProjectedPoint, type ProjectionBasis } from '../projection';
+import { projectSystemPointWithBasis, type Point3D, type ProjectedPoint, type ProjectionBasis } from '../projection';
 import { drawTaper, makeSelectable, TAU } from './shared';
 import type { AnomalyVisual, AnomalyVisualContext } from './types';
 
@@ -21,12 +20,9 @@ interface Wedge {
   midAngle: number;
 }
 
-export function createBlackHole({ anomaly, planetExtent, onSelect }: AnomalyVisualContext): AnomalyVisual {
+export function createBlackHole({ anomaly, onSelect }: AnomalyVisualContext): AnomalyVisual {
   const rng = anomalyVisualRng(anomaly);
   const active = anomaly.active;
-  const orbitRadius = planetExtent * 1.3;
-  const orbitSpeed = ORBITAL_K / Math.pow(orbitRadius, 1.5);
-  let orbitAngle = rng() * TAU;
   let spin = rng() * TAU;
   const flickerPhase = rng() * TAU;
 
@@ -81,13 +77,11 @@ export function createBlackHole({ anomaly, planetExtent, onSelect }: AnomalyVisu
 
   return {
     nodes,
-    extent: orbitRadius + DISK_OUTER,
-    starAlpha: 1,
-    coronaAlpha: 1,
+    extent: DISK_OUTER,
+    starAlpha: 0,
+    coronaAlpha: 0,
     update(dt: number, elapsed: number, basis: ProjectionBasis) {
-      orbitAngle += orbitSpeed * dt;
       spin += DISK_SPIN * dt;
-      orbitPoint(orbitAngle, orbitRadius, 0, centre);
       projectSystemPointWithBasis(centre, basis, projected);
       body.position.set(projected.x, projected.y);
       body.scale.set(projected.scale);

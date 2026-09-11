@@ -36,7 +36,7 @@
 
 .address-coords {
   font-size: 11px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   letter-spacing: 0.06em;
   color: #2a4060;
 }

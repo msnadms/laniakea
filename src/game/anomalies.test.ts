@@ -21,6 +21,8 @@ import {
   ANOMALY_BRAIN_MIN_DYSON_SPHERES,
   ANOMALY_DYSON_MAX,
   ANOMALY_INTEGRITY,
+  ANOMALY_INTEGRITY_LIVING,
+  ANOMALY_LIVING_CHANCE,
 } from './constants';
 import { MILKY_WAY_NUM_ARMS, MILKY_WAY_SEED } from './hardcoded';
 import { generateSystemLayout } from './planetGen';
@@ -94,12 +96,15 @@ describe('anomaly generation', () => {
         expect(host.id).toBe(hostId);
         expect(canHostAnomaly(host)).toBe(true);
         expect(anomaly.seed).toBe(anomalySeed(galaxy.seed, hostId));
-        const [min, max] = ANOMALY_INTEGRITY[anomaly.kind];
+        const [min, max] = (anomaly.living ? ANOMALY_INTEGRITY_LIVING[anomaly.kind] : undefined) ?? ANOMALY_INTEGRITY[anomaly.kind];
         expect(anomaly.integrity).toBeGreaterThanOrEqual(min);
         expect(anomaly.integrity).toBeLessThanOrEqual(max);
         if (anomaly.kind !== 'blackHole') {
           expect(civilization).not.toBeNull();
           expect(anomaly.active).toBe(false);
+          expect(anomaly.living).toBe(civilization!.living);
+        } else {
+          expect(anomaly.living).toBe(false);
         }
 
         switch (anomaly.kind) {
@@ -171,6 +176,15 @@ describe('anomaly generation', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('rolls living civilisations near the target rate without changing host selection', () => {
+    const civilizations = SAMPLE.map(({ anomalies }) => anomalies.civilization).filter((c) => c !== null);
+    expect(civilizations.length).toBeGreaterThan(0);
+    const livingRate = civilizations.filter((c) => c.living).length / civilizations.length;
+    expect(livingRate).toBeGreaterThan(0);
+    expect(livingRate).toBeLessThan(1);
+    expect(Math.abs(livingRate - ANOMALY_LIVING_CHANCE)).toBeLessThan(0.15);
   });
 
   it('hosts nothing in the Milky Way', () => {

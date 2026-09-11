@@ -47,7 +47,7 @@
   font-size: 9px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   writing-mode: vertical-lr;
   text-orientation: upright;
 }
@@ -131,12 +131,12 @@
   letter-spacing: 0.12em;
   color: #2a6a8a;
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .info-stat-value {
   font-size: 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   color: #00c8e8;
   text-shadow: 0 0 6px rgba(0, 200, 232, 0.45);
 }
@@ -165,7 +165,7 @@
   font-size: 10px;
   letter-spacing: 0.1em;
   color: #00c8e8;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   width: 24px;
   flex-shrink: 0;
 }
@@ -174,13 +174,13 @@
   font-size: 9px;
   letter-spacing: 0.06em;
   color: rgba(0, 180, 220, 0.45);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   flex: 1;
 }
 
 .info-table-temp {
   font-size: 9px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   color: #2a6a8a;
   white-space: nowrap;
 }
@@ -223,7 +223,7 @@
   font-size: 10px;
   line-height: 1.7;
   color: rgba(0, 180, 220, 0.5);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   margin: 0 0 10px;
 }
 
@@ -240,7 +240,7 @@
   letter-spacing: 0.2em;
   color: rgba(0, 180, 220, 0.35);
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   margin-bottom: 6px;
 }
 
@@ -248,7 +248,7 @@
   font-size: 9px;
   line-height: 1.65;
   color: rgba(0, 180, 220, 0.45);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .info-anomaly-glyph {
@@ -268,7 +268,7 @@
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .info-anomaly-name--unknown {
@@ -291,7 +291,7 @@
   line-height: 1.6;
   font-style: italic;
   color: rgba(0, 180, 220, 0.42);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .info-log-entry {
@@ -307,7 +307,7 @@
   font-size: 8px;
   letter-spacing: 0.14em;
   color: #2a6a8a;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   text-transform: uppercase;
 }
 
@@ -315,5 +315,5 @@
   font-size: 10px;
   letter-spacing: 0.06em;
   color: rgba(0, 180, 220, 0.6);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }

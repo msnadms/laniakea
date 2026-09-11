@@ -63,7 +63,7 @@
 
 .hud-address-coords {
   font-size: 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   letter-spacing: 0.12em;
   color: #1e4a6a;
   margin-top: 4px;
@@ -77,7 +77,7 @@
   background: transparent;
   border: none;
   border-top: 1px solid rgba(0, 190, 230, 0.18);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;

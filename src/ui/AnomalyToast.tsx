@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ANOMALY_LORE } from '../game/anomalyLore';
+import { getAnomalyLore } from '../game/anomalyLore';
 import { anomalyRecordKey } from '../firebase/anomalies';
 import { useAnomalyStore } from '../store/anomalyStore';
 import './AnomalyToast.css';
@@ -17,17 +17,17 @@ export function AnomalyToast() {
   }, [latest, dismissLatest]);
 
   if (!latest) return null;
-  const lore = ANOMALY_LORE[latest.kind];
+  const lore = getAnomalyLore(latest);
 
   return (
     <div
       key={`${anomalyRecordKey(latest.galaxySeed, latest.systemId)}-${latest.discoveredAt}`}
-      className="anomaly-toast"
+      className={`anomaly-toast${latest.living ? ' anomaly-toast--living' : ''}`}
       role="status"
       style={{ animationDuration: `${TOAST_DURATION_MS}ms` }}
     >
       <span className="anomaly-toast-rule" />
-      <span className="anomaly-toast-label">Anomaly Catalogued</span>
+      <span className="anomaly-toast-label">{latest.living ? 'Signal Detected' : 'Anomaly Catalogued'}</span>
       <span className="anomaly-toast-sep">▸</span>
       <span className={`anomaly-toast-name anomaly-tier-${lore.tier.toLowerCase()}`}>{lore.name}</span>
       <span className="anomaly-toast-rule" />

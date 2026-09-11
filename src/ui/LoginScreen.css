@@ -30,7 +30,7 @@
 }
 
 .login-status {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 13px;
   letter-spacing: 0.08em;
   color: rgba(0, 216, 255, 0.6);
@@ -39,7 +39,7 @@
 }
 
 .login-btn {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   letter-spacing: 0.1em;
   background: transparent;

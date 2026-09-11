@@ -16,6 +16,8 @@ import {
   ANOMALY_HOME_OUTER_ARM_FRACTION,
   ANOMALY_HOME_RADIUS,
   ANOMALY_INTEGRITY,
+  ANOMALY_INTEGRITY_LIVING,
+  ANOMALY_LIVING_CHANCE,
   ANOMALY_SHKADOV_CHANCE,
   ANOMALY_SHKADOV_HEIGHT_FRACTION,
   GALAXY_RADIUS,
@@ -46,12 +48,14 @@ export interface Anomaly {
   integrity: number;
   direction: Vector3 | null;
   active: boolean;
+  living: boolean;
 }
 
 export interface Civilization {
   x: number;
   y: number;
   radius: number;
+  living: boolean;
 }
 
 export interface GalaxyAnomalies {
@@ -125,13 +129,19 @@ function normalize(x: number, y: number, z: number): Vector3 {
   return length === 0 ? { x: 1, y: 0, z: 0 } : { x: x / length, y: y / length, z: z / length };
 }
 
-function createAnomaly(kind: AnomalyKind, galaxySeed: number, hostId: number, direction: Vector3 | null = null): Anomaly {
+function createAnomaly(
+  kind: AnomalyKind,
+  galaxySeed: number,
+  hostId: number,
+  direction: Vector3 | null = null,
+  living = false,
+): Anomaly {
   const seed = anomalySeed(galaxySeed, hostId);
   const rng = createRng(seed);
-  const [min, max] = ANOMALY_INTEGRITY[kind];
+  const [min, max] = (living ? ANOMALY_INTEGRITY_LIVING[kind] : undefined) ?? ANOMALY_INTEGRITY[kind];
   const integrity = min + (max - min) * rng();
   const active = kind === 'blackHole' && rng() < ANOMALY_BLACK_HOLE_ACTIVE_CHANCE;
-  return { kind, hostId, seed, integrity, direction, active };
+  return { kind, hostId, seed, integrity, direction, active, living };
 }
 
 function pickWeighted<T>(rng: Rng, items: readonly T[], weight: (item: T) => number): T | null {
@@ -184,7 +194,7 @@ function pickHome(rng: Rng, hosts: readonly StarSystem[]): StarSystem {
   return pool[Math.floor(rng() * pool.length)];
 }
 
-export function isInCivilization(system: PlanePoint, civilization: Civilization): boolean {
+export function isInCivilization(system: PlanePoint, civilization: Pick<Civilization, 'x' | 'y' | 'radius'>): boolean {
   return planeDistance(system, civilization) <= civilization.radius;
 }
 
@@ -198,49 +208,61 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
   const wantsBeam = rng() < ANOMALY_BEAM_CHANCE;
 
   const home = pickHome(rng, hosts);
-  const civilization: Civilization = { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS };
-  const inRegion = (system: StarSystem) => isInCivilization(system, civilization);
+  const center = { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS };
+  const inRegion = (system: StarSystem) => isInCivilization(system, center);
+  const occupied = new Set<number>();
 
   const brainCandidate = wantsBrain
-    ? nearestTo(hosts.filter((system) => system.starType === 'K' && isSettledPopulation(system) && inRegion(system)), civilization)
+    ? nearestTo(hosts.filter((system) => system.starType === 'K' && isSettledPopulation(system) && inRegion(system)), center)
     : null;
 
   const dysonHosts = pickManyWeighted(
     rng,
     hosts.filter((system) => isRelicClass(system) && isSettledPopulation(system) && inRegion(system) && system !== brainCandidate),
     dysonCount,
-    (system) => 1 - planeDistance(system, civilization) / civilization.radius + ANOMALY_DYSON_EDGE_WEIGHT,
+    (system) => 1 - planeDistance(system, center) / center.radius + ANOMALY_DYSON_EDGE_WEIGHT,
   );
-  for (const host of dysonHosts) byHost.set(host.id, createAnomaly('dysonSphere', galaxy.seed, host.id));
+  for (const host of dysonHosts) occupied.add(host.id);
 
-  const brain = brainCandidate && dysonHosts.length >= ANOMALY_BRAIN_MIN_DYSON_SPHERES ? brainCandidate : null;
-  if (brain) byHost.set(brain.id, createAnomaly('matrioshkaBrain', galaxy.seed, brain.id));
+  const brainHost = brainCandidate && dysonHosts.length >= ANOMALY_BRAIN_MIN_DYSON_SPHERES ? brainCandidate : null;
+  if (brainHost) occupied.add(brainHost.id);
 
+  let shkadovHost: StarSystem | null = null;
   if (wantsShkadov) {
     const threshold = highStarThreshold(galaxy.systems);
-    const host = nearestTo(
-      hosts.filter((system) => isRelicClass(system) && !inRegion(system) && !byHost.has(system.id) && relativeHeight(system) >= threshold),
-      civilization,
+    shkadovHost = nearestTo(
+      hosts.filter((system) => isRelicClass(system) && !inRegion(system) && !occupied.has(system.id) && relativeHeight(system) >= threshold),
+      center,
     );
-    if (host) {
-      const heading = normalize(host.x - civilization.x, host.y - civilization.y, host.z);
-      byHost.set(host.id, createAnomaly('shkadovThruster', galaxy.seed, host.id, heading));
-    }
+    if (shkadovHost) occupied.add(shkadovHost.id);
   }
 
+  let beamHost: StarSystem | null = null;
   if (wantsBeam) {
     const rim = hosts.filter((system) => {
-      const reach = planeDistance(system, civilization) / civilization.radius;
-      return isRelicClass(system) && !byHost.has(system.id) && reach >= ANOMALY_BEAM_RIM_MIN && reach <= ANOMALY_BEAM_RIM_MAX;
+      const reach = planeDistance(system, center) / center.radius;
+      return isRelicClass(system) && !occupied.has(system.id) && reach >= ANOMALY_BEAM_RIM_MIN && reach <= ANOMALY_BEAM_RIM_MAX;
     });
-    const host = rim.length > 0 ? rim[Math.floor(rng() * rim.length)] : null;
-    if (host) {
-      const target = brain ?? civilization;
-      byHost.set(host.id, createAnomaly('nicollDysonBeam', galaxy.seed, host.id, normalize(target.x - host.x, target.y - host.y, 0)));
-    }
+    beamHost = rim.length > 0 ? rim[Math.floor(rng() * rim.length)] : null;
+    if (beamHost) occupied.add(beamHost.id);
   }
 
-  return civilization;
+  // Appended after every placement draw above so existing galaxies keep their host selection unchanged.
+  const living = rng() < ANOMALY_LIVING_CHANCE;
+
+  for (const host of dysonHosts) byHost.set(host.id, createAnomaly('dysonSphere', galaxy.seed, host.id, null, living));
+  if (brainHost) byHost.set(brainHost.id, createAnomaly('matrioshkaBrain', galaxy.seed, brainHost.id, null, living));
+  if (shkadovHost) {
+    const heading = normalize(shkadovHost.x - center.x, shkadovHost.y - center.y, shkadovHost.z);
+    byHost.set(shkadovHost.id, createAnomaly('shkadovThruster', galaxy.seed, shkadovHost.id, heading, living));
+  }
+  if (beamHost) {
+    const target = brainHost ?? center;
+    const direction = normalize(target.x - beamHost.x, target.y - beamHost.y, 0);
+    byHost.set(beamHost.id, createAnomaly('nicollDysonBeam', galaxy.seed, beamHost.id, direction, living));
+  }
+
+  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living };
 }
 
 function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>) {

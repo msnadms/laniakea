@@ -61,6 +61,9 @@ const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000
 const DYSON_SIGN_TINT = 0x9a3a1c;
 const DYSON_SIGN_SIZE = 0.55;
 const BRAIN_SIGN_SIZE = 2.4;
+const DYSON_LIVING_TINT = 0xffcf82;
+const DYSON_LIVING_SIZE = 0.85;
+const BRAIN_LIVING_SIZE = 2.0;
 
 const GALAXY_ORBIT: OrbitConfig = {
   createCamera: createGalaxyCamera,
@@ -251,13 +254,13 @@ export function GalaxyWorld() {
     for (const anomaly of galaxyAnomalies.byHost.values()) {
       const host = systems[anomaly.hostId];
       if (anomaly.kind === 'dysonSphere') {
-        displays.set(host.id, {
-          color: mixColor(scaleColor(host.color, 0.75), DYSON_SIGN_TINT, 0.5),
-          size: host.size * DYSON_SIGN_SIZE,
-          shrouded: false,
-        });
+        displays.set(host.id, anomaly.living
+          ? { color: mixColor(host.color, DYSON_LIVING_TINT, 0.4), size: host.size * DYSON_LIVING_SIZE, shrouded: false }
+          : { color: mixColor(scaleColor(host.color, 0.75), DYSON_SIGN_TINT, 0.5), size: host.size * DYSON_SIGN_SIZE, shrouded: false });
       } else if (anomaly.kind === 'matrioshkaBrain') {
-        displays.set(host.id, { color: host.color, size: host.size * BRAIN_SIGN_SIZE, shrouded: true });
+        displays.set(host.id, anomaly.living
+          ? { color: mixColor(host.color, DYSON_LIVING_TINT, 0.3), size: host.size * BRAIN_LIVING_SIZE, shrouded: false }
+          : { color: host.color, size: host.size * BRAIN_SIGN_SIZE, shrouded: true });
       }
     }
     return displays;

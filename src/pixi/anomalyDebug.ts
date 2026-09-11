@@ -22,6 +22,8 @@ const KIND_LABELS: Record<AnomalyKind, string> = {
 
 const KIND_RANK: AnomalyKind[] = ['matrioshkaBrain', 'nicollDysonBeam', 'shkadovThruster', 'dysonSphere', 'blackHole'];
 
+const LIVING_COLOR = 0xffe080;
+
 const REGION_STEPS = 64;
 
 const SCAN_BUDGET_MS = 6;
@@ -32,17 +34,20 @@ function emptyPoint(): ProjectedPoint {
 
 export function createSuperclusterAnomalyDebug(dots: readonly SuperclusterDot[]) {
   const groups = new Map<number, SuperclusterDot[]>();
+  const living: SuperclusterDot[] = [];
   let cursor = 0;
   const scan = () => {
     const deadline = performance.now() + SCAN_BUDGET_MS;
     while (cursor < dots.length) {
       const dot = dots[cursor++];
       if (!hasCivilization(dot.seed)) continue;
-      const kinds = new Set([...generateAnomalies(generateGalaxy(dot.seed)).byHost.values()].map((anomaly) => anomaly.kind));
+      const anomalies = generateAnomalies(generateGalaxy(dot.seed));
+      const kinds = new Set([...anomalies.byHost.values()].map((anomaly) => anomaly.kind));
       const color = KIND_COLORS[KIND_RANK.find((kind) => kinds.has(kind)) ?? 'dysonSphere'];
       const group = groups.get(color);
       if (group) group.push(dot);
       else groups.set(color, [dot]);
+      if (anomalies.civilization?.living) living.push(dot);
       if (performance.now() > deadline) return;
     }
   };
@@ -64,6 +69,13 @@ export function createSuperclusterAnomalyDebug(dots: readonly SuperclusterDot[])
         }
         gfx.stroke({ color, width: 1.5 / cameraScale, alpha: 0.9 });
       }
+      // Drawn last, in front of every kind-color ring, so living civilisations are never lost among them.
+      const livingRadius = 16 / cameraScale;
+      for (const dot of living) {
+        projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
+        gfx.circle(projected.x, projected.y, livingRadius);
+      }
+      if (living.length > 0) gfx.stroke({ color: LIVING_COLOR, width: 3 / cameraScale, alpha: 1 });
     },
   };
 }
@@ -76,14 +88,14 @@ export function createGalaxyAnomalyDebug(root: Container, systems: readonly Star
   container.addChild(rings);
 
   const entries = [...anomalies.byHost.values()].map((anomaly) => {
-    const color = KIND_COLORS[anomaly.kind];
+    const color = anomaly.living ? LIVING_COLOR : KIND_COLORS[anomaly.kind];
     const label = new Text({
-      text: `${KIND_LABELS[anomaly.kind]}${anomaly.active ? ' (active)' : ''}`,
-      style: { fontFamily: 'monospace', fontSize: 12, fill: color },
+      text: `${KIND_LABELS[anomaly.kind]}${anomaly.living ? ' (living)' : ''}${anomaly.active ? ' (active)' : ''}`,
+      style: { fontFamily: 'IBM Plex Sans', fontSize: 12, fill: color },
     });
     label.anchor.set(0, 0.5);
     container.addChild(label);
-    return { host: systems[anomaly.hostId], color, label, projected: emptyPoint() };
+    return { host: systems[anomaly.hostId], color, ringWidth: anomaly.living ? 3 : 1.5, label, projected: emptyPoint() };
   });
 
   const region = anomalies.civilization;
@@ -99,7 +111,7 @@ export function createGalaxyAnomalyDebug(root: Container, systems: readonly Star
       rings.closePath().stroke({ color: 0xff8a30, width: 1 / scale, alpha: 0.5 });
     }
     for (const entry of entries) {
-      rings.circle(entry.projected.x, entry.projected.y, 12 / scale).stroke({ color: entry.color, width: 1.5 / scale, alpha: 0.95 });
+      rings.circle(entry.projected.x, entry.projected.y, 12 / scale).stroke({ color: entry.color, width: entry.ringWidth / scale, alpha: 0.95 });
       entry.label.position.set(entry.projected.x + 16 / scale, entry.projected.y);
       entry.label.scale.set(1 / scale);
     }

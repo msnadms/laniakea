@@ -71,6 +71,7 @@ export const ORBITAL_K = 3500;
 export const MOON_K = 430;
 
 const INNER_WORLD_CONSUMERS: ReadonlySet<AnomalyKind> = new Set(['dysonSphere', 'matrioshkaBrain']);
+const NO_HABITABLE_ZONE: ReadonlySet<AnomalyKind> = new Set(['blackHole']);
 
 export function generateSystemLayout(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null): SystemLayout {
   if (seed === SOL_SEED) return SOL_SYSTEM_LAYOUT;
@@ -78,6 +79,7 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   const isBrownDwarf = starType === 'L';
   const isNeutronStar = starType === 'N';
   const innerWorldsConsumed = !!anomalyKind && INNER_WORLD_CONSUMERS.has(anomalyKind);
+  const noHabitableZone = !!anomalyKind && NO_HABITABLE_ZONE.has(anomalyKind);
   const numRings = (isBrownDwarf || isNeutronStar) ? Math.floor(rng() * 3) + 2 : Math.floor(rng() * 5) + 3;
   let orbitRadius = isNeutronStar ? 200 + rng() * 80 : 380 + rng() * 120;
 
@@ -86,7 +88,9 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   for (let ring = 0; ring < numRings; ring++) {
     const rawZone = getPlanetZone(ring, numRings);
     const rolledZone = isBrownDwarf ? 'ice' : isNeutronStar ? 'hot' : (rawZone === 'habitable' && rng() > 0.12 ? 'marginal' : rawZone);
-    const zone = innerWorldsConsumed && (rolledZone === 'hot' || rolledZone === 'habitable') ? 'marginal' : rolledZone;
+    const zone = innerWorldsConsumed && (rolledZone === 'hot' || rolledZone === 'habitable') ? 'marginal'
+      : noHabitableZone && rolledZone === 'habitable' ? 'marginal'
+      : rolledZone;
     const cfg = getZoneConfig(zone);
 
     const radius = Math.floor(rng() * cfg.radiusSpread) + cfg.radiusMin;

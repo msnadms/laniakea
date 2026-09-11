@@ -108,7 +108,7 @@ function createBeamSign(host: StarSystem, anomaly: Anomaly): Sign {
     },
     tick(elapsed, visibility) {
       const time = elapsed + timeOffset;
-      const burst = 0.1 + 0.9 * sputter(time);
+      const burst = anomaly.living ? 1 : 0.1 + 0.9 * sputter(time);
       segments.forEach((gfx, i) => {
         const reach = (i + 0.5) / ANOMALY_BEAM_SIGN_SEGMENTS;
         const packet = 0.4 + 0.6 * Math.pow(Math.max(0, Math.sin((reach * 5 - time * 0.9) * Math.PI)), 2);
@@ -127,7 +127,7 @@ function createWakeSign(host: StarSystem, anomaly: Anomaly): Sign {
   const planeLength = Math.hypot(headingX, headingY) || 1;
   const backX = -headingX / planeLength;
   const backY = -headingY / planeLength;
-  const color = mixColor(host.color, 0xffffff, 0.45);
+  const color = anomaly.living ? mixColor(host.color, 0xffcf82, 0.55) : mixColor(host.color, 0xffffff, 0.45);
   const gfx = new Graphics();
   gfx.blendMode = 'add';
   const points = Array.from({ length: WAKE_STEPS + 1 }, emptyPoint);
@@ -142,12 +142,13 @@ function createWakeSign(host: StarSystem, anomaly: Anomaly): Sign {
         projectPlanePointWithBasis(host.x + backX * reach, host.y + backY * reach, host.z, basis, points[i]);
       }
       gfx.clear();
+      const strength = anomaly.living ? 1.4 : 1;
       for (let i = 0; i < WAKE_STEPS; i++) {
         const fade = 1 - i / WAKE_STEPS;
         gfx
           .moveTo(points[i].x, points[i].y)
           .lineTo(points[i + 1].x, points[i + 1].y)
-          .stroke({ color, width: 1.8 * fade + 0.3, alpha: 0.55 * fade });
+          .stroke({ color, width: (1.8 * fade + 0.3) * strength, alpha: Math.min(1, 0.55 * fade * strength) });
       }
       gfx.zIndex = points[0].depth - SIGN_Z;
       depthAlpha = galaxyDepthAlpha(points[0].depth);

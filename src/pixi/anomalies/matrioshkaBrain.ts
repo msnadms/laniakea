@@ -54,7 +54,7 @@ export function createMatrioshkaBrain({ anomaly, sunRadius, innermostOrbit, onSe
 
   const shells: Shell[] = radii.map((radius, index) => {
     const count = Math.max(MIN_SHELL_PANELS, Math.round(TOTAL_PANELS * radius * radius / area));
-    const integrity = Math.min(0.99, Math.max(0.8, anomaly.integrity + (rng() - 0.5) * 0.06));
+    const integrity = Math.min(anomaly.living ? 1 : 0.99, Math.max(0.8, anomaly.integrity + (rng() - 0.5) * 0.06));
     return {
       set: createPanelSet(applyIntegrity(buildSphereLattice(count, rng), integrity, rng), radius),
       color: mixColor(EMBER, DEEP_RED, index / (shellCount - 1)),

@@ -16,6 +16,7 @@ function catalogue(system: StarSystem | null) {
   if (anomalies.records[anomalyRecordKey(game.galaxy.seed, system.id)]) return;
   const record: AnomalyRecord = {
     kind: anomaly.kind,
+    living: anomaly.living,
     superclusterSeed: game.supercluster.seed,
     superclusterName: game.supercluster.name,
     galaxySeed: game.galaxy.seed,
