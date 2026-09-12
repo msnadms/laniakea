@@ -4,6 +4,7 @@ import {
   ANOMALY_BEAM_SIGN_LENGTH,
   ANOMALY_BEAM_SIGN_MIN_SCALE,
   ANOMALY_BEAM_SIGN_SEGMENTS,
+  ANOMALY_CANNON_SIGN_LENGTH,
   ANOMALY_SIGN_FADE_SPAN,
   ANOMALY_SIGN_MIN_SCALE,
 } from '../game/constants';
@@ -30,6 +31,11 @@ const XRAY_OFFSET = 4.5;
 const BEAM_COLOR = 0xffe4bc;
 const WAKE_STEPS = 6;
 const WAKE_LENGTH = 34;
+const CANNON_COLOR = 0xbcd6ff;
+const CANNON_PERIOD = 9;
+const CANNON_CHARGE = 2.5;
+const CANNON_FLIGHT = 1.4;
+const CANNON_STREAK = 0.12;
 
 function emptyPoint(): ProjectedPoint {
   return { x: 0, y: 0, depth: 0, scale: 1 };
@@ -160,6 +166,59 @@ function createWakeSign(host: StarSystem, anomaly: Anomaly): Sign {
   };
 }
 
+function createCannonSign(host: StarSystem, anomaly: Anomaly): Sign {
+  const rng = anomalyVisualRng(anomaly);
+  const phase = rng() * CANNON_PERIOD;
+  const directionX = anomaly.direction?.x ?? 1;
+  const directionY = anomaly.direction?.y ?? 0;
+  const shot = new Graphics()
+    .moveTo(0, 0).lineTo(1, 0).stroke({ color: CANNON_COLOR, width: 3.6, alpha: 0.25 })
+    .moveTo(0, 0).lineTo(1, 0).stroke({ color: 0xffffff, width: 1, alpha: 1 });
+  shot.blendMode = 'add';
+  const flash = new Graphics()
+    .circle(0, 0, 3.2).fill({ color: CANNON_COLOR, alpha: 0.35 })
+    .circle(0, 0, 1.1).fill({ color: 0xffffff, alpha: 1 });
+  flash.blendMode = 'add';
+  const start = emptyPoint();
+  const end = emptyPoint();
+  let flashDepthAlpha = 1;
+
+  return {
+    nodes: [shot, flash],
+    minScale: ANOMALY_BEAM_SIGN_MIN_SCALE,
+    project(basis) {
+      projectPlanePointWithBasis(host.x, host.y, host.z, basis, start);
+      projectPlanePointWithBasis(host.x + directionX * ANOMALY_CANNON_SIGN_LENGTH, host.y + directionY * ANOMALY_CANNON_SIGN_LENGTH, host.z, basis, end);
+      flash.position.set(start.x, start.y);
+      flash.scale.set(galaxyDepthScale(start.depth));
+      flash.zIndex = start.depth + SIGN_Z;
+      flashDepthAlpha = galaxyDepthAlpha(start.depth);
+    },
+    tick(elapsed, visibility) {
+      const t = (elapsed + phase) % CANNON_PERIOD;
+      const charging = 0.45 * Math.max(0, 1 - (CANNON_PERIOD - t) / CANNON_CHARGE) ** 2;
+      flash.alpha = visibility * flashDepthAlpha * Math.min(1, Math.exp(-t * 4) + charging);
+      flash.visible = flash.alpha > 0.002;
+
+      const flight = t / CANNON_FLIGHT;
+      const head = Math.min(1, flight);
+      const tail = Math.max(0, flight - CANNON_STREAK);
+      if (flight > 1 + CANNON_STREAK || head <= tail) {
+        shot.visible = false;
+        return;
+      }
+      const fromX = start.x + (end.x - start.x) * tail;
+      const fromY = start.y + (end.y - start.y) * tail;
+      shot.position.set(fromX, fromY);
+      shot.rotation = Math.atan2(end.y - start.y, end.x - start.x);
+      shot.scale.set(Math.hypot(end.x - start.x, end.y - start.y) * (head - tail), 1);
+      shot.zIndex = start.depth + (end.depth - start.depth) * (head + tail) / 2 + SIGN_Z;
+      shot.alpha = visibility * galaxyDepthAlpha(shot.zIndex) * (1 - 0.75 * head);
+      shot.visible = shot.alpha > 0.002;
+    },
+  };
+}
+
 export function createAnomalySigns(root: Container, systems: readonly StarSystem[], anomalies: GalaxyAnomalies): AnomalySigns {
   const signs: Sign[] = [];
   for (const anomaly of anomalies.byHost.values()) {
@@ -167,6 +226,7 @@ export function createAnomalySigns(root: Container, systems: readonly StarSystem
     if (anomaly.kind === 'blackHole') signs.push(createXRaySign(host, anomaly));
     else if (anomaly.kind === 'nicollDysonBeam') signs.push(createBeamSign(host, anomaly));
     else if (anomaly.kind === 'shkadovThruster') signs.push(createWakeSign(host, anomaly));
+    else if (anomaly.kind === 'alcubierreCannon') signs.push(createCannonSign(host, anomaly));
   }
   const nodes = signs.flatMap((sign) => sign.nodes);
   for (const node of nodes) {

@@ -9,6 +9,7 @@ import {
   ANOMALY_BLACK_HOLE_CHANCE,
   ANOMALY_BLACK_HOLE_REACH,
   ANOMALY_BRAIN_CHANCE,
+  ANOMALY_CANNON_CHANCE,
   ANOMALY_BRAIN_MIN_DYSON_SPHERES,
   ANOMALY_CIVILIZATION_CHANCE,
   ANOMALY_DYSON_EDGE_WEIGHT,
@@ -28,7 +29,7 @@ import {
 } from './constants';
 import type { Galaxy, Rng, StarSystem, StarType } from './types';
 
-export type AnomalyKind = 'aldersonDisk' | 'blackHole' | 'dysonSphere' | 'homeworld' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
+export type AnomalyKind = 'alcubierreCannon' | 'aldersonDisk' | 'blackHole' | 'dysonSphere' | 'homeworld' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
 
 export type HomeKind = Extract<AnomalyKind, 'aldersonDisk' | 'homeworld'>;
 
@@ -40,6 +41,7 @@ export const ANOMALY_KINDS: readonly AnomalyKind[] = [
   'homeworld',
   'matrioshkaBrain',
   'aldersonDisk',
+  'alcubierreCannon',
 ];
 
 export interface Vector3 {
@@ -64,6 +66,7 @@ export interface Civilization {
   radius: number;
   living: boolean;
   homeKind: HomeKind;
+  cannon: boolean;
 }
 
 export interface GalaxyAnomalies {
@@ -260,6 +263,7 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
   // Appended after every placement draw above so existing galaxies keep their host selection unchanged.
   const living = rng() < ANOMALY_LIVING_CHANCE;
   const homeKind: HomeKind = living && rng() < ANOMALY_ALDERSON_CHANCE ? 'aldersonDisk' : 'homeworld';
+  const cannon = homeKind === 'aldersonDisk' && rng() < ANOMALY_CANNON_CHANCE;
 
   for (const host of dysonHosts) byHost.set(host.id, createAnomaly('dysonSphere', galaxy.seed, host.id, null, living));
   if (brainHost) byHost.set(brainHost.id, createAnomaly('matrioshkaBrain', galaxy.seed, brainHost.id, null, living));
@@ -273,7 +277,7 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
     byHost.set(beamHost.id, createAnomaly('nicollDysonBeam', galaxy.seed, beamHost.id, direction, living));
   }
 
-  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living, homeKind };
+  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living, homeKind, cannon };
 }
 
 function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>) {
@@ -314,6 +318,30 @@ function placePopulatedWorlds(
   return new Set(pickManyWeighted(rng, candidates, count, () => 1).map((system) => system.id));
 }
 
+function placeCannon(
+  galaxy: Galaxy,
+  hosts: readonly StarSystem[],
+  civilization: Civilization,
+  byHost: Map<number, Anomaly>,
+  populated: ReadonlySet<number>,
+) {
+  if (!civilization.cannon) return;
+  let host: StarSystem | null = null;
+  let farthest = -Infinity;
+  for (const system of hosts) {
+    if (byHost.has(system.id) || populated.has(system.id)) continue;
+    if (!isRelicClass(system) || !isSettledPopulation(system) || !isInCivilization(system, civilization)) continue;
+    const distance = planeDistance(system, civilization);
+    if (distance > farthest) {
+      farthest = distance;
+      host = system;
+    }
+  }
+  if (!host) return;
+  const direction = normalize(host.x - civilization.x, host.y - civilization.y, 0);
+  byHost.set(host.id, createAnomaly('alcubierreCannon', galaxy.seed, host.id, direction, civilization.living));
+}
+
 export const NO_ANOMALIES: GalaxyAnomalies = { civilization: null, byHost: new Map(), populated: new Set() };
 
 export function generateAnomalies(galaxy: Galaxy): GalaxyAnomalies {
@@ -324,6 +352,7 @@ export function generateAnomalies(galaxy: Galaxy): GalaxyAnomalies {
   placeBlackHoles(galaxy, hosts, byHost);
   if (civilization) placeHomeworld(galaxy, hosts, civilization, byHost);
   const populated = civilization ? placePopulatedWorlds(galaxy, hosts, civilization, byHost) : NO_ANOMALIES.populated;
+  if (civilization) placeCannon(galaxy, hosts, civilization, byHost, populated);
   return { civilization, byHost, populated };
 }
 

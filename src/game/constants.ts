@@ -424,10 +424,12 @@ export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> =
   matrioshkaBrain: [0.85, 0.97],
   homeworld: [0.3, 0.65],
   aldersonDisk: [0.96, 1],
+  alcubierreCannon: [0.94, 1],
 };
 
 export const ANOMALY_LIVING_CHANCE = 0.2;
 export const ANOMALY_ALDERSON_CHANCE = 0.1;
+export const ANOMALY_CANNON_CHANCE = 0.3;
 
 export const ANOMALY_INTEGRITY_LIVING: Partial<Record<AnomalyKind, readonly [number, number]>> = {
   dysonSphere: [0.9, 1],
@@ -442,6 +444,7 @@ export const ANOMALY_BEAM_SIGN_MIN_SCALE = 0.45;
 export const ANOMALY_SIGN_FADE_SPAN = 0.5;
 export const ANOMALY_BEAM_SIGN_LENGTH = 0.8 * GALAXY_RADIUS;
 export const ANOMALY_BEAM_SIGN_SEGMENTS = 12;
+export const ANOMALY_CANNON_SIGN_LENGTH = 0.9 * GALAXY_RADIUS;
 
 export const SC_CIVILIZATION_TINT = 0xff4a2a;
 export const SC_CIVILIZATION_TINT_STRENGTH = 0.6;

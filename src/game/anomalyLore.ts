@@ -11,6 +11,16 @@ export interface AnomalyLore {
 }
 
 export const ANOMALY_LORE: Record<AnomalyKind, AnomalyLore> = {
+  alcubierreCannon: {
+    name: 'Alcubierre Cannon',
+    tier: 'Mythic',
+    lore: 'A line of warp coils at the edge of a living civilisation, aimed outward along a bearing its builders chose long ago. Each shot is a warp bubble that sweeps up every particle in its path against its leading edge and blueshifts them into a wave that atomizes whatever is waiting at the far end.',
+    rumour: 'A star at the edge of one of the flattened home systems keeps flashing along a single bearing, away from everything around it.',
+    notes: [
+      'The coils charge from the breech to the muzzle, and the bubble is past the outer planets before the last of them has gone dark.',
+      'The bearing points out of the region toward nothing any survey has found, and the cannon has not stopped firing along it.',
+    ],
+  },
   aldersonDisk: {
     name: 'Alderson Disk',
     tier: 'Mythic',

@@ -1,3 +1,4 @@
+import { createAlcubierreCannon } from './alcubierreCannon';
 import { createAldersonDisk } from './aldersonDisk';
 import { createBlackHole } from './blackHole';
 import { createDysonSphere } from './dysonSphere';
@@ -11,6 +12,7 @@ export type { AnomalyVisual, AnomalyVisualContext } from './types';
 
 export function createAnomalyVisual(context: AnomalyVisualContext): AnomalyVisual {
   switch (context.anomaly.kind) {
+    case 'alcubierreCannon': return createAlcubierreCannon(context);
     case 'aldersonDisk': return createAldersonDisk(context);
     case 'blackHole': return createBlackHole(context);
     case 'dysonSphere': return createDysonSphere(context);

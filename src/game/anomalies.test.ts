@@ -13,6 +13,7 @@ import {
   planeDistance,
   populatedWorldIds,
   relativeHeight,
+  type Anomaly,
   type GalaxyAnomalies,
 } from './anomalies';
 import {
@@ -65,6 +66,26 @@ function kindCount(anomalies: GalaxyAnomalies, kind: string) {
   return [...anomalies.byHost.values()].filter((anomaly) => anomaly.kind === kind).length;
 }
 
+function expectCannonRule(galaxy: Galaxy, anomalies: GalaxyAnomalies, anomaly: Anomaly) {
+  const civilization = anomalies.civilization!;
+  const host = galaxy.systems[anomaly.hostId];
+  expect(civilization.cannon).toBe(true);
+  expect(civilization.homeKind).toBe('aldersonDisk');
+  expect(anomaly.living).toBe(true);
+  expect(anomalies.populated.has(host.id)).toBe(false);
+  const candidates = galaxy.systems.filter((s) =>
+    canHostAnomaly(s) && (s.id === host.id || !anomalies.byHost.has(s.id)) && !anomalies.populated.has(s.id)
+    && isRelicClass(s) && isSettledPopulation(s) && isInCivilization(s, civilization));
+  expect(candidates).toContain(host);
+  const hostDistance = planeDistance(host, civilization);
+  expect(candidates.filter((s) => planeDistance(s, civilization) > hostDistance)).toEqual([]);
+  expect(anomaly.direction!.z).toBe(0);
+  expect(Math.hypot(anomaly.direction!.x, anomaly.direction!.y)).toBeCloseTo(1, 6);
+  if (hostDistance > 0) {
+    expect((anomaly.direction!.x * (host.x - civilization.x) + anomaly.direction!.y * (host.y - civilization.y)) / hostDistance).toBeGreaterThan(0.9999);
+  }
+}
+
 describe('anomaly generation', () => {
   it('gives the same result for the same seed and never mutates the galaxy', () => {
     for (const seed of [...PLAIN_SEEDS.slice(0, 30), ...CIVILIZATION_SEEDS.slice(0, 30)]) {
@@ -100,6 +121,8 @@ describe('anomaly generation', () => {
       expect(kindCount(anomalies, 'shkadovThruster')).toBeLessThanOrEqual(1);
       expect(kindCount(anomalies, 'nicollDysonBeam')).toBeLessThanOrEqual(1);
       expect(kindCount(anomalies, 'homeworld') + kindCount(anomalies, 'aldersonDisk')).toBe(civilization ? 1 : 0);
+      expect(kindCount(anomalies, 'alcubierreCannon')).toBeLessThanOrEqual(civilization?.cannon ? 1 : 0);
+      if (civilization?.cannon) expect(civilization.homeKind).toBe('aldersonDisk');
 
       for (const [hostId, anomaly] of anomalies.byHost) {
         const host = galaxy.systems[hostId];
@@ -162,6 +185,9 @@ describe('anomaly generation', () => {
             expect(tier.filter((s) => planeDistance(s, civilization!) < hostDistance)).toEqual([]);
             break;
           }
+          case 'alcubierreCannon':
+            expectCannonRule(galaxy, anomalies, anomaly);
+            break;
           case 'blackHole':
             expect(nearestNeutronStarDistance(host, galaxy.systems)).toBeLessThanOrEqual(ANOMALY_BLACK_HOLE_REACH);
             expect(anomaly.direction).toBeNull();
@@ -277,6 +303,29 @@ describe('anomaly generation', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('arms some Alderson civilisations with a cannon at the edge of their region, aimed outward', { timeout: 30_000 }, () => {
+    const armed: Array<{ galaxy: Galaxy; anomalies: GalaxyAnomalies }> = [];
+    let aldersonDisks = 0;
+    for (const seed of findCivilizationSeeds(600, 1000)) {
+      const galaxy = generateGalaxy(seed);
+      const anomalies = generateAnomalies(galaxy);
+      const { civilization } = anomalies;
+      if (civilization?.homeKind !== 'aldersonDisk') {
+        expect(civilization?.cannon).toBe(false);
+        continue;
+      }
+      aldersonDisks++;
+      if (kindCount(anomalies, 'alcubierreCannon') > 0) armed.push({ galaxy, anomalies });
+      if (armed.length >= 3) break;
+    }
+    expect(armed.length).toBe(3);
+    expect(aldersonDisks).toBeGreaterThan(armed.length);
+    for (const { galaxy, anomalies } of armed) {
+      const cannon = [...anomalies.byHost.values()].find((anomaly) => anomaly.kind === 'alcubierreCannon')!;
+      expectCannonRule(galaxy, anomalies, cannon);
+    }
   });
 
   it('rolls living civilisations near the target rate without changing host selection', () => {
