@@ -4,13 +4,18 @@ import type { Rng } from '../game/types';
 import { smoothstep } from './anomalies/shared';
 import type { Point3D } from './projection';
 
-interface District {
+export interface District {
   x: number;
   y: number;
   radius: number;
 }
 
-interface CityLight {
+export interface LightPalette {
+  light: number;
+  glow: number;
+}
+
+export interface CityLight {
   x: number;
   y: number;
   size: number;
@@ -33,6 +38,8 @@ const RUINED_LIGHT_COUNT = 90;
 const LIVING_LIGHT_COLOR = 0xffc46a;
 const LIVING_GLOW_COLOR = 0xff9a3c;
 const RUINED_LIGHT_COLOR = 0xcfdcff;
+const LIVING_PALETTE: LightPalette = { light: LIVING_LIGHT_COLOR, glow: LIVING_GLOW_COLOR };
+const RUINED_PALETTE: LightPalette = { light: RUINED_LIGHT_COLOR, glow: LIVING_GLOW_COLOR };
 const DISTRICT_GLOW_ALPHA = 0.22;
 const SETTLEMENT_CITY_MIN = 8;
 const SETTLEMENT_CITY_SPREAD = 6;
@@ -146,11 +153,18 @@ export function createEcumenopolisAlbedoTexture(baseColor: number, seed: number,
   return Texture.from(canvas, true);
 }
 
-function lightCity(radius: number, lights: readonly CityLight[], glows: readonly District[], living: boolean, glowAlpha: number): CityLights {
+export function lightCity(
+  radius: number,
+  lights: readonly CityLight[],
+  glows: readonly District[],
+  living: boolean,
+  glowAlpha: number,
+  palette: LightPalette,
+): CityLights {
   const node = new Graphics();
   node.blendMode = 'add';
   node.eventMode = 'none';
-  const color = living ? LIVING_LIGHT_COLOR : RUINED_LIGHT_COLOR;
+  const color = palette.light;
   const buckets: CityLight[][] = Array.from({ length: LIGHT_LEVELS }, () => []);
 
   return {
@@ -167,7 +181,7 @@ function lightCity(radius: number, lights: readonly CityLight[], glows: readonly
         const strength = nightAt(glow.x * radius, glow.y * radius);
         if (strength > 0.01) {
           node.circle(glow.x * radius, glow.y * radius, glow.radius * radius)
-            .fill({ color: LIVING_GLOW_COLOR, alpha: glowAlpha * strength });
+            .fill({ color: palette.glow, alpha: glowAlpha * strength });
         }
       }
 
@@ -215,7 +229,7 @@ export function createCityLights(seed: number, radius: number, living: boolean, 
       rate: 0.2 + rng() * 0.5,
     });
   }
-  return lightCity(radius, lights, living ? districts : [], living, DISTRICT_GLOW_ALPHA);
+  return lightCity(radius, lights, living ? districts : [], living, DISTRICT_GLOW_ALPHA, living ? LIVING_PALETTE : RUINED_PALETTE);
 }
 
 function landSampler(canvas: HTMLCanvasElement): (x: number, y: number) => boolean {
@@ -274,5 +288,5 @@ export function createSettlementLights(landCanvas: HTMLCanvasElement, seed: numb
   }
 
   const glows = cities.map((city) => ({ ...city, radius: city.radius * SETTLEMENT_GLOW_SPREAD }));
-  return lightCity(radius, lights, glows, true, SETTLEMENT_GLOW_ALPHA);
+  return lightCity(radius, lights, glows, true, SETTLEMENT_GLOW_ALPHA, LIVING_PALETTE);
 }

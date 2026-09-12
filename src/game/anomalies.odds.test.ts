@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateGalaxy } from './galaxyGen';
 import { generateAnomalies, hasCivilization, type AnomalyKind } from './anomalies';
 import { findCivilizationSeeds } from './civilizationSeeds.testutil';
+import { ANOMALY_ALDERSON_CHANCE, ANOMALY_LIVING_CHANCE } from './constants';
 import { generateSupercluster } from './superclusters';
 
 const GALAXY_SAMPLES = 3000;
@@ -13,7 +14,8 @@ type Counts = Record<AnomalyKind, number>;
 
 const CIVILIZATION_TARGETS: Array<{ label: string; target: number; measure: (counts: Counts) => boolean }> = [
   { label: 'Ruined Dyson sphere', target: 1, measure: (counts) => counts.dysonSphere > 0 },
-  { label: 'Homeworld', target: 1, measure: (counts) => counts.homeworld > 0 },
+  { label: 'Homeworld', target: 1 - ANOMALY_LIVING_CHANCE * ANOMALY_ALDERSON_CHANCE, measure: (counts) => counts.homeworld > 0 },
+  { label: 'Alderson disk', target: ANOMALY_LIVING_CHANCE * ANOMALY_ALDERSON_CHANCE, measure: (counts) => counts.aldersonDisk > 0 },
   { label: 'Shkadov thruster', target: 0.4, measure: (counts) => counts.shkadovThruster > 0 },
   { label: 'Nicoll-Dyson beam', target: 0.4, measure: (counts) => counts.nicollDysonBeam > 0 },
   { label: 'Matrioshka brain', target: 0.08, measure: (counts) => counts.matrioshkaBrain > 0 },
@@ -24,7 +26,7 @@ function oneIn(rate: number) {
 }
 
 function countKinds(seed: number): Counts {
-  const counts: Counts = { blackHole: 0, dysonSphere: 0, homeworld: 0, matrioshkaBrain: 0, nicollDysonBeam: 0, shkadovThruster: 0 };
+  const counts: Counts = { aldersonDisk: 0, blackHole: 0, dysonSphere: 0, homeworld: 0, matrioshkaBrain: 0, nicollDysonBeam: 0, shkadovThruster: 0 };
   for (const anomaly of generateAnomalies(generateGalaxy(seed)).byHost.values()) counts[anomaly.kind]++;
   return counts;
 }

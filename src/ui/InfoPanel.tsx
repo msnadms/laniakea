@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ANOMALY_KINDS, type AnomalyKind } from '../game/anomalies';
-import { ANOMALY_LORE_RUINED } from '../game/anomalyLore';
+import { ANOMALY_LORE } from '../game/anomalyLore';
 import type { AnomalyRecord } from '../firebase/anomalies';
 import { useAnomalyStore } from '../store/anomalyStore';
 import './InfoPanel.css';
@@ -175,7 +175,7 @@ function AnomaliesView() {
     <div className="info-section">
       <div className="info-section-title">Anomalies</div>
       {ANOMALY_KINDS.map((kind) => {
-        const lore = ANOMALY_LORE_RUINED[kind];
+        const lore = ANOMALY_LORE[kind];
         const found = foundByKind.get(kind) ?? [];
         if (found.length === 0) {
           return (

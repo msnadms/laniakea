@@ -99,7 +99,7 @@ describe('anomaly generation', () => {
       expect(kindCount(anomalies, 'matrioshkaBrain')).toBeLessThanOrEqual(1);
       expect(kindCount(anomalies, 'shkadovThruster')).toBeLessThanOrEqual(1);
       expect(kindCount(anomalies, 'nicollDysonBeam')).toBeLessThanOrEqual(1);
-      expect(kindCount(anomalies, 'homeworld')).toBe(civilization ? 1 : 0);
+      expect(kindCount(anomalies, 'homeworld') + kindCount(anomalies, 'aldersonDisk')).toBe(civilization ? 1 : 0);
 
       for (const [hostId, anomaly] of anomalies.byHost) {
         const host = galaxy.systems[hostId];
@@ -149,7 +149,10 @@ describe('anomaly generation', () => {
             expect(reach).toBeLessThanOrEqual(ANOMALY_BEAM_RIM_MAX);
             break;
           }
-          case 'homeworld': {
+          case 'homeworld':
+          case 'aldersonDisk': {
+            expect(anomaly.kind).toBe(civilization!.homeKind);
+            expect(anomaly.kind === 'homeworld' || anomaly.living).toBe(true);
             const free = galaxy.systems.filter((s) => canHostAnomaly(s) && (s.id === host.id || !anomalies.byHost.has(s.id)));
             const settledHomeClass = free.filter((s) => (s.starType === 'G' || s.starType === 'K') && isSettledPopulation(s));
             const tier = [settledHomeClass.filter((s) => isInCivilization(s, civilization!)), settledHomeClass, free]
@@ -215,6 +218,36 @@ describe('anomaly generation', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('turns every rocky world around a living Dyson sphere into a foundry without changing the system', () => {
+    for (const seed of PLAIN_SEEDS) {
+      for (const starType of ['F', 'G', 'K'] as const) {
+        const ruined = generateSystemLayout(seed, starType, 'dysonSphere');
+        const living = generateSystemLayout(seed, starType, 'dysonSphere', false, true);
+        expect(living.planets.map((p) => p.zone)).toContain('foundry');
+        expect(living.planets.map((p) => p.zone)).toEqual(ruined.planets.map((p) => (p.zone === 'gas' || p.zone === 'ice' ? p.zone : 'foundry')));
+        expect(living.planets.map((p) => ({ ...p, zone: null }))).toEqual(ruined.planets.map((p) => ({ ...p, zone: null })));
+        expect(living.asteroidGapIdx).toBe(ruined.asteroidGapIdx);
+        expect(generatePlanets(living).map((p) => p.name)).toEqual(generatePlanets(ruined).map((p) => p.name));
+      }
+    }
+  });
+
+  it('builds Alderson disks out of the inner worlds without renaming the outer ones', () => {
+    for (const seed of PLAIN_SEEDS) {
+      for (const starType of ['F', 'G', 'K', 'M', 'A'] as const) {
+        const plain = generateSystemLayout(seed, starType);
+        const layout = generateSystemLayout(seed, starType, 'aldersonDisk');
+        const dismantled = layout.dismantledRings ?? 0;
+        expect(dismantled).toBeGreaterThan(0);
+        expect(layout.planets).toEqual(plain.planets.slice(dismantled));
+        expect(layout.planets.map((p) => p.zone).every((zone) => zone === 'gas' || zone === 'ice')).toBe(true);
+        expect(generatePlanets(layout).map((p) => p.name)).toEqual(generatePlanets(plain).map((p) => p.name).slice(dismantled));
+        const plainGap = plain.asteroidGapIdx;
+        expect(layout.asteroidGapIdx).toBe(plainGap !== null && plainGap >= dismantled ? plainGap - dismantled : null);
+      }
+    }
   });
 
   it('populates a couple of free worlds inside every living civilisation and none elsewhere', () => {

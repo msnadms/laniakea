@@ -99,7 +99,7 @@ export interface Planet {
   moons: Moon[];
 }
 
-export type ZoneType = 'hot' | 'marginal' | 'habitable' | 'populated' | 'ecumenopolis' | 'gas' | 'ice';
+export type ZoneType = 'hot' | 'marginal' | 'habitable' | 'populated' | 'ecumenopolis' | 'foundry' | 'gas' | 'ice';
 
 export type AddressComponentType = 'universe' | 'supercluster' | 'attractor' | 'galaxy' | 'system'
 

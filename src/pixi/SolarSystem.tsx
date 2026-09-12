@@ -36,6 +36,7 @@ import { useCamera } from './useCamera';
 import { useZoomController } from './useZoomController';
 import { createAnomalyVisual } from './anomalies';
 import { createCityLights, createEcumenopolisAlbedoTexture, createSettlementLights, type CityLights } from './ecumenopolis';
+import { createFoundryAlbedoTexture, createFurnaceLights } from './foundry';
 
 type MoonState = {
   visual: Container;
@@ -169,6 +170,7 @@ const SHADOW_STRENGTH: Record<PlanetLayout['zone'], number> = {
   habitable: 0.82,
   populated: 0.82,
   ecumenopolis: 0.84,
+  foundry: 0.86,
   gas: 0.8,
   ice: 0.8,
 };
@@ -216,17 +218,21 @@ export function SolarSystem() {
     const world = worldRef.current;
     const anomaly = useGameStore.getState().galaxyAnomalies.byHost.get(system.id);
     const populated = useGameStore.getState().galaxyAnomalies.populated.has(system.id);
-    const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind, populated);
+    const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind, populated, anomaly?.living);
     const isBrownDwarf = system.starType === 'L';
     const isNeutronStar = system.starType === 'N';
     const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
     const planetExtent = getSystemExtent(layout);
+    const innermost = layout.planets[0];
     const anomalyVisual = anomaly
       ? createAnomalyVisual({
         anomaly,
         sunRadius,
         starColor: system.color,
-        innermostOrbit: layout.planets[0]?.orbitRadius ?? planetExtent,
+        innermostOrbit: innermost?.orbitRadius ?? planetExtent,
+        innermostClearance: innermost
+          ? innermost.orbitRadius - Math.max(innermost.radius * 2.4, ...innermost.moons.map((moon) => moon.dist + moon.radius))
+          : planetExtent,
         planetExtent,
         onSelect: () => {
           if (hasDragged.current) return;
@@ -276,6 +282,7 @@ export function SolarSystem() {
       if (rings) planetVisual.addChild(rings.back);
 
       const isEcumenopolis = planetLayout.zone === 'ecumenopolis';
+      const isFoundry = planetLayout.zone === 'foundry';
       const landCanvas = planetLayout.zone === 'habitable' || planetLayout.zone === 'populated'
         ? drawHabitablePlanet(planetLayout.color, planetSeed)
         : null;
@@ -283,9 +290,11 @@ export function SolarSystem() {
         ? createGasGiantAlbedoTexture(planetLayout.color, planetSeed, planetLayout.zone === 'ice')
         : isEcumenopolis
           ? createEcumenopolisAlbedoTexture(planetLayout.color, planetSeed, anomaly?.living ?? false)
-          : landCanvas
-            ? Texture.from(landCanvas, true)
-            : createRockyPlanetAlbedoTexture(planetLayout.color, planetSeed);
+          : isFoundry
+            ? createFoundryAlbedoTexture(planetLayout.color, planetSeed)
+            : landCanvas
+              ? Texture.from(landCanvas, true)
+              : createRockyPlanetAlbedoTexture(planetLayout.color, planetSeed);
       bodyTextures.push(planetTexture);
       const planetSprite = new Sprite(planetTexture);
       planetSprite.anchor.set(0.5);
@@ -296,9 +305,11 @@ export function SolarSystem() {
       planetVisual.addChild(planetShadow);
       const cityLights = isEcumenopolis
         ? createCityLights(planetSeed, radius, anomaly?.living ?? false, anomaly?.integrity ?? 1)
-        : landCanvas && planetLayout.zone === 'populated'
-          ? createSettlementLights(landCanvas, planetSeed, radius)
-          : null;
+        : isFoundry
+          ? createFurnaceLights(planetSeed, radius)
+          : landCanvas && planetLayout.zone === 'populated'
+            ? createSettlementLights(landCanvas, planetSeed, radius)
+            : null;
       if (cityLights) planetVisual.addChild(cityLights.node);
       if (rings) planetVisual.addChild(rings.front);
 
@@ -440,7 +451,6 @@ export function SolarSystem() {
         viewSpaceDirectionWithBasis(planet.lightDirection, projectionBasis, planet.lightDirection);
         updateBodyShadow(planet.shadow, planet.shadowStrength, planet.lightDirection);
         planet.cityLights?.update(planet.lightDirection, elapsed);
-
         if (planet.moonOrbitFar && planet.moonOrbitNear) {
           planet.moonOrbitFar.position.set(planet.projected.x, planet.projected.y);
           planet.moonOrbitNear.position.set(planet.projected.x, planet.projected.y);

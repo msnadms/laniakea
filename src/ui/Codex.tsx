@@ -366,10 +366,10 @@ function systemHasHabitable(seed: number, starType: StarType | undefined, anomal
     .some((p) => p.zone === 'habitable' || p.zone === 'populated' || p.zone === 'ecumenopolis');
 }
 
-function SystemPlanets({ seed, starType, anomalyKind, populated, query }: { seed: number; starType?: StarType; anomalyKind: AnomalyKind | null; populated: boolean; query: string }) {
+function SystemPlanets({ seed, starType, anomalyKind, populated, living, query }: { seed: number; starType?: StarType; anomalyKind: AnomalyKind | null; populated: boolean; living: boolean; query: string }) {
   const planets = useMemo(
-    () => generatePlanets(generateSystemLayout(seed, starType, anomalyKind, populated)),
-    [seed, starType, anomalyKind, populated],
+    () => generatePlanets(generateSystemLayout(seed, starType, anomalyKind, populated, living)),
+    [seed, starType, anomalyKind, populated, living],
   );
   return (
     <div className="codex-planets">
@@ -434,7 +434,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} anomalyKind={anomalyKind} populated={populated} query={query} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} anomalyKind={anomalyKind} populated={populated} living={anomalyRecord?.living ?? false} query={query} />}
     </div>
   );
 }

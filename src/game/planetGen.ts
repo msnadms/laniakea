@@ -26,6 +26,7 @@ export interface SystemLayout {
   asteroidSeed: number;
   seed: number;
   starType?: StarType;
+  dismantledRings?: number;
 }
 
 export type ZoneConfig = {
@@ -61,6 +62,7 @@ export function getPlanetZone(idx: number, total: number): ZoneType {
 export function getZoneConfig(zone: ZoneType): ZoneConfig {
   switch (zone) {
     case 'hot':      return { radiusMin: 10, radiusSpread: 13, colors: HOT_ZONE_COLORS,       moonColors: HOT_MOON_COLORS,       ringThreshold: 1.1,  moonThreshold: 0.90, maxMoons: 1 };
+    case 'foundry':
     case 'marginal': return { radiusMin: 18, radiusSpread: 16, colors: MARGINAL_ZONE_COLORS,  moonColors: MARGINAL_MOON_COLORS,  ringThreshold: 1.1,  moonThreshold: 0.70, maxMoons: 2 };
     case 'habitable':return { radiusMin: 24, radiusSpread: 17, colors: HABITABLE_ZONE_COLORS, moonColors: HABITABLE_MOON_COLORS, ringThreshold: 1.1,  moonThreshold: 0.60, maxMoons: 2 };
     case 'populated':return { radiusMin: 24, radiusSpread: 17, colors: HABITABLE_ZONE_COLORS, moonColors: HABITABLE_MOON_COLORS, ringThreshold: 1.1,  moonThreshold: 0.60, maxMoons: 2 };
@@ -75,6 +77,11 @@ export const MOON_K = 430;
 
 const INNER_WORLD_CONSUMERS: ReadonlySet<AnomalyKind> = new Set(['dysonSphere', 'matrioshkaBrain']);
 const NO_HABITABLE_ZONE: ReadonlySet<AnomalyKind> = new Set(['blackHole']);
+const DISMANTLED_ZONES: ReadonlySet<ZoneType> = new Set(['hot', 'habitable']);
+
+function innerRingCount(numRings: number): number {
+  return Array.from({ length: numRings }, (_, ring) => getPlanetZone(ring, numRings)).filter((zone) => DISMANTLED_ZONES.has(zone)).length;
+}
 
 function settledRings(numRings: number): ReadonlySet<number> {
   const rings = Array.from({ length: numRings }, (_, ring) => ring);
@@ -82,7 +89,7 @@ function settledRings(numRings: number): ReadonlySet<number> {
   return new Set(habitable.length > 0 ? habitable : rings.filter((ring) => getPlanetZone(ring, numRings) === 'hot').slice(-1));
 }
 
-export function generateSystemLayout(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null, populated = false): SystemLayout {
+export function generateSystemLayout(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null, populated = false, living = false): SystemLayout {
   if (seed === SOL_SEED) return SOL_SYSTEM_LAYOUT;
   const rng = createRng(seed);
   const isBrownDwarf = starType === 'L';
@@ -93,13 +100,15 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   let orbitRadius = isNeutronStar ? 200 + rng() * 80 : 380 + rng() * 120;
   const cityZone: ZoneType | null = anomalyKind === 'homeworld' ? 'ecumenopolis' : populated ? 'populated' : null;
   const cityRings = cityZone ? settledRings(numRings) : null;
+  const foundries = anomalyKind === 'dysonSphere' && living;
 
   const planets: PlanetLayout[] = [];
 
   for (let ring = 0; ring < numRings; ring++) {
     const rawZone = getPlanetZone(ring, numRings);
     const rolledZone = isBrownDwarf ? 'ice' : isNeutronStar ? 'hot' : (rawZone === 'habitable' && rng() > 0.12 ? 'marginal' : rawZone);
-    const zone = cityZone && cityRings?.has(ring) ? cityZone
+    const zone = foundries && rolledZone !== 'gas' && rolledZone !== 'ice' ? 'foundry'
+      : cityZone && cityRings?.has(ring) ? cityZone
       : innerWorldsConsumed && (rolledZone === 'hot' || rolledZone === 'habitable') ? 'marginal'
       : noHabitableZone && rolledZone === 'habitable' ? 'marginal'
       : rolledZone;
@@ -136,7 +145,10 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   // derive a seed transform itself, and a second renderer always gets the same belt.
   const asteroidSeed = (seed ^ 0xdeadbeef) >>> 0;
 
-  return { planets, asteroidGapIdx, asteroidSeed, seed, starType };
+  const dismantledRings = anomalyKind === 'aldersonDisk' ? innerRingCount(numRings) : 0;
+  if (asteroidGapIdx !== null) asteroidGapIdx = asteroidGapIdx >= dismantledRings ? asteroidGapIdx - dismantledRings : null;
+
+  return { planets: planets.slice(dismantledRings), asteroidGapIdx, asteroidSeed, seed, starType, dismantledRings };
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -166,10 +178,15 @@ export function generatePlanets(layout: SystemLayout): Planet[] {
   const nameRng = createRng((layout.seed ^ 0xb1a2c3d4) >>> 0);
 
   const usedNames = new Set<string>();
-  return layout.planets.map((planet) => {
+  const nextName = () => {
     let planetName = makePlanetName(nameRng);
     while (usedNames.has(planetName)) planetName = makePlanetName(nameRng);
     usedNames.add(planetName);
+    return planetName;
+  };
+  for (let ring = 0; ring < (layout.dismantledRings ?? 0); ring++) nextName();
+  return layout.planets.map((planet) => {
+    const planetName = nextName();
     return {
       name: planetName,
       type: planet.zone,

@@ -65,6 +65,7 @@
 .planet-panel-zone-dot.habitable{ background: #44aa66; }
 .planet-panel-zone-dot.populated { background: #44aa66; box-shadow: 0 0 0 2px #ffc46a; }
 .planet-panel-zone-dot.ecumenopolis { background: #e0b060; }
+.planet-panel-zone-dot.foundry { background: #6a5648; box-shadow: 0 0 0 2px #ff8a3a; }
 .planet-panel-zone-dot.gas      { background: #5588cc; }
 .planet-panel-zone-dot.ice      { background: #88aacc; }
 

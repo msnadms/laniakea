@@ -1,6 +1,7 @@
 import { createRng, generateGalaxy } from './galaxyGen';
 import { MILKY_WAY_SEED } from './hardcoded';
 import {
+  ANOMALY_ALDERSON_CHANCE,
   ANOMALY_BEAM_CHANCE,
   ANOMALY_BEAM_RIM_MAX,
   ANOMALY_BEAM_RIM_MIN,
@@ -27,7 +28,9 @@ import {
 } from './constants';
 import type { Galaxy, Rng, StarSystem, StarType } from './types';
 
-export type AnomalyKind = 'blackHole' | 'dysonSphere' | 'homeworld' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
+export type AnomalyKind = 'aldersonDisk' | 'blackHole' | 'dysonSphere' | 'homeworld' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
+
+export type HomeKind = Extract<AnomalyKind, 'aldersonDisk' | 'homeworld'>;
 
 export const ANOMALY_KINDS: readonly AnomalyKind[] = [
   'blackHole',
@@ -36,6 +39,7 @@ export const ANOMALY_KINDS: readonly AnomalyKind[] = [
   'nicollDysonBeam',
   'homeworld',
   'matrioshkaBrain',
+  'aldersonDisk',
 ];
 
 export interface Vector3 {
@@ -59,6 +63,7 @@ export interface Civilization {
   y: number;
   radius: number;
   living: boolean;
+  homeKind: HomeKind;
 }
 
 export interface GalaxyAnomalies {
@@ -254,6 +259,7 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
 
   // Appended after every placement draw above so existing galaxies keep their host selection unchanged.
   const living = rng() < ANOMALY_LIVING_CHANCE;
+  const homeKind: HomeKind = living && rng() < ANOMALY_ALDERSON_CHANCE ? 'aldersonDisk' : 'homeworld';
 
   for (const host of dysonHosts) byHost.set(host.id, createAnomaly('dysonSphere', galaxy.seed, host.id, null, living));
   if (brainHost) byHost.set(brainHost.id, createAnomaly('matrioshkaBrain', galaxy.seed, brainHost.id, null, living));
@@ -267,7 +273,7 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
     byHost.set(beamHost.id, createAnomaly('nicollDysonBeam', galaxy.seed, beamHost.id, direction, living));
   }
 
-  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living };
+  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living, homeKind };
 }
 
 function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>) {
@@ -291,7 +297,7 @@ function placeHomeworld(galaxy: Galaxy, hosts: readonly StarSystem[], civilizati
     free,
   ];
   const host = nearestTo(tiers.find((tier) => tier.length > 0) ?? [], civilization);
-  if (host) byHost.set(host.id, createAnomaly('homeworld', galaxy.seed, host.id, null, civilization.living));
+  if (host) byHost.set(host.id, createAnomaly(civilization.homeKind, galaxy.seed, host.id, null, civilization.living));
 }
 
 function placePopulatedWorlds(

@@ -369,6 +369,7 @@
 .codex-zone-dot.habitable { background: #3a8a5a; }
 .codex-zone-dot.populated { background: #3a8a5a; box-shadow: 0 0 0 1.5px #ffc46a; }
 .codex-zone-dot.ecumenopolis { background: #d0a050; }
+.codex-zone-dot.foundry { background: #5a4a40; box-shadow: 0 0 0 1.5px #ff8a3a; }
 .codex-zone-dot.gas      { background: #b08040; }
 .codex-zone-dot.ice      { background: #4070a0; }
 

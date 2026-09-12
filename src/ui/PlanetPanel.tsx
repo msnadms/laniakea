@@ -12,23 +12,23 @@ const ZONE_LABELS: Record<ZoneType, string> = {
   habitable: 'Habitable Zone',
   populated: 'Populated Habitable',
   ecumenopolis: 'Ecumenopolis',
+  foundry: 'Foundry World',
   gas: 'Gas Giant',
   ice: 'Ice Planet',
 };
+
+const ANOMALY_WORLDS: ReadonlySet<ZoneType> = new Set(['ecumenopolis', 'foundry']);
 
 export function PlanetPanel() {
   const selectedName = useUIStore((s) => s.selectedPlanetName);
   const setSelectedPlanet = useUIStore((s) => s.setSelectedPlanet);
   const planet = useGameStore((s) => s.system?.planets?.find((p) => p.name === selectedName) ?? null);
-  const homeworld = useGameStore((s) => {
-    const anomaly = s.system ? s.galaxyAnomalies.byHost.get(s.system.id) : undefined;
-    return anomaly?.kind === 'homeworld' ? anomaly : null;
-  });
+  const hostAnomaly = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id) : undefined) ?? null);
 
   if (!planet) return null;
-  const homeworldLore = planet.type === 'ecumenopolis' && homeworld ? getAnomalyLore(homeworld) : null;
+  const anomalyLore = hostAnomaly && ANOMALY_WORLDS.has(planet.type) ? getAnomalyLore(hostAnomaly) : null;
 
-  function openHomeworld() {
+  function openAnomaly() {
     setSelectedPlanet(null);
     useUIStore.getState().setAnomalyPanelOpen(true);
   }
@@ -46,9 +46,9 @@ export function PlanetPanel() {
           </div>
         </div>
 
-        {homeworldLore && (
-          <button className={`planet-panel-anomaly anomaly-tier-${homeworldLore.tier.toLowerCase()}`} onClick={openHomeworld}>
-            ◬ {homeworldLore.name}
+        {anomalyLore && (
+          <button className={`planet-panel-anomaly anomaly-tier-${anomalyLore.tier.toLowerCase()}`} onClick={openAnomaly}>
+            ◬ {anomalyLore.name}
           </button>
         )}
 

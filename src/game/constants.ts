@@ -423,9 +423,11 @@ export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> =
   nicollDysonBeam: [0.4, 0.7],
   matrioshkaBrain: [0.85, 0.97],
   homeworld: [0.3, 0.65],
+  aldersonDisk: [0.96, 1],
 };
 
 export const ANOMALY_LIVING_CHANCE = 0.2;
+export const ANOMALY_ALDERSON_CHANCE = 0.1;
 
 export const ANOMALY_INTEGRITY_LIVING: Partial<Record<AnomalyKind, readonly [number, number]>> = {
   dysonSphere: [0.9, 1],

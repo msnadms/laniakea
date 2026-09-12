@@ -7,6 +7,7 @@ export interface AnomalyVisualContext {
   sunRadius: number;
   starColor: number;
   innermostOrbit: number;
+  innermostClearance: number;
   planetExtent: number;
   onSelect: () => void;
 }

@@ -10,7 +10,17 @@ export interface AnomalyLore {
   notes: string[];
 }
 
-export const ANOMALY_LORE_RUINED: Record<AnomalyKind, AnomalyLore> = {
+export const ANOMALY_LORE: Record<AnomalyKind, AnomalyLore> = {
+  aldersonDisk: {
+    name: 'Alderson Disk',
+    tier: 'Mythic',
+    lore: 'The civilisation that began here took its homeworld apart, and every other world in the inner system with it, and laid the pieces out as one flat disk around the star. It runs from the edge of the star\'s glare out past the line where water freezes, and it holds more ground than every planet in the galaxy put together.',
+    rumour: 'A few home stars have no inner planets left, only something wide and flat where they used to be.',
+    notes: [
+      'The star sits in a hole at the centre and never climbs far above anyone\'s horizon, so the outer reaches live in a dusk that does not end.',
+      'The lights grow denser toward the rim, where the dusk is deepest, and none of them have gone out.',
+    ],
+  },
   blackHole: {
     name: 'Black Hole',
     tier: 'Phenomenon',
@@ -75,13 +85,13 @@ export const ANOMALY_LORE_RUINED: Record<AnomalyKind, AnomalyLore> = {
 
 export const ANOMALY_LORE_LIVING: Partial<Record<AnomalyKind, AnomalyLore>> = {
   dysonSphere: {
-    name: 'Dyson Sphere',
+    name: 'Dyson Complex',
     tier: 'Relic',
-    lore: 'A complete shell of collector panels around a star. The panels track the star and none of its output escapes unused. Something behind the shell is still consuming that energy.',
+    lore: 'A complete shell of collector panels around a star, fed by foundries that are eating every rocky world in the system from the surface down. None of the star\'s light escapes unused, and none of the rock will be left once they are done.',
     rumour: 'A few yellow and orange stars have gone dark with no supernova or other explanation.',
     notes: [
-      'The panels track the star with a precision that indicates active maintenance.',
-      'Waste heat radiates from the far side of the shell at a steady rate.',
+      'Every rocky world is cut into terraces from pole to pole, and their furnaces light the night sides from one horizon to the other.',
+      'Refined rock still leaves the foundry worlds for the shell, though the shell has no gaps left to fill.',
     ],
   },
   matrioshkaBrain: {
@@ -131,5 +141,5 @@ export function getAnomalyLore(source: { kind: AnomalyKind; living: boolean }): 
     const living = ANOMALY_LORE_LIVING[source.kind];
     if (living) return living;
   }
-  return ANOMALY_LORE_RUINED[source.kind];
+  return ANOMALY_LORE[source.kind];
 }

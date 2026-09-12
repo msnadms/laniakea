@@ -11,6 +11,7 @@ const KIND_COLORS: Record<AnomalyKind, number> = {
   dysonSphere: 0xff8a30,
   homeworld: 0x60ff9a,
   blackHole: 0xb070ff,
+  aldersonDisk: 0xff70d0,
 };
 
 const KIND_LABELS: Record<AnomalyKind, string> = {
@@ -20,9 +21,10 @@ const KIND_LABELS: Record<AnomalyKind, string> = {
   dysonSphere: 'DYSON',
   homeworld: 'HOMEWORLD',
   blackHole: 'BLACK HOLE',
+  aldersonDisk: 'ALDERSON DISK',
 };
 
-const KIND_RANK: AnomalyKind[] = ['matrioshkaBrain', 'nicollDysonBeam', 'shkadovThruster', 'dysonSphere', 'homeworld', 'blackHole'];
+const KIND_RANK: AnomalyKind[] = ['aldersonDisk', 'matrioshkaBrain','nicollDysonBeam', 'shkadovThruster', 'dysonSphere', 'homeworld', 'blackHole'];
 
 const LIVING_COLOR = 0xffe080;
 
