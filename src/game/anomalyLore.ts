@@ -61,6 +61,16 @@ export const ANOMALY_LORE_RUINED: Record<AnomalyKind, AnomalyLore> = {
       'The star has moved well off the plane it originally orbited in.',
     ],
   },
+  homeworld: {
+    name: 'Ruined Homeworld',
+    tier: 'Relic',
+    lore: 'The world where the civilisation that built this region began, covered from pole to pole in a single continuous city. Its oceans were drained or roofed over long ago, and almost none of its lights are still on.',
+    rumour: 'Every set of ruins seems to gather around one yellow or orange star near its middle.',
+    notes: [
+      'The surface is structure all the way down, with no coastline or open ground left anywhere on it.',
+      'A few districts on the night side still light up on a schedule, though nothing travels between them.',
+    ],
+  },
 };
 
 export const ANOMALY_LORE_LIVING: Partial<Record<AnomalyKind, AnomalyLore>> = {
@@ -102,6 +112,16 @@ export const ANOMALY_LORE_LIVING: Partial<Record<AnomalyKind, AnomalyLore>> = {
     notes: [
       'The mirror holds station with a precision that indicates active upkeep.',
       'The star is still under active thrust, moving steadily off the plane.',
+    ],
+  },
+  homeworld: {
+    name: 'Homeworld',
+    tier: 'Relic',
+    lore: 'The world where the civilisation that built this region began, covered from pole to pole in a single continuous city. Its oceans were drained or roofed over long ago, and the ones who did it never left.',
+    rumour: 'Every set of ruins seems to gather around one yellow or orange star near its middle.',
+    notes: [
+      'The night side is lit from one terminator to the other, bright enough to read against the planet\'s own shadow.',
+      'At some wavelengths the planet is louder than its star.',
     ],
   },
 };

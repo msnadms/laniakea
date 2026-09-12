@@ -25,16 +25,17 @@ import {
   createBodyShadowTexture,
   createBrownDwarfTexture,
   createGasGiantAlbedoTexture,
-  createHabitablePlanetAlbedoTexture,
   createMoonAlbedoTexture,
   createNebulaGlowTexture,
   createNeutronStarTexture,
   createRockyPlanetAlbedoTexture,
   createSunTexture,
+  drawHabitablePlanet,
 } from './textures';
 import { useCamera } from './useCamera';
 import { useZoomController } from './useZoomController';
 import { createAnomalyVisual } from './anomalies';
+import { createCityLights, createEcumenopolisAlbedoTexture, createSettlementLights, type CityLights } from './ecumenopolis';
 
 type MoonState = {
   visual: Container;
@@ -62,6 +63,7 @@ type PlanetState = {
   systemPoint: Point3D;
   projected: ProjectedPoint;
   lightDirection: Point3D;
+  cityLights: CityLights | null;
   moonOrbitFar: Graphics | null;
   moonOrbitNear: Graphics | null;
   moonOrbitRadius: number;
@@ -165,6 +167,8 @@ const SHADOW_STRENGTH: Record<PlanetLayout['zone'], number> = {
   hot: 0.87,
   marginal: 0.86,
   habitable: 0.82,
+  populated: 0.82,
+  ecumenopolis: 0.84,
   gas: 0.8,
   ice: 0.8,
 };
@@ -211,7 +215,8 @@ export function SolarSystem() {
     if (!isInitialised || !worldRef.current || !system) return;
     const world = worldRef.current;
     const anomaly = useGameStore.getState().galaxyAnomalies.byHost.get(system.id);
-    const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind);
+    const populated = useGameStore.getState().galaxyAnomalies.populated.has(system.id);
+    const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind, populated);
     const isBrownDwarf = system.starType === 'L';
     const isNeutronStar = system.starType === 'N';
     const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
@@ -270,11 +275,17 @@ export function SolarSystem() {
         : null;
       if (rings) planetVisual.addChild(rings.back);
 
+      const isEcumenopolis = planetLayout.zone === 'ecumenopolis';
+      const landCanvas = planetLayout.zone === 'habitable' || planetLayout.zone === 'populated'
+        ? drawHabitablePlanet(planetLayout.color, planetSeed)
+        : null;
       const planetTexture = planetLayout.zone === 'gas' || planetLayout.zone === 'ice'
         ? createGasGiantAlbedoTexture(planetLayout.color, planetSeed, planetLayout.zone === 'ice')
-        : planetLayout.zone === 'habitable'
-          ? createHabitablePlanetAlbedoTexture(planetLayout.color, planetSeed)
-          : createRockyPlanetAlbedoTexture(planetLayout.color, planetSeed);
+        : isEcumenopolis
+          ? createEcumenopolisAlbedoTexture(planetLayout.color, planetSeed, anomaly?.living ?? false)
+          : landCanvas
+            ? Texture.from(landCanvas, true)
+            : createRockyPlanetAlbedoTexture(planetLayout.color, planetSeed);
       bodyTextures.push(planetTexture);
       const planetSprite = new Sprite(planetTexture);
       planetSprite.anchor.set(0.5);
@@ -283,6 +294,12 @@ export function SolarSystem() {
       const planetShadow = createBodyShadow(shadowTexture, radius * 2);
       planetVisual.addChild(planetSprite);
       planetVisual.addChild(planetShadow);
+      const cityLights = isEcumenopolis
+        ? createCityLights(planetSeed, radius, anomaly?.living ?? false, anomaly?.integrity ?? 1)
+        : landCanvas && planetLayout.zone === 'populated'
+          ? createSettlementLights(landCanvas, planetSeed, radius)
+          : null;
+      if (cityLights) planetVisual.addChild(cityLights.node);
       if (rings) planetVisual.addChild(rings.front);
 
       const planet: PlanetState = {
@@ -297,6 +314,7 @@ export function SolarSystem() {
         systemPoint: { x: 0, y: 0, z: 0 },
         projected: { x: 0, y: 0, depth: 0, scale: 1 },
         lightDirection: { x: 0, y: 0, z: 0 },
+        cityLights,
         moonOrbitFar: null,
         moonOrbitNear: null,
         moonOrbitRadius: 0,
@@ -407,7 +425,7 @@ export function SolarSystem() {
       if (asteroidProjection) asteroidProjection.scale.y = projectionBasis.cosTilt;
     }
 
-    function updateBodies(dt: number) {
+    function updateBodies(dt: number, elapsed: number) {
       for (const planet of planets) {
         planet.angle += planet.speed * dt;
         orbitPoint(planet.angle, planet.orbitRadius, 0, planet.systemPoint);
@@ -421,6 +439,7 @@ export function SolarSystem() {
         planet.lightDirection.z = -planet.systemPoint.z;
         viewSpaceDirectionWithBasis(planet.lightDirection, projectionBasis, planet.lightDirection);
         updateBodyShadow(planet.shadow, planet.shadowStrength, planet.lightDirection);
+        planet.cityLights?.update(planet.lightDirection, elapsed);
 
         if (planet.moonOrbitFar && planet.moonOrbitNear) {
           planet.moonOrbitFar.position.set(planet.projected.x, planet.projected.y);
@@ -451,7 +470,7 @@ export function SolarSystem() {
     }
 
     updateProjectionPresentation();
-    updateBodies(0);
+    updateBodies(0, 0);
     anomalyVisual?.update(0, 0, projectionBasis);
     let elapsed = 0;
     const onTick = (ticker: Ticker) => {
@@ -469,7 +488,7 @@ export function SolarSystem() {
       }
       nebulaSprite.alpha = 0.65 + 0.15 * Math.sin(elapsed * 0.22);
       if (asteroidBelt) asteroidBelt.rotation += 0.025 * dt;
-      updateBodies(dt);
+      updateBodies(dt, elapsed);
       anomalyVisual?.update(dt, elapsed, projectionBasis);
     };
     Ticker.shared.add(onTick);

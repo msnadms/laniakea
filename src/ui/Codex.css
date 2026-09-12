@@ -367,6 +367,8 @@
 .codex-zone-dot.hot      { background: #c05030; }
 .codex-zone-dot.marginal  { background: #9e6030; }
 .codex-zone-dot.habitable { background: #3a8a5a; }
+.codex-zone-dot.populated { background: #3a8a5a; box-shadow: 0 0 0 1.5px #ffc46a; }
+.codex-zone-dot.ecumenopolis { background: #d0a050; }
 .codex-zone-dot.gas      { background: #b08040; }
 .codex-zone-dot.ice      { background: #4070a0; }
 

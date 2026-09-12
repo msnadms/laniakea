@@ -11,6 +11,7 @@ import {
   isSettledPopulation,
   nearestNeutronStarDistance,
   planeDistance,
+  populatedWorldIds,
   relativeHeight,
   type GalaxyAnomalies,
 } from './anomalies';
@@ -23,12 +24,17 @@ import {
   ANOMALY_INTEGRITY,
   ANOMALY_INTEGRITY_LIVING,
   ANOMALY_LIVING_CHANCE,
+  ANOMALY_POPULATED_MAX,
+  ANOMALY_POPULATED_MIN,
 } from './constants';
 import { MILKY_WAY_NUM_ARMS, MILKY_WAY_SEED } from './hardcoded';
-import { generateSystemLayout } from './planetGen';
+import { findCivilizationSeeds } from './civilizationSeeds.testutil';
+import { generatePlanets, generateSystemLayout } from './planetGen';
 import type { Galaxy } from './types';
 
-const SAMPLE_SEEDS = Array.from({ length: 500 }, (_, i) => 1000 + i * 7919);
+const PLAIN_SEEDS = Array.from({ length: 300 }, (_, i) => 1000 + i * 7919);
+const CIVILIZATION_SEEDS = findCivilizationSeeds(200, 1000);
+const SAMPLE_SEEDS = [...PLAIN_SEEDS, ...CIVILIZATION_SEEDS];
 const SAMPLE = SAMPLE_SEEDS.map((seed) => {
   const galaxy = generateGalaxy(seed);
   return { galaxy, anomalies: generateAnomalies(galaxy) };
@@ -48,7 +54,11 @@ function galaxyDigest(galaxy: Galaxy) {
 }
 
 function anomaliesDigest(anomalies: GalaxyAnomalies) {
-  return digest(JSON.stringify({ civilization: anomalies.civilization, byHost: [...anomalies.byHost.entries()] }));
+  return digest(JSON.stringify({
+    civilization: anomalies.civilization,
+    byHost: [...anomalies.byHost.entries()],
+    populated: [...anomalies.populated],
+  }));
 }
 
 function kindCount(anomalies: GalaxyAnomalies, kind: string) {
@@ -57,7 +67,7 @@ function kindCount(anomalies: GalaxyAnomalies, kind: string) {
 
 describe('anomaly generation', () => {
   it('gives the same result for the same seed and never mutates the galaxy', () => {
-    for (const seed of SAMPLE_SEEDS.slice(0, 60)) {
+    for (const seed of [...PLAIN_SEEDS.slice(0, 30), ...CIVILIZATION_SEEDS.slice(0, 30)]) {
       const galaxy = generateGalaxy(seed);
       const before = galaxyDigest(galaxy);
       const first = anomaliesDigest(generateAnomalies(galaxy));
@@ -89,6 +99,7 @@ describe('anomaly generation', () => {
       expect(kindCount(anomalies, 'matrioshkaBrain')).toBeLessThanOrEqual(1);
       expect(kindCount(anomalies, 'shkadovThruster')).toBeLessThanOrEqual(1);
       expect(kindCount(anomalies, 'nicollDysonBeam')).toBeLessThanOrEqual(1);
+      expect(kindCount(anomalies, 'homeworld')).toBe(civilization ? 1 : 0);
 
       for (const [hostId, anomaly] of anomalies.byHost) {
         const host = galaxy.systems[hostId];
@@ -138,6 +149,16 @@ describe('anomaly generation', () => {
             expect(reach).toBeLessThanOrEqual(ANOMALY_BEAM_RIM_MAX);
             break;
           }
+          case 'homeworld': {
+            const free = galaxy.systems.filter((s) => canHostAnomaly(s) && (s.id === host.id || !anomalies.byHost.has(s.id)));
+            const settledHomeClass = free.filter((s) => (s.starType === 'G' || s.starType === 'K') && isSettledPopulation(s));
+            const tier = [settledHomeClass.filter((s) => isInCivilization(s, civilization!)), settledHomeClass, free]
+              .find((candidates) => candidates.length > 0)!;
+            expect(tier).toContain(host);
+            const hostDistance = planeDistance(host, civilization!);
+            expect(tier.filter((s) => planeDistance(s, civilization!) < hostDistance)).toEqual([]);
+            break;
+          }
           case 'blackHole':
             expect(nearestNeutronStarDistance(host, galaxy.systems)).toBeLessThanOrEqual(ANOMALY_BLACK_HOLE_REACH);
             expect(anomaly.direction).toBeNull();
@@ -172,6 +193,53 @@ describe('anomaly generation', () => {
         const zones = generateSystemLayout(host.seed, host.starType, anomaly.kind).planets.map((p) => p.zone);
         expect(zones).not.toContain('hot');
         expect(zones).not.toContain('habitable');
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('builds every homeworld over into an ecumenopolis without renaming its planets', () => {
+    let checked = 0;
+    for (const { galaxy, anomalies } of SAMPLE) {
+      for (const anomaly of anomalies.byHost.values()) {
+        if (anomaly.kind !== 'homeworld') continue;
+        const host = galaxy.systems[anomaly.hostId];
+        const layout = generateSystemLayout(host.seed, host.starType, 'homeworld');
+        const zones = layout.planets.map((p) => p.zone);
+        expect(zones).toContain('ecumenopolis');
+        expect(zones).not.toContain('habitable');
+        const plainNames = generatePlanets(generateSystemLayout(host.seed, host.starType)).map((p) => p.name);
+        expect(generatePlanets(layout).map((p) => p.name)).toEqual(plainNames);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('populates a couple of free worlds inside every living civilisation and none elsewhere', () => {
+    let checked = 0;
+    for (const { galaxy, anomalies } of SAMPLE) {
+      const { civilization, populated } = anomalies;
+      if (!civilization?.living) {
+        expect(populated.size).toBe(0);
+        continue;
+      }
+      const candidates = galaxy.systems.filter((s) =>
+        canHostAnomaly(s) && !anomalies.byHost.has(s.id) && isRelicClass(s) && isSettledPopulation(s) && isInCivilization(s, civilization));
+      expect(populated.size).toBeGreaterThanOrEqual(Math.min(ANOMALY_POPULATED_MIN, candidates.length));
+      expect(populated.size).toBeLessThanOrEqual(ANOMALY_POPULATED_MAX);
+      expect([...populatedWorldIds(galaxy.seed)]).toEqual([...populated]);
+
+      for (const hostId of populated) {
+        const host = galaxy.systems[hostId];
+        expect(candidates).toContain(host);
+        const layout = generateSystemLayout(host.seed, host.starType, null, true);
+        const zones = layout.planets.map((p) => p.zone);
+        expect(zones).toContain('populated');
+        expect(zones).not.toContain('habitable');
+        const plainNames = generatePlanets(generateSystemLayout(host.seed, host.starType)).map((p) => p.name);
+        expect(generatePlanets(layout).map((p) => p.name)).toEqual(plainNames);
         checked++;
       }
     }

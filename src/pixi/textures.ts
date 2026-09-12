@@ -281,7 +281,7 @@ export function createRockyPlanetAlbedoTexture(baseColor: number, seed: number):
   return Texture.from(canvas, true);
 }
 
-export function createHabitablePlanetAlbedoTexture(baseColor: number, seed: number): Texture {
+export function drawHabitablePlanet(baseColor: number, seed: number): HTMLCanvasElement {
   const rng = createRng(seed);
   const SIZE = 256;
   const { canvas, ctx } = makeCircleCanvas(SIZE, baseColor);
@@ -373,7 +373,7 @@ export function createHabitablePlanetAlbedoTexture(baseColor: number, seed: numb
   ctx.fillStyle = atmo;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  return Texture.from(canvas, true);
+  return canvas;
 }
 
 export function createMoonAlbedoTexture(baseColor: number, seed: number): Texture {

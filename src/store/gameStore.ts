@@ -31,7 +31,7 @@ function makeGalaxy(seed?: number): Galaxy {
 }
 
 function withPlanets(system: StarSystem, anomalies: GalaxyAnomalies): StarSystem {
-  const layout = generateSystemLayout(system.seed, system.starType, anomalies.byHost.get(system.id)?.kind);
+  const layout = generateSystemLayout(system.seed, system.starType, anomalies.byHost.get(system.id)?.kind, anomalies.populated.has(system.id));
   return { ...system, planets: generatePlanets(layout) };
 }
 

@@ -41,6 +41,7 @@ export type ZoneConfig = {
 const HOT_ZONE_COLORS = [0x8B4513, 0xA0522D, 0xD2691E, 0xC2956C, 0xB22222, 0xCC4422];
 const MARGINAL_ZONE_COLORS = [0xC1440E, 0xB8860B, 0xE8C47A, 0xA09070, 0x8B7355, 0xC0956C, 0x9E7B5A, 0xD4A96A];
 const HABITABLE_ZONE_COLORS = [0x4682B4, 0x5F9EA0, 0x6B8E23, 0x8FBC8F, 0x87CEEB, 0xC2956C];
+const ECUMENOPOLIS_COLORS = [0x6E6A66, 0x7A746C, 0x5E646C, 0x847868, 0x6A6E74, 0x7C7064];
 const GAS_GIANT_COLORS = [0xDAA520, 0xCD853F, 0xF4A460, 0xE8C878, 0xC8A060, 0xDDB060];
 const ICE_GIANT_COLORS = [0x4A90C4, 0x5599CC, 0x6699BB, 0x8899BB, 0x9370DB, 0x7B68EE];
 const HOT_MOON_COLORS = [0x5a3a2a, 0x6b4030, 0x7a4a35, 0x4a3020, 0x3d2a1e];
@@ -62,6 +63,8 @@ export function getZoneConfig(zone: ZoneType): ZoneConfig {
     case 'hot':      return { radiusMin: 10, radiusSpread: 13, colors: HOT_ZONE_COLORS,       moonColors: HOT_MOON_COLORS,       ringThreshold: 1.1,  moonThreshold: 0.90, maxMoons: 1 };
     case 'marginal': return { radiusMin: 18, radiusSpread: 16, colors: MARGINAL_ZONE_COLORS,  moonColors: MARGINAL_MOON_COLORS,  ringThreshold: 1.1,  moonThreshold: 0.70, maxMoons: 2 };
     case 'habitable':return { radiusMin: 24, radiusSpread: 17, colors: HABITABLE_ZONE_COLORS, moonColors: HABITABLE_MOON_COLORS, ringThreshold: 1.1,  moonThreshold: 0.60, maxMoons: 2 };
+    case 'populated':return { radiusMin: 24, radiusSpread: 17, colors: HABITABLE_ZONE_COLORS, moonColors: HABITABLE_MOON_COLORS, ringThreshold: 1.1,  moonThreshold: 0.60, maxMoons: 2 };
+    case 'ecumenopolis': return { radiusMin: 26, radiusSpread: 14, colors: ECUMENOPOLIS_COLORS, moonColors: HABITABLE_MOON_COLORS, ringThreshold: 1.1, moonThreshold: 0.60, maxMoons: 2 };
     case 'gas':      return { radiusMin: 75, radiusSpread: 50, colors: GAS_GIANT_COLORS,      moonColors: GAS_MOON_COLORS,       ringThreshold: 0.40, moonThreshold: 0.15, maxMoons: 5 };
     case 'ice':      return { radiusMin: 28, radiusSpread: 22, colors: ICE_GIANT_COLORS,      moonColors: ICE_MOON_COLORS,       ringThreshold: 0.62, moonThreshold: 0.28, maxMoons: 3 };
   }
@@ -73,7 +76,13 @@ export const MOON_K = 430;
 const INNER_WORLD_CONSUMERS: ReadonlySet<AnomalyKind> = new Set(['dysonSphere', 'matrioshkaBrain']);
 const NO_HABITABLE_ZONE: ReadonlySet<AnomalyKind> = new Set(['blackHole']);
 
-export function generateSystemLayout(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null): SystemLayout {
+function settledRings(numRings: number): ReadonlySet<number> {
+  const rings = Array.from({ length: numRings }, (_, ring) => ring);
+  const habitable = rings.filter((ring) => getPlanetZone(ring, numRings) === 'habitable');
+  return new Set(habitable.length > 0 ? habitable : rings.filter((ring) => getPlanetZone(ring, numRings) === 'hot').slice(-1));
+}
+
+export function generateSystemLayout(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null, populated = false): SystemLayout {
   if (seed === SOL_SEED) return SOL_SYSTEM_LAYOUT;
   const rng = createRng(seed);
   const isBrownDwarf = starType === 'L';
@@ -82,13 +91,16 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   const noHabitableZone = !!anomalyKind && NO_HABITABLE_ZONE.has(anomalyKind);
   const numRings = (isBrownDwarf || isNeutronStar) ? Math.floor(rng() * 3) + 2 : Math.floor(rng() * 5) + 3;
   let orbitRadius = isNeutronStar ? 200 + rng() * 80 : 380 + rng() * 120;
+  const cityZone: ZoneType | null = anomalyKind === 'homeworld' ? 'ecumenopolis' : populated ? 'populated' : null;
+  const cityRings = cityZone ? settledRings(numRings) : null;
 
   const planets: PlanetLayout[] = [];
 
   for (let ring = 0; ring < numRings; ring++) {
     const rawZone = getPlanetZone(ring, numRings);
     const rolledZone = isBrownDwarf ? 'ice' : isNeutronStar ? 'hot' : (rawZone === 'habitable' && rng() > 0.12 ? 'marginal' : rawZone);
-    const zone = innerWorldsConsumed && (rolledZone === 'hot' || rolledZone === 'habitable') ? 'marginal'
+    const zone = cityZone && cityRings?.has(ring) ? cityZone
+      : innerWorldsConsumed && (rolledZone === 'hot' || rolledZone === 'habitable') ? 'marginal'
       : noHabitableZone && rolledZone === 'habitable' ? 'marginal'
       : rolledZone;
     const cfg = getZoneConfig(zone);

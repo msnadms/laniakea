@@ -63,8 +63,28 @@
 .planet-panel-zone-dot.hot      { background: #cc6633; }
 .planet-panel-zone-dot.marginal { background: #888866; }
 .planet-panel-zone-dot.habitable{ background: #44aa66; }
+.planet-panel-zone-dot.populated { background: #44aa66; box-shadow: 0 0 0 2px #ffc46a; }
+.planet-panel-zone-dot.ecumenopolis { background: #e0b060; }
 .planet-panel-zone-dot.gas      { background: #5588cc; }
 .planet-panel-zone-dot.ice      { background: #88aacc; }
+
+.planet-panel-anomaly {
+  display: block;
+  margin: -6px 0 14px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid #1a3a5c;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.planet-panel-anomaly:hover {
+  opacity: 1;
+}
 
 .planet-panel-name {
   font-family: var(--font-display);

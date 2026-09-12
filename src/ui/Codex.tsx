@@ -8,7 +8,7 @@ import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import { anomalyRecordKey, deleteAnomalyDiscoveries, type AnomalyRecord } from '../firebase/anomalies';
 import { getAnomalyLore } from '../game/anomalyLore';
-import type { AnomalyKind } from '../game/anomalies';
+import { populatedWorldIds, type AnomalyKind } from '../game/anomalies';
 import { useAnomalyStore } from '../store/anomalyStore';
 import './Codex.css';
 import './AnomalyToast.css';
@@ -295,13 +295,15 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const anomalyRecords = useAnomalyStore((s) => s.records);
+  const populated = useMemo(() => populatedWorldIds(galaxy.galaxySeed), [galaxy.galaxySeed]);
   const hasHabitable = useMemo(
     () => galaxy.enrichedSystems.some((s) => systemHasHabitable(
       s.seed,
       s.starType,
       anomalyRecords[anomalyRecordKey(galaxy.galaxySeed, s.id)]?.kind,
+      populated.has(Number(s.id)),
     )),
-    [galaxy.enrichedSystems, galaxy.galaxySeed, anomalyRecords],
+    [galaxy.enrichedSystems, galaxy.galaxySeed, anomalyRecords, populated],
   );
   const hasAnomaly = useAnomalyStore((s) => Object.values(s.records).some(
     (record) => record.superclusterSeed === superclusterSeed && record.galaxySeed === galaxy.galaxySeed,
@@ -346,6 +348,7 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
               superclusterName={superclusterName}
               galaxySeed={galaxy.galaxySeed}
               galaxyName={galaxy.galaxyName}
+              populated={populated.has(Number(sys.id))}
               deleteMode={deleteMode}
               onNavigate={onNavigate}
               onDeleteSystem={onDeleteSystem}
@@ -357,15 +360,16 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   );
 }
 
-function systemHasHabitable(seed: number, starType?: StarType, anomalyKind?: AnomalyKind | null): boolean {
+function systemHasHabitable(seed: number, starType: StarType | undefined, anomalyKind: AnomalyKind | null | undefined, populated: boolean): boolean {
   if (starType === 'L') return false;
-  return generateSystemLayout(seed, starType, anomalyKind).planets.some((p) => p.zone === 'habitable');
+  return generateSystemLayout(seed, starType, anomalyKind, populated).planets
+    .some((p) => p.zone === 'habitable' || p.zone === 'populated' || p.zone === 'ecumenopolis');
 }
 
-function SystemPlanets({ seed, starType, anomalyKind, query }: { seed: number; starType?: StarType; anomalyKind: AnomalyKind | null; query: string }) {
+function SystemPlanets({ seed, starType, anomalyKind, populated, query }: { seed: number; starType?: StarType; anomalyKind: AnomalyKind | null; populated: boolean; query: string }) {
   const planets = useMemo(
-    () => generatePlanets(generateSystemLayout(seed, starType, anomalyKind)),
-    [seed, starType, anomalyKind],
+    () => generatePlanets(generateSystemLayout(seed, starType, anomalyKind, populated)),
+    [seed, starType, anomalyKind, populated],
   );
   return (
     <div className="codex-planets">
@@ -390,13 +394,16 @@ function SystemPlanets({ seed, starType, anomalyKind, query }: { seed: number; s
   );
 }
 
-function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, deleteMode, onNavigate, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; deleteMode: boolean; onNavigate: EntryHandlers['onNavigate']; onDeleteSystem: EntryHandlers['onDeleteSystem'] }) {
+function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxySeed, galaxyName, populated, deleteMode, onNavigate, onDeleteSystem }: { system: EnrichedSystem; query: string; superclusterSeed: number; superclusterName: string; galaxySeed: number; galaxyName: string; populated: boolean; deleteMode: boolean; onNavigate: EntryHandlers['onNavigate']; onDeleteSystem: EntryHandlers['onDeleteSystem'] }) {
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const anomalyRecord = useAnomalyStore((s) => s.records[anomalyRecordKey(galaxySeed, system.id)] ?? null);
   const anomalyKind = anomalyRecord?.kind ?? null;
-  const hasHabitable = useMemo(() => systemHasHabitable(system.seed, system.starType, anomalyKind), [system.seed, system.starType, anomalyKind]);
+  const hasHabitable = useMemo(
+    () => systemHasHabitable(system.seed, system.starType, anomalyKind, populated),
+    [system.seed, system.starType, anomalyKind, populated],
+  );
   const anomalyLore = anomalyRecord ? getAnomalyLore(anomalyRecord) : null;
 
   return (
@@ -427,7 +434,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
           )}
         </div>
       </div>
-      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} anomalyKind={anomalyKind} query={query} />}
+      {isOpen && <SystemPlanets seed={system.seed} starType={system.starType} anomalyKind={anomalyKind} populated={populated} query={query} />}
     </div>
   );
 }

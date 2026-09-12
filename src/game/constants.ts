@@ -391,7 +391,7 @@ export const GALAXY_PICK_MAX_WORLD = 25;
 // drag rather than a click.
 export const DRAG_THRESHOLD_PX = 4;
 
-export const ANOMALY_CIVILIZATION_CHANCE = 0.05;
+export const ANOMALY_CIVILIZATION_CHANCE = 1 / 20000;
 export const ANOMALY_HOME_RADIUS = 0.25 * GALAXY_RADIUS;
 export const ANOMALY_HOME_OUTER_ARM_FRACTION = 0.45;
 
@@ -406,6 +406,9 @@ export const ANOMALY_BEAM_CHANCE = 0.4;
 export const ANOMALY_BEAM_RIM_MIN = 0.8;
 export const ANOMALY_BEAM_RIM_MAX = 1.2;
 
+export const ANOMALY_POPULATED_MIN = 2;
+export const ANOMALY_POPULATED_MAX = 3;
+
 export const ANOMALY_BRAIN_CHANCE = 0.12;
 export const ANOMALY_BRAIN_MIN_DYSON_SPHERES = 2;
 
@@ -419,12 +422,14 @@ export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> =
   shkadovThruster: [0.5, 0.8],
   nicollDysonBeam: [0.4, 0.7],
   matrioshkaBrain: [0.85, 0.97],
+  homeworld: [0.3, 0.65],
 };
 
 export const ANOMALY_LIVING_CHANCE = 0.2;
 
 export const ANOMALY_INTEGRITY_LIVING: Partial<Record<AnomalyKind, readonly [number, number]>> = {
   dysonSphere: [0.9, 1],
+  homeworld: [0.92, 1],
   shkadovThruster: [0.85, 0.98],
   nicollDysonBeam: [0.85, 0.98],
   matrioshkaBrain: [0.95, 1],

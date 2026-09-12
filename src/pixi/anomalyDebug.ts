@@ -9,6 +9,7 @@ const KIND_COLORS: Record<AnomalyKind, number> = {
   nicollDysonBeam: 0xffd040,
   shkadovThruster: 0x40e0ff,
   dysonSphere: 0xff8a30,
+  homeworld: 0x60ff9a,
   blackHole: 0xb070ff,
 };
 
@@ -17,12 +18,15 @@ const KIND_LABELS: Record<AnomalyKind, string> = {
   nicollDysonBeam: 'BEAM',
   shkadovThruster: 'SHKADOV',
   dysonSphere: 'DYSON',
+  homeworld: 'HOMEWORLD',
   blackHole: 'BLACK HOLE',
 };
 
-const KIND_RANK: AnomalyKind[] = ['matrioshkaBrain', 'nicollDysonBeam', 'shkadovThruster', 'dysonSphere', 'blackHole'];
+const KIND_RANK: AnomalyKind[] = ['matrioshkaBrain', 'nicollDysonBeam', 'shkadovThruster', 'dysonSphere', 'homeworld', 'blackHole'];
 
 const LIVING_COLOR = 0xffe080;
+
+const POPULATED_COLOR = 0x9affc8;
 
 const REGION_STEPS = 64;
 
@@ -87,15 +91,20 @@ export function createGalaxyAnomalyDebug(root: Container, systems: readonly Star
   const rings = new Graphics();
   container.addChild(rings);
 
-  const entries = [...anomalies.byHost.values()].map((anomaly) => {
-    const color = anomaly.living ? LIVING_COLOR : KIND_COLORS[anomaly.kind];
-    const label = new Text({
+  const marks = [
+    ...[...anomalies.byHost.values()].map((anomaly) => ({
+      hostId: anomaly.hostId,
+      color: anomaly.living ? LIVING_COLOR : KIND_COLORS[anomaly.kind],
+      ringWidth: anomaly.living ? 3 : 1.5,
       text: `${KIND_LABELS[anomaly.kind]}${anomaly.living ? ' (living)' : ''}${anomaly.active ? ' (active)' : ''}`,
-      style: { fontFamily: 'IBM Plex Sans', fontSize: 12, fill: color },
-    });
+    })),
+    ...[...anomalies.populated].map((hostId) => ({ hostId, color: POPULATED_COLOR, ringWidth: 1.5, text: 'POPULATED' })),
+  ];
+  const entries = marks.map(({ hostId, color, ringWidth, text }) => {
+    const label = new Text({ text, style: { fontFamily: 'IBM Plex Sans', fontSize: 12, fill: color } });
     label.anchor.set(0, 0.5);
     container.addChild(label);
-    return { host: systems[anomaly.hostId], color, ringWidth: anomaly.living ? 3 : 1.5, label, projected: emptyPoint() };
+    return { host: systems[hostId], color, ringWidth, label, projected: emptyPoint() };
   });
 
   const region = anomalies.civilization;

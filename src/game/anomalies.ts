@@ -1,4 +1,4 @@
-import { createRng } from './galaxyGen';
+import { createRng, generateGalaxy } from './galaxyGen';
 import { MILKY_WAY_SEED } from './hardcoded';
 import {
   ANOMALY_BEAM_CHANCE,
@@ -18,6 +18,8 @@ import {
   ANOMALY_INTEGRITY,
   ANOMALY_INTEGRITY_LIVING,
   ANOMALY_LIVING_CHANCE,
+  ANOMALY_POPULATED_MAX,
+  ANOMALY_POPULATED_MIN,
   ANOMALY_SHKADOV_CHANCE,
   ANOMALY_SHKADOV_HEIGHT_FRACTION,
   GALAXY_RADIUS,
@@ -25,13 +27,14 @@ import {
 } from './constants';
 import type { Galaxy, Rng, StarSystem, StarType } from './types';
 
-export type AnomalyKind = 'blackHole' | 'dysonSphere' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
+export type AnomalyKind = 'blackHole' | 'dysonSphere' | 'homeworld' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
 
 export const ANOMALY_KINDS: readonly AnomalyKind[] = [
   'blackHole',
   'dysonSphere',
   'shkadovThruster',
   'nicollDysonBeam',
+  'homeworld',
   'matrioshkaBrain',
 ];
 
@@ -61,6 +64,7 @@ export interface Civilization {
 export interface GalaxyAnomalies {
   civilization: Civilization | null;
   byHost: ReadonlyMap<number, Anomaly>;
+  populated: ReadonlySet<number>;
 }
 
 interface PlanePoint {
@@ -70,6 +74,7 @@ interface PlanePoint {
 
 const CIVILIZATION_SALT = 0x6c8e9cf5;
 const BLACK_HOLE_SALT = 0x3c6ef372;
+const POPULATED_SALT = 0x51ed270b;
 const HOST_SEED_MIX = 0x165667b1;
 
 const RELIC_CLASSES: ReadonlySet<StarType> = new Set(['F', 'G', 'K']);
@@ -277,7 +282,33 @@ function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: M
   }
 }
 
-export const NO_ANOMALIES: GalaxyAnomalies = { civilization: null, byHost: new Map() };
+function placeHomeworld(galaxy: Galaxy, hosts: readonly StarSystem[], civilization: Civilization, byHost: Map<number, Anomaly>) {
+  const free = hosts.filter((system) => !byHost.has(system.id));
+  const settledHomeClass = free.filter((system) => HOME_CLASSES.has(system.starType) && isSettledPopulation(system));
+  const tiers = [
+    settledHomeClass.filter((system) => isInCivilization(system, civilization)),
+    settledHomeClass,
+    free,
+  ];
+  const host = nearestTo(tiers.find((tier) => tier.length > 0) ?? [], civilization);
+  if (host) byHost.set(host.id, createAnomaly('homeworld', galaxy.seed, host.id, null, civilization.living));
+}
+
+function placePopulatedWorlds(
+  galaxy: Galaxy,
+  hosts: readonly StarSystem[],
+  civilization: Civilization,
+  byHost: ReadonlyMap<number, Anomaly>,
+): ReadonlySet<number> {
+  if (!civilization.living) return NO_ANOMALIES.populated;
+  const rng = createRng((galaxy.seed ^ POPULATED_SALT) >>> 0);
+  const count = ANOMALY_POPULATED_MIN + Math.floor(rng() * (ANOMALY_POPULATED_MAX - ANOMALY_POPULATED_MIN + 1));
+  const candidates = hosts.filter((system) =>
+    !byHost.has(system.id) && isRelicClass(system) && isSettledPopulation(system) && isInCivilization(system, civilization));
+  return new Set(pickManyWeighted(rng, candidates, count, () => 1).map((system) => system.id));
+}
+
+export const NO_ANOMALIES: GalaxyAnomalies = { civilization: null, byHost: new Map(), populated: new Set() };
 
 export function generateAnomalies(galaxy: Galaxy): GalaxyAnomalies {
   if (galaxy.seed === MILKY_WAY_SEED) return NO_ANOMALIES;
@@ -285,5 +316,11 @@ export function generateAnomalies(galaxy: Galaxy): GalaxyAnomalies {
   const byHost = new Map<number, Anomaly>();
   const civilization = placeCivilization(galaxy, hosts, byHost);
   placeBlackHoles(galaxy, hosts, byHost);
-  return { civilization, byHost };
+  if (civilization) placeHomeworld(galaxy, hosts, civilization, byHost);
+  const populated = civilization ? placePopulatedWorlds(galaxy, hosts, civilization, byHost) : NO_ANOMALIES.populated;
+  return { civilization, byHost, populated };
+}
+
+export function populatedWorldIds(galaxySeed: number): ReadonlySet<number> {
+  return hasCivilization(galaxySeed) ? generateAnomalies(generateGalaxy(galaxySeed)).populated : NO_ANOMALIES.populated;
 }
