@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ANOMALY_KINDS, type AnomalyKind } from '../game/anomalies';
-import { ANOMALY_LORE } from '../game/anomalyLore';
+import { ANOMALY_LORE, getAnomalyLore } from '../game/anomalyLore';
 import type { AnomalyRecord } from '../firebase/anomalies';
 import { useAnomalyStore } from '../store/anomalyStore';
 import './InfoPanel.css';
@@ -175,7 +175,6 @@ function AnomaliesView() {
     <div className="info-section">
       <div className="info-section-title">Anomalies</div>
       {ANOMALY_KINDS.map((kind) => {
-        const lore = ANOMALY_LORE[kind];
         const found = foundByKind.get(kind) ?? [];
         if (found.length === 0) {
           return (
@@ -184,11 +183,12 @@ function AnomaliesView() {
                 <span className="info-anomaly-glyph info-anomaly-glyph--unknown">◬</span>
                 <span className="info-anomaly-name info-anomaly-name--unknown">Uncatalogued</span>
               </div>
-              <p className="info-anomaly-rumour">{lore.rumour}</p>
+              <p className="info-anomaly-rumour">{ANOMALY_LORE[kind].rumour}</p>
             </div>
           );
         }
         const first = found[0];
+        const lore = getAnomalyLore(first);
         const isOpen = expanded === kind;
         const tierClass = `anomaly-tier-${lore.tier.toLowerCase()}`;
         return (

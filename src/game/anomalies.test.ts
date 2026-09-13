@@ -3,12 +3,15 @@ import { generateGalaxy } from './galaxyGen';
 import {
   anomalySeed,
   canHostAnomaly,
+  CIVILIZATION_STAGE_PLANS,
+  CIVILIZATION_STAGES,
   generateAnomalies,
   hasCivilization,
   highStarThreshold,
   isInCivilization,
   isRelicClass,
   isSettledPopulation,
+  MEGASTRUCTURE_KINDS,
   nearestNeutronStarDistance,
   planeDistance,
   populatedWorldIds,
@@ -25,13 +28,15 @@ import {
   ANOMALY_INTEGRITY,
   ANOMALY_INTEGRITY_LIVING,
   ANOMALY_LIVING_CHANCE,
-  ANOMALY_POPULATED_MAX,
-  ANOMALY_POPULATED_MIN,
+  ANOMALY_MEGASTRUCTURES_SOME_MAX,
+  ANOMALY_MEGASTRUCTURES_SOME_MIN,
+  ANOMALY_RUINED_MIN_STAGE,
+  ANOMALY_STAGE_POPULATED,
 } from './constants';
 import { MILKY_WAY_NUM_ARMS, MILKY_WAY_SEED } from './hardcoded';
-import { findCivilizationSeeds } from './civilizationSeeds.testutil';
+import { expectedStageShare, findCivilizationSeeds } from './civilizationSeeds.testutil';
 import { generatePlanets, generateSystemLayout } from './planetGen';
-import type { Galaxy } from './types';
+import type { Galaxy, StarSystem } from './types';
 
 const PLAIN_SEEDS = Array.from({ length: 300 }, (_, i) => 1000 + i * 7919);
 const CIVILIZATION_SEEDS = findCivilizationSeeds(200, 1000);
@@ -40,6 +45,7 @@ const SAMPLE = SAMPLE_SEEDS.map((seed) => {
   const galaxy = generateGalaxy(seed);
   return { galaxy, anomalies: generateAnomalies(galaxy) };
 });
+const CIVILIZATIONS = SAMPLE.filter(({ anomalies }) => anomalies.civilization !== null);
 
 function digest(text: string) {
   let hash = 2166136261;
@@ -66,19 +72,40 @@ function kindCount(anomalies: GalaxyAnomalies, kind: string) {
   return [...anomalies.byHost.values()].filter((anomaly) => anomaly.kind === kind).length;
 }
 
+function megastructureCount(anomalies: GalaxyAnomalies) {
+  return MEGASTRUCTURE_KINDS.reduce((sum, kind) => sum + kindCount(anomalies, kind), 0);
+}
+
+function homeTier(galaxy: Galaxy, anomalies: GalaxyAnomalies, homeId?: number): StarSystem[] {
+  const civilization = anomalies.civilization!;
+  const free = galaxy.systems.filter((s) => canHostAnomaly(s) && (s.id === homeId || !anomalies.byHost.has(s.id)));
+  const settledHomeClass = free.filter((s) => (s.starType === 'G' || s.starType === 'K') && isSettledPopulation(s));
+  return [settledHomeClass.filter((s) => isInCivilization(s, civilization)), settledHomeClass, free]
+    .find((candidates) => candidates.length > 0)!;
+}
+
+function nearest(systems: readonly StarSystem[], point: { x: number; y: number }) {
+  return systems.reduce((best, s) => (planeDistance(s, point) < planeDistance(best, point) ? s : best));
+}
+
 function expectCannonRule(galaxy: Galaxy, anomalies: GalaxyAnomalies, anomaly: Anomaly) {
   const civilization = anomalies.civilization!;
   const host = galaxy.systems[anomaly.hostId];
-  expect(civilization.cannon).toBe(true);
-  expect(civilization.homeKind).toBe('aldersonDisk');
-  expect(anomaly.living).toBe(true);
+  expect(CIVILIZATION_STAGE_PLANS[civilization.stage].cannon).toBe(true);
+  expect(anomaly.living).toBe(civilization.living);
   expect(anomalies.populated.has(host.id)).toBe(false);
-  const candidates = galaxy.systems.filter((s) =>
+  const free = galaxy.systems.filter((s) =>
     canHostAnomaly(s) && (s.id === host.id || !anomalies.byHost.has(s.id)) && !anomalies.populated.has(s.id)
-    && isRelicClass(s) && isSettledPopulation(s) && isInCivilization(s, civilization));
-  expect(candidates).toContain(host);
+    && isRelicClass(s) && isSettledPopulation(s));
+  const inside = free.filter((s) => isInCivilization(s, civilization));
   const hostDistance = planeDistance(host, civilization);
-  expect(candidates.filter((s) => planeDistance(s, civilization) > hostDistance)).toEqual([]);
+  if (inside.length > 0) {
+    expect(inside).toContain(host);
+    expect(inside.filter((s) => planeDistance(s, civilization) > hostDistance)).toEqual([]);
+  } else {
+    expect(free).toContain(host);
+    expect(free.filter((s) => planeDistance(s, civilization) < hostDistance)).toEqual([]);
+  }
   expect(anomaly.direction!.z).toBe(0);
   expect(Math.hypot(anomaly.direction!.x, anomaly.direction!.y)).toBeCloseTo(1, 6);
   if (hostDistance > 0) {
@@ -105,10 +132,53 @@ describe('anomaly generation', () => {
     }
   });
 
-  it('finds civilisations, Dyson spheres and black holes in the sample', () => {
-    expect(SAMPLE.some(({ anomalies }) => anomalies.civilization !== null)).toBe(true);
+  it('finds civilisations, home swarms, Dyson spheres and black holes in the sample', () => {
+    expect(CIVILIZATIONS.length).toBeGreaterThan(0);
+    expect(SAMPLE.some(({ anomalies }) => [...anomalies.byHost.values()].some((anomaly) => anomaly.swarm))).toBe(true);
     expect(SAMPLE.some(({ anomalies }) => kindCount(anomalies, 'dysonSphere') > 0)).toBe(true);
     expect(SAMPLE.some(({ anomalies }) => kindCount(anomalies, 'blackHole') > 0)).toBe(true);
+  });
+
+  it('rolls every stage near its weight, and never a ruined first stage', () => {
+    for (const stage of CIVILIZATION_STAGES) {
+      const share = CIVILIZATIONS.filter(({ anomalies }) => anomalies.civilization!.stage === stage).length / CIVILIZATIONS.length;
+      expect(share).toBeGreaterThan(0);
+      expect(Math.abs(share - expectedStageShare(stage))).toBeLessThan(0.1);
+    }
+    for (const { anomalies } of CIVILIZATIONS) {
+      const { living, stage } = anomalies.civilization!;
+      if (!living) expect(stage).toBeGreaterThanOrEqual(ANOMALY_RUINED_MIN_STAGE);
+    }
+  });
+
+  it('rolls living civilisations near the target rate', () => {
+    const livingRate = CIVILIZATIONS.filter(({ anomalies }) => anomalies.civilization!.living).length / CIVILIZATIONS.length;
+    expect(livingRate).toBeGreaterThan(0);
+    expect(livingRate).toBeLessThan(1);
+    expect(Math.abs(livingRate - ANOMALY_LIVING_CHANCE)).toBeLessThan(0.15);
+  });
+
+  it('builds each stage out of exactly the structures its plan names', () => {
+    for (const { anomalies } of SAMPLE) {
+      const { civilization } = anomalies;
+      if (!civilization) {
+        expect([...anomalies.byHost.values()].every((anomaly) => anomaly.kind === 'blackHole')).toBe(true);
+        continue;
+      }
+      const plan = CIVILIZATION_STAGE_PLANS[civilization.stage];
+      expect(kindCount(anomalies, 'homeworld')).toBe(plan.home === 'homeworld' ? 1 : 0);
+      expect(kindCount(anomalies, 'aldersonDisk')).toBe(plan.home === 'aldersonDisk' ? 1 : 0);
+      expect(kindCount(anomalies, 'dysonSphere') > 0).toBe(plan.dysonSpheres);
+      expect([...anomalies.byHost.values()].filter((anomaly) => anomaly.swarm).map((anomaly) => anomaly.kind)).toEqual(plan.homeSwarm ? ['homeworld'] : []);
+      expect(kindCount(anomalies, 'alcubierreCannon')).toBe(plan.cannon ? 1 : 0);
+      const megastructures = megastructureCount(anomalies);
+      if (plan.megastructures === 'none') expect(megastructures).toBe(0);
+      if (plan.megastructures === 'all') expect(megastructures).toBe(MEGASTRUCTURE_KINDS.length);
+      if (plan.megastructures === 'some') {
+        expect(megastructures).toBeGreaterThanOrEqual(ANOMALY_MEGASTRUCTURES_SOME_MIN);
+        expect(megastructures).toBeLessThanOrEqual(ANOMALY_MEGASTRUCTURES_SOME_MAX);
+      }
+    }
   });
 
   it('places every anomaly on a host its rule allows', () => {
@@ -117,12 +187,7 @@ describe('anomaly generation', () => {
       const threshold = highStarThreshold(galaxy.systems);
       const dysonCount = kindCount(anomalies, 'dysonSphere');
       expect(dysonCount).toBeLessThanOrEqual(ANOMALY_DYSON_MAX);
-      expect(kindCount(anomalies, 'matrioshkaBrain')).toBeLessThanOrEqual(1);
-      expect(kindCount(anomalies, 'shkadovThruster')).toBeLessThanOrEqual(1);
-      expect(kindCount(anomalies, 'nicollDysonBeam')).toBeLessThanOrEqual(1);
-      expect(kindCount(anomalies, 'homeworld') + kindCount(anomalies, 'aldersonDisk')).toBe(civilization ? 1 : 0);
-      expect(kindCount(anomalies, 'alcubierreCannon')).toBeLessThanOrEqual(civilization?.cannon ? 1 : 0);
-      if (civilization?.cannon) expect(civilization.homeKind).toBe('aldersonDisk');
+      for (const kind of MEGASTRUCTURE_KINDS) expect(kindCount(anomalies, kind)).toBeLessThanOrEqual(1);
 
       for (const [hostId, anomaly] of anomalies.byHost) {
         const host = galaxy.systems[hostId];
@@ -158,7 +223,7 @@ describe('anomaly generation', () => {
             expect(nearer).toEqual([]);
             break;
           }
-          case 'shkadovThruster':
+          case 'caplanThruster':
             expect(isRelicClass(host)).toBe(true);
             expect(isInCivilization(host, civilization!)).toBe(false);
             expect(relativeHeight(host)).toBeGreaterThanOrEqual(threshold);
@@ -174,12 +239,8 @@ describe('anomaly generation', () => {
           }
           case 'homeworld':
           case 'aldersonDisk': {
-            expect(anomaly.kind).toBe(civilization!.homeKind);
-            expect(anomaly.kind === 'homeworld' || anomaly.living).toBe(true);
-            const free = galaxy.systems.filter((s) => canHostAnomaly(s) && (s.id === host.id || !anomalies.byHost.has(s.id)));
-            const settledHomeClass = free.filter((s) => (s.starType === 'G' || s.starType === 'K') && isSettledPopulation(s));
-            const tier = [settledHomeClass.filter((s) => isInCivilization(s, civilization!)), settledHomeClass, free]
-              .find((candidates) => candidates.length > 0)!;
+            expect(anomaly.kind).toBe(CIVILIZATION_STAGE_PLANS[civilization!.stage].home);
+            const tier = homeTier(galaxy, anomalies, host.id);
             expect(tier).toContain(host);
             const hostDistance = planeDistance(host, civilization!);
             expect(tier.filter((s) => planeDistance(s, civilization!) < hostDistance)).toEqual([]);
@@ -213,6 +274,16 @@ describe('anomaly generation', () => {
     }
   });
 
+  it('arms every stage 6 civilisation with a cannon at the edge of its region, aimed outward', () => {
+    const topStage = CIVILIZATIONS.filter(({ anomalies }) => CIVILIZATION_STAGE_PLANS[anomalies.civilization!.stage].cannon);
+    expect(topStage.length).toBeGreaterThan(0);
+    for (const { galaxy, anomalies } of topStage) {
+      const cannon = [...anomalies.byHost.values()].find((anomaly) => anomaly.kind === 'alcubierreCannon');
+      expect(cannon).toBeDefined();
+      expectCannonRule(galaxy, anomalies, cannon!);
+    }
+  });
+
   it('leaves no hot or habitable worlds around Dyson spheres and Matrioshka brains', () => {
     let checked = 0;
     for (const { galaxy, anomalies } of SAMPLE) {
@@ -226,6 +297,14 @@ describe('anomaly generation', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('harvests the home star and settles another world before building at any other star', () => {
+    for (const stage of CIVILIZATION_STAGES) {
+      if (!CIVILIZATION_STAGE_PLANS[stage].dysonSpheres) continue;
+      const earlier = CIVILIZATION_STAGES.filter((s) => s < stage);
+      expect(earlier.some((s) => CIVILIZATION_STAGE_PLANS[s].homeSwarm && ANOMALY_STAGE_POPULATED[s][0] > 0)).toBe(true);
+    }
   });
 
   it('builds every homeworld over into an ecumenopolis without renaming its planets', () => {
@@ -268,7 +347,8 @@ describe('anomaly generation', () => {
         const dismantled = layout.dismantledRings ?? 0;
         expect(dismantled).toBeGreaterThan(0);
         expect(layout.planets).toEqual(plain.planets.slice(dismantled));
-        expect(layout.planets.map((p) => p.zone).every((zone) => zone === 'gas' || zone === 'ice')).toBe(true);
+        expect(layout.planets.map((p) => p.zone).every((zone) => zone === 'ice')).toBe(true);
+        expect(layout.diskRim).toEqual(plain.planets.find((p) => p.zone === 'gas' || p.zone === 'ice'));
         expect(generatePlanets(layout).map((p) => p.name)).toEqual(generatePlanets(plain).map((p) => p.name).slice(dismantled));
         const plainGap = plain.asteroidGapIdx;
         expect(layout.asteroidGapIdx).toBe(plainGap !== null && plainGap >= dismantled ? plainGap - dismantled : null);
@@ -276,23 +356,33 @@ describe('anomaly generation', () => {
     }
   });
 
-  it('populates a couple of free worlds inside every living civilisation and none elsewhere', () => {
+  it('populates worlds inside living civilisations by stage, and none elsewhere', () => {
     let checked = 0;
+    let firstStageHomes = 0;
     for (const { galaxy, anomalies } of SAMPLE) {
       const { civilization, populated } = anomalies;
       if (!civilization?.living) {
         expect(populated.size).toBe(0);
         continue;
       }
-      const candidates = galaxy.systems.filter((s) =>
-        canHostAnomaly(s) && !anomalies.byHost.has(s.id) && isRelicClass(s) && isSettledPopulation(s) && isInCivilization(s, civilization));
-      expect(populated.size).toBeGreaterThanOrEqual(Math.min(ANOMALY_POPULATED_MIN, candidates.length));
-      expect(populated.size).toBeLessThanOrEqual(ANOMALY_POPULATED_MAX);
       expect([...populatedWorldIds(galaxy.seed)]).toEqual([...populated]);
+      const plan = CIVILIZATION_STAGE_PLANS[civilization.stage];
+      const home = plan.home ? null : nearest(homeTier(galaxy, anomalies), civilization);
+      if (home) {
+        expect(populated.has(home.id)).toBe(true);
+        firstStageHomes++;
+      }
+      const extras = [...populated].filter((id) => id !== home?.id);
+      const candidates = galaxy.systems.filter((s) =>
+        canHostAnomaly(s) && !anomalies.byHost.has(s.id) && s.id !== home?.id
+        && isRelicClass(s) && isSettledPopulation(s) && isInCivilization(s, civilization));
+      const [min, max] = ANOMALY_STAGE_POPULATED[civilization.stage];
+      expect(extras.length).toBeGreaterThanOrEqual(Math.min(min, candidates.length));
+      expect(extras.length).toBeLessThanOrEqual(max);
+      for (const hostId of extras) expect(candidates).toContain(galaxy.systems[hostId]);
 
       for (const hostId of populated) {
         const host = galaxy.systems[hostId];
-        expect(candidates).toContain(host);
         const layout = generateSystemLayout(host.seed, host.starType, null, true);
         const zones = layout.planets.map((p) => p.zone);
         expect(zones).toContain('populated');
@@ -303,38 +393,7 @@ describe('anomaly generation', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
-  });
-
-  it('arms some Alderson civilisations with a cannon at the edge of their region, aimed outward', { timeout: 30_000 }, () => {
-    const armed: Array<{ galaxy: Galaxy; anomalies: GalaxyAnomalies }> = [];
-    let aldersonDisks = 0;
-    for (const seed of findCivilizationSeeds(600, 1000)) {
-      const galaxy = generateGalaxy(seed);
-      const anomalies = generateAnomalies(galaxy);
-      const { civilization } = anomalies;
-      if (civilization?.homeKind !== 'aldersonDisk') {
-        expect(civilization?.cannon).toBe(false);
-        continue;
-      }
-      aldersonDisks++;
-      if (kindCount(anomalies, 'alcubierreCannon') > 0) armed.push({ galaxy, anomalies });
-      if (armed.length >= 3) break;
-    }
-    expect(armed.length).toBe(3);
-    expect(aldersonDisks).toBeGreaterThan(armed.length);
-    for (const { galaxy, anomalies } of armed) {
-      const cannon = [...anomalies.byHost.values()].find((anomaly) => anomaly.kind === 'alcubierreCannon')!;
-      expectCannonRule(galaxy, anomalies, cannon);
-    }
-  });
-
-  it('rolls living civilisations near the target rate without changing host selection', () => {
-    const civilizations = SAMPLE.map(({ anomalies }) => anomalies.civilization).filter((c) => c !== null);
-    expect(civilizations.length).toBeGreaterThan(0);
-    const livingRate = civilizations.filter((c) => c.living).length / civilizations.length;
-    expect(livingRate).toBeGreaterThan(0);
-    expect(livingRate).toBeLessThan(1);
-    expect(Math.abs(livingRate - ANOMALY_LIVING_CHANCE)).toBeLessThan(0.15);
+    expect(firstStageHomes).toBeGreaterThan(0);
   });
 
   it('hosts nothing in the Milky Way', () => {

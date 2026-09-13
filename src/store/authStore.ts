@@ -9,7 +9,7 @@ import { applyUserSettings, useUIStore } from './uiStore';
 import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { loadNav } from '../lib/navLocalStorage';
-import { getSuperclusterCoords } from '../game/superclusters';
+import { getSuperclusterCoords } from '../game/universe';
 
 interface AuthState {
   user: User | null;

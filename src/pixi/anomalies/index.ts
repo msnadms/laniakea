@@ -1,11 +1,12 @@
 import { createAlcubierreCannon } from './alcubierreCannon';
 import { createAldersonDisk } from './aldersonDisk';
 import { createBlackHole } from './blackHole';
+import { createCaplanThruster } from './caplanThruster';
 import { createDysonSphere } from './dysonSphere';
+import { createDysonSwarm } from './dysonSwarm';
 import { createHomeworld } from './homeworld';
 import { createMatrioshkaBrain } from './matrioshkaBrain';
 import { createNicollDysonBeam } from './nicollDysonBeam';
-import { createShkadovThruster } from './shkadovThruster';
 import type { AnomalyVisual, AnomalyVisualContext } from './types';
 
 export type { AnomalyVisual, AnomalyVisualContext } from './types';
@@ -15,10 +16,10 @@ export function createAnomalyVisual(context: AnomalyVisualContext): AnomalyVisua
     case 'alcubierreCannon': return createAlcubierreCannon(context);
     case 'aldersonDisk': return createAldersonDisk(context);
     case 'blackHole': return createBlackHole(context);
+    case 'caplanThruster': return createCaplanThruster(context);
     case 'dysonSphere': return createDysonSphere(context);
-    case 'homeworld': return createHomeworld();
+    case 'homeworld': return context.anomaly.swarm ? createDysonSwarm(context) : createHomeworld();
     case 'matrioshkaBrain': return createMatrioshkaBrain(context);
     case 'nicollDysonBeam': return createNicollDysonBeam(context);
-    case 'shkadovThruster': return createShkadovThruster(context);
   }
 }

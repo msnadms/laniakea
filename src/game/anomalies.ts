@@ -1,15 +1,11 @@
 import { createRng, generateGalaxy } from './galaxyGen';
 import { MILKY_WAY_SEED } from './hardcoded';
 import {
-  ANOMALY_ALDERSON_CHANCE,
-  ANOMALY_BEAM_CHANCE,
   ANOMALY_BEAM_RIM_MAX,
   ANOMALY_BEAM_RIM_MIN,
   ANOMALY_BLACK_HOLE_ACTIVE_CHANCE,
   ANOMALY_BLACK_HOLE_CHANCE,
   ANOMALY_BLACK_HOLE_REACH,
-  ANOMALY_BRAIN_CHANCE,
-  ANOMALY_CANNON_CHANCE,
   ANOMALY_BRAIN_MIN_DYSON_SPHERES,
   ANOMALY_CIVILIZATION_CHANCE,
   ANOMALY_DYSON_EDGE_WEIGHT,
@@ -20,23 +16,58 @@ import {
   ANOMALY_INTEGRITY,
   ANOMALY_INTEGRITY_LIVING,
   ANOMALY_LIVING_CHANCE,
-  ANOMALY_POPULATED_MAX,
-  ANOMALY_POPULATED_MIN,
-  ANOMALY_SHKADOV_CHANCE,
-  ANOMALY_SHKADOV_HEIGHT_FRACTION,
+  ANOMALY_MEGASTRUCTURES_SOME_MAX,
+  ANOMALY_MEGASTRUCTURES_SOME_MIN,
+  ANOMALY_RUINED_MIN_STAGE,
+  ANOMALY_STAGE_POPULATED,
+  ANOMALY_THRUSTER_HEIGHT_FRACTION,
+  ANOMALY_STAGE_WEIGHTS,
   GALAXY_RADIUS,
   POPULATION_SCALE_HEIGHT,
 } from './constants';
 import type { Galaxy, Rng, StarSystem, StarType } from './types';
 
-export type AnomalyKind = 'alcubierreCannon' | 'aldersonDisk' | 'blackHole' | 'dysonSphere' | 'homeworld' | 'matrioshkaBrain' | 'nicollDysonBeam' | 'shkadovThruster';
+export type AnomalyKind =
+  | 'alcubierreCannon'
+  | 'aldersonDisk'
+  | 'blackHole'
+  | 'caplanThruster'
+  | 'dysonSphere'
+  | 'homeworld'
+  | 'matrioshkaBrain'
+  | 'nicollDysonBeam';
 
 export type HomeKind = Extract<AnomalyKind, 'aldersonDisk' | 'homeworld'>;
+
+export type MegastructureKind = Extract<AnomalyKind, 'caplanThruster' | 'matrioshkaBrain' | 'nicollDysonBeam'>;
+
+export type CivilizationStage = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface StagePlan {
+  home: HomeKind | null;
+  homeSwarm: boolean;
+  dysonSpheres: boolean;
+  megastructures: 'none' | 'some' | 'all';
+  cannon: boolean;
+}
+
+export const CIVILIZATION_STAGES: readonly CivilizationStage[] = [1, 2, 3, 4, 5, 6];
+
+export const CIVILIZATION_STAGE_PLANS: Record<CivilizationStage, StagePlan> = {
+  1: { home: null, homeSwarm: false, dysonSpheres: false, megastructures: 'none', cannon: false },
+  2: { home: 'homeworld', homeSwarm: false, dysonSpheres: false, megastructures: 'none', cannon: false },
+  3: { home: 'homeworld', homeSwarm: true, dysonSpheres: false, megastructures: 'none', cannon: false },
+  4: { home: 'homeworld', homeSwarm: true, dysonSpheres: true, megastructures: 'none', cannon: false },
+  5: { home: 'homeworld', homeSwarm: true, dysonSpheres: true, megastructures: 'some', cannon: false },
+  6: { home: 'aldersonDisk', homeSwarm: false, dysonSpheres: true, megastructures: 'all', cannon: true },
+};
+
+export const MEGASTRUCTURE_KINDS: readonly MegastructureKind[] = ['matrioshkaBrain', 'nicollDysonBeam', 'caplanThruster'];
 
 export const ANOMALY_KINDS: readonly AnomalyKind[] = [
   'blackHole',
   'dysonSphere',
-  'shkadovThruster',
+  'caplanThruster',
   'nicollDysonBeam',
   'homeworld',
   'matrioshkaBrain',
@@ -58,6 +89,7 @@ export interface Anomaly {
   direction: Vector3 | null;
   active: boolean;
   living: boolean;
+  swarm: boolean;
 }
 
 export interface Civilization {
@@ -65,8 +97,7 @@ export interface Civilization {
   y: number;
   radius: number;
   living: boolean;
-  homeKind: HomeKind;
-  cannon: boolean;
+  stage: CivilizationStage;
 }
 
 export interface GalaxyAnomalies {
@@ -110,7 +141,7 @@ export function relativeHeight(system: StarSystem): number {
 
 export function highStarThreshold(systems: readonly StarSystem[]): number {
   const heights = systems.map(relativeHeight).sort((a, b) => b - a);
-  return heights[Math.min(heights.length - 1, Math.floor(heights.length * ANOMALY_SHKADOV_HEIGHT_FRACTION))];
+  return heights[Math.min(heights.length - 1, Math.floor(heights.length * ANOMALY_THRUSTER_HEIGHT_FRACTION))];
 }
 
 export function nearestNeutronStarDistance(system: StarSystem, systems: readonly StarSystem[]): number {
@@ -148,13 +179,18 @@ function createAnomaly(
   hostId: number,
   direction: Vector3 | null = null,
   living = false,
+  swarm = false,
 ): Anomaly {
   const seed = anomalySeed(galaxySeed, hostId);
   const rng = createRng(seed);
   const [min, max] = (living ? ANOMALY_INTEGRITY_LIVING[kind] : undefined) ?? ANOMALY_INTEGRITY[kind];
   const integrity = min + (max - min) * rng();
   const active = kind === 'blackHole' && rng() < ANOMALY_BLACK_HOLE_ACTIVE_CHANCE;
-  return { kind, hostId, seed, integrity, direction, active, living };
+  return { kind, hostId, seed, integrity, direction, active, living, swarm };
+}
+
+function rollRange(rng: Rng, [min, max]: readonly [number, number]): number {
+  return min + Math.floor(rng() * (max - min + 1));
 }
 
 function pickWeighted<T>(rng: Rng, items: readonly T[], weight: (item: T) => number): T | null {
@@ -211,14 +247,29 @@ export function isInCivilization(system: PlanePoint, civilization: Pick<Civiliza
   return planeDistance(system, civilization) <= civilization.radius;
 }
 
+function rollStage(rng: Rng, living: boolean): CivilizationStage {
+  const stages = living ? CIVILIZATION_STAGES : CIVILIZATION_STAGES.filter((stage) => stage >= ANOMALY_RUINED_MIN_STAGE);
+  return pickWeighted(rng, stages, (stage) => ANOMALY_STAGE_WEIGHTS[stage])!;
+}
+
+function rollMegastructures(rng: Rng, plan: StagePlan): ReadonlySet<MegastructureKind> {
+  if (plan.megastructures === 'none') return new Set();
+  if (plan.megastructures === 'all') return new Set(MEGASTRUCTURE_KINDS);
+  const count = rollRange(rng, [ANOMALY_MEGASTRUCTURES_SOME_MIN, ANOMALY_MEGASTRUCTURES_SOME_MAX]);
+  return new Set(pickManyWeighted(rng, MEGASTRUCTURE_KINDS, count, () => 1));
+}
+
 function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>): Civilization | null {
   const rng = civilizationRng(galaxy.seed);
   // The civilisation roll must stay the first draw so hasCivilization can answer from the seed alone.
   if (rng() >= ANOMALY_CIVILIZATION_CHANCE) return null;
-  const dysonCount = ANOMALY_DYSON_MIN + Math.floor(rng() * (ANOMALY_DYSON_MAX - ANOMALY_DYSON_MIN + 1));
-  const wantsBrain = rng() < ANOMALY_BRAIN_CHANCE && dysonCount >= ANOMALY_BRAIN_MIN_DYSON_SPHERES;
-  const wantsShkadov = rng() < ANOMALY_SHKADOV_CHANCE;
-  const wantsBeam = rng() < ANOMALY_BEAM_CHANCE;
+  const living = rng() < ANOMALY_LIVING_CHANCE;
+  const stage = rollStage(rng, living);
+  const plan = CIVILIZATION_STAGE_PLANS[stage];
+  const megastructures = rollMegastructures(rng, plan);
+  const rolledDysonCount = rollRange(rng, [ANOMALY_DYSON_MIN, ANOMALY_DYSON_MAX]);
+  const wantsBrain = megastructures.has('matrioshkaBrain');
+  const dysonCount = !plan.dysonSpheres ? 0 : wantsBrain ? Math.max(rolledDysonCount, ANOMALY_BRAIN_MIN_DYSON_SPHERES) : rolledDysonCount;
 
   const home = pickHome(rng, hosts);
   const center = { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS };
@@ -240,18 +291,18 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
   const brainHost = brainCandidate && dysonHosts.length >= ANOMALY_BRAIN_MIN_DYSON_SPHERES ? brainCandidate : null;
   if (brainHost) occupied.add(brainHost.id);
 
-  let shkadovHost: StarSystem | null = null;
-  if (wantsShkadov) {
+  let thrusterHost: StarSystem | null = null;
+  if (megastructures.has('caplanThruster')) {
     const threshold = highStarThreshold(galaxy.systems);
-    shkadovHost = nearestTo(
+    thrusterHost = nearestTo(
       hosts.filter((system) => isRelicClass(system) && !inRegion(system) && !occupied.has(system.id) && relativeHeight(system) >= threshold),
       center,
     );
-    if (shkadovHost) occupied.add(shkadovHost.id);
+    if (thrusterHost) occupied.add(thrusterHost.id);
   }
 
   let beamHost: StarSystem | null = null;
-  if (wantsBeam) {
+  if (megastructures.has('nicollDysonBeam')) {
     const rim = hosts.filter((system) => {
       const reach = planeDistance(system, center) / center.radius;
       return isRelicClass(system) && !occupied.has(system.id) && reach >= ANOMALY_BEAM_RIM_MIN && reach <= ANOMALY_BEAM_RIM_MAX;
@@ -260,16 +311,11 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
     if (beamHost) occupied.add(beamHost.id);
   }
 
-  // Appended after every placement draw above so existing galaxies keep their host selection unchanged.
-  const living = rng() < ANOMALY_LIVING_CHANCE;
-  const homeKind: HomeKind = living && rng() < ANOMALY_ALDERSON_CHANCE ? 'aldersonDisk' : 'homeworld';
-  const cannon = homeKind === 'aldersonDisk' && rng() < ANOMALY_CANNON_CHANCE;
-
   for (const host of dysonHosts) byHost.set(host.id, createAnomaly('dysonSphere', galaxy.seed, host.id, null, living));
   if (brainHost) byHost.set(brainHost.id, createAnomaly('matrioshkaBrain', galaxy.seed, brainHost.id, null, living));
-  if (shkadovHost) {
-    const heading = normalize(shkadovHost.x - center.x, shkadovHost.y - center.y, shkadovHost.z);
-    byHost.set(shkadovHost.id, createAnomaly('shkadovThruster', galaxy.seed, shkadovHost.id, heading, living));
+  if (thrusterHost) {
+    const heading = normalize(thrusterHost.x - center.x, thrusterHost.y - center.y, thrusterHost.z);
+    byHost.set(thrusterHost.id, createAnomaly('caplanThruster', galaxy.seed, thrusterHost.id, heading, living));
   }
   if (beamHost) {
     const target = brainHost ?? center;
@@ -277,7 +323,7 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
     byHost.set(beamHost.id, createAnomaly('nicollDysonBeam', galaxy.seed, beamHost.id, direction, living));
   }
 
-  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living, homeKind, cannon };
+  return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living, stage };
 }
 
 function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>) {
@@ -292,7 +338,7 @@ function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: M
   }
 }
 
-function placeHomeworld(galaxy: Galaxy, hosts: readonly StarSystem[], civilization: Civilization, byHost: Map<number, Anomaly>) {
+function placeHome(galaxy: Galaxy, hosts: readonly StarSystem[], civilization: Civilization, byHost: Map<number, Anomaly>): StarSystem | null {
   const free = hosts.filter((system) => !byHost.has(system.id));
   const settledHomeClass = free.filter((system) => HOME_CLASSES.has(system.starType) && isSettledPopulation(system));
   const tiers = [
@@ -301,7 +347,9 @@ function placeHomeworld(galaxy: Galaxy, hosts: readonly StarSystem[], civilizati
     free,
   ];
   const host = nearestTo(tiers.find((tier) => tier.length > 0) ?? [], civilization);
-  if (host) byHost.set(host.id, createAnomaly(civilization.homeKind, galaxy.seed, host.id, null, civilization.living));
+  const { home: kind, homeSwarm } = CIVILIZATION_STAGE_PLANS[civilization.stage];
+  if (host && kind) byHost.set(host.id, createAnomaly(kind, galaxy.seed, host.id, null, civilization.living, homeSwarm));
+  return host;
 }
 
 function placePopulatedWorlds(
@@ -309,13 +357,17 @@ function placePopulatedWorlds(
   hosts: readonly StarSystem[],
   civilization: Civilization,
   byHost: ReadonlyMap<number, Anomaly>,
+  home: StarSystem | null,
 ): ReadonlySet<number> {
   if (!civilization.living) return NO_ANOMALIES.populated;
+  const populated = new Set<number>();
+  if (home && !CIVILIZATION_STAGE_PLANS[civilization.stage].home) populated.add(home.id);
   const rng = createRng((galaxy.seed ^ POPULATED_SALT) >>> 0);
-  const count = ANOMALY_POPULATED_MIN + Math.floor(rng() * (ANOMALY_POPULATED_MAX - ANOMALY_POPULATED_MIN + 1));
+  const count = rollRange(rng, ANOMALY_STAGE_POPULATED[civilization.stage]);
   const candidates = hosts.filter((system) =>
-    !byHost.has(system.id) && isRelicClass(system) && isSettledPopulation(system) && isInCivilization(system, civilization));
-  return new Set(pickManyWeighted(rng, candidates, count, () => 1).map((system) => system.id));
+    !byHost.has(system.id) && !populated.has(system.id) && isRelicClass(system) && isSettledPopulation(system) && isInCivilization(system, civilization));
+  for (const system of pickManyWeighted(rng, candidates, count, () => 1)) populated.add(system.id);
+  return populated;
 }
 
 function placeCannon(
@@ -325,18 +377,20 @@ function placeCannon(
   byHost: Map<number, Anomaly>,
   populated: ReadonlySet<number>,
 ) {
-  if (!civilization.cannon) return;
+  if (!CIVILIZATION_STAGE_PLANS[civilization.stage].cannon) return;
+  const free = hosts.filter((system) =>
+    !byHost.has(system.id) && !populated.has(system.id) && isRelicClass(system) && isSettledPopulation(system));
   let host: StarSystem | null = null;
   let farthest = -Infinity;
-  for (const system of hosts) {
-    if (byHost.has(system.id) || populated.has(system.id)) continue;
-    if (!isRelicClass(system) || !isSettledPopulation(system) || !isInCivilization(system, civilization)) continue;
+  for (const system of free) {
+    if (!isInCivilization(system, civilization)) continue;
     const distance = planeDistance(system, civilization);
     if (distance > farthest) {
       farthest = distance;
       host = system;
     }
   }
+  host ??= nearestTo(free, civilization);
   if (!host) return;
   const direction = normalize(host.x - civilization.x, host.y - civilization.y, 0);
   byHost.set(host.id, createAnomaly('alcubierreCannon', galaxy.seed, host.id, direction, civilization.living));
@@ -350,9 +404,10 @@ export function generateAnomalies(galaxy: Galaxy): GalaxyAnomalies {
   const byHost = new Map<number, Anomaly>();
   const civilization = placeCivilization(galaxy, hosts, byHost);
   placeBlackHoles(galaxy, hosts, byHost);
-  if (civilization) placeHomeworld(galaxy, hosts, civilization, byHost);
-  const populated = civilization ? placePopulatedWorlds(galaxy, hosts, civilization, byHost) : NO_ANOMALIES.populated;
-  if (civilization) placeCannon(galaxy, hosts, civilization, byHost, populated);
+  if (!civilization) return { civilization, byHost, populated: NO_ANOMALIES.populated };
+  const home = placeHome(galaxy, hosts, civilization, byHost);
+  const populated = placePopulatedWorlds(galaxy, hosts, civilization, byHost, home);
+  placeCannon(galaxy, hosts, civilization, byHost, populated);
   return { civilization, byHost, populated };
 }
 

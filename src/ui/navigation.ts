@@ -1,5 +1,6 @@
 import { buildAddressComponent } from '../game/types';
-import { getSuperclusterCoords, pushAttractorAddress } from '../game/superclusters';
+import { pushAttractorAddress } from '../game/superclusters';
+import { getSuperclusterCoords } from '../game/universe';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 

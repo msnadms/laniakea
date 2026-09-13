@@ -8,7 +8,7 @@ import {
   BACKGROUND_STAR_COUNT, BACKGROUND_STAR_AREA_X, BACKGROUND_STAR_AREA_Y,
   SC_WORLD_HALF, SC_ATTRACTOR_COUNT, SC_CLUSTER_DOTS_PER_ATTRACTOR,
   SC_CLUSTER_SIGMA, SC_FILAMENT_DOTS_PER_EDGE, SC_FILAMENT_SCATTER,
-  OBS_UNIVERSE_RADIUS, SC_ATTRACTOR_LABEL_MAX_DIST,
+  SC_ATTRACTOR_LABEL_MAX_DIST,
 } from './constants';
 
 const CLUSTER_ROOTS = [
@@ -92,17 +92,9 @@ export function pushAttractorAddress(
   }
 }
 
-// Derives a stable observable-universe position for a supercluster from its seed.
-// Uses a XOR-offset seed so this never interferes with generateSupercluster's RNG sequence.
-export function getSuperclusterCoords(seed: number): [number, number, number] {
-  if (seed === LANIAKEA_SEED) return [0, 0, 0];
-  const rng = createRng((seed ^ 0x5a3c9f12) >>> 0);
-  const span = OBS_UNIVERSE_RADIUS * 2;
-  return [
-    rng() * span - OBS_UNIVERSE_RADIUS,
-    rng() * span - OBS_UNIVERSE_RADIUS,
-    rng() * span - OBS_UNIVERSE_RADIUS,
-  ];
+export function generateSuperclusterName(seed: number): string {
+  if (seed === LANIAKEA_SEED) return LANIAKEA_NAME;
+  return makeSuperclusterName(createRng(seed));
 }
 
 export function getGalaxyType(seed: number): GalaxyType {
@@ -131,7 +123,15 @@ function makeClusterName(rng: Rng): string {
 //   return d.getDate() * 1_000_000 + (d.getMonth() + 1) * 10_000 + d.getFullYear();
 // }
 
-export function generateSupercluster(seed: number = Date.now()): SuperclusterData {
+export function generateSupercluster(seed: number): SuperclusterData {
+  return buildSupercluster(seed, true);
+}
+
+export function generateSuperclusterGalaxySeeds(seed: number): number[] {
+  return buildSupercluster(seed, false).dots.map((dot) => dot.seed);
+}
+
+function buildSupercluster(seed: number, named: boolean): SuperclusterData {
   const rng = createRng(seed);
 
   let name = makeSuperclusterName(rng);
@@ -202,7 +202,7 @@ export function generateSupercluster(seed: number = Date.now()): SuperclusterDat
       const brightness = (0.5 + rng() * 0.5) * radialFade;
       if (brightness < 0.02) { continue; }
       const dotSeed = (seed ^ (dotIndex++ * 2654435761)) >>> 0;
-      dots.push({ x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: generateGalaxyName(dotSeed), visited: false, current: false });
+      dots.push({ x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: named ? generateGalaxyName(dotSeed) : '', visited: false, current: false });
     }
   }
 
@@ -252,7 +252,7 @@ export function generateSupercluster(seed: number = Date.now()): SuperclusterDat
         z: A.z + t * (B.z - A.z) + zScatter,
         brightness,
         seed: dotSeed,
-        name: generateGalaxyName(dotSeed),
+        name: named ? generateGalaxyName(dotSeed) : '',
         visited: false,
         current: false,
       });

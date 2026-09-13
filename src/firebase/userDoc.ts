@@ -3,12 +3,13 @@ import { type User } from 'firebase/auth';
 import { db } from './firebase';
 import { MILKY_WAY_SEED, LANIAKEA_SEED, DEFAULT_ADDRESS } from '../game/hardcoded';
 import type { AddressComponent } from '../game/types';
+import type { AppView } from '../store/uiStore';
 
 export interface UserSettings {
   showOrbitRings: boolean;
   showAttractorLabels: boolean;
   showHUD: boolean;
-  lastView: 'system' | 'galaxy' | 'supercluster';
+  lastView: AppView;
   lastSuperclusterSeed: number;
   lastGalaxySeed: number;
   lastSystemId: number | null;

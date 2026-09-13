@@ -1,13 +1,22 @@
 import { useRef, useEffect, useState } from 'react';
 import { useApplication } from '@pixi/react';
+import { Ticker } from 'pixi.js';
 import type { Container, FederatedPointerEvent } from 'pixi.js';
 import {
   CAMERA_MIN_SCALE,
   CAMERA_MAX_SCALE,
   CAMERA_ZOOM_FACTOR,
+  CAMERA_KEY_PAN_BOOST,
+  CAMERA_KEY_PAN_EASE,
+  CAMERA_KEY_PAN_SPEED,
   DRAG_THRESHOLD_PX,
 } from '../game/constants';
-import { cancelIntroZoom } from './zoomAnim';
+import { useUIStore } from '../store/uiStore';
+import { isEditable } from './keyboard';
+import { cancelIntroZoom, isZoomAnimating } from './zoomAnim';
+
+const FRAME_MS = 1000 / 60;
+const PAN_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']);
 
 export function useCamera(
   worldRef: React.RefObject<Container | null>,
@@ -92,12 +101,61 @@ export function useCamera(
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
 
+    const keys = new Set<string>();
+    const velocity = { x: 0, y: 0 };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!PAN_KEYS.has(event.code) || isEditable(event.target)) return;
+      keys.add(event.code);
+    };
+    const onKeyUp = (event: KeyboardEvent) => { keys.delete(event.code); };
+    const onBlur = () => keys.clear();
+
+    const tick = (ticker: Ticker) => {
+      if (!worldRef.current) return;
+      if (isZoomAnimating() || useUIStore.getState().viewTransitioning) {
+        velocity.x = 0;
+        velocity.y = 0;
+        return;
+      }
+      const right = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+      const down = (keys.has('KeyS') ? 1 : 0) - (keys.has('KeyW') ? 1 : 0);
+      const inputLength = Math.hypot(right, down);
+      const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') ? CAMERA_KEY_PAN_BOOST : 1;
+      const speed = inputLength === 0 ? 0 : CAMERA_KEY_PAN_SPEED * boost / inputLength;
+      const ease = 1 - Math.pow(1 - CAMERA_KEY_PAN_EASE, ticker.deltaMS / FRAME_MS);
+      velocity.x += (-right * speed - velocity.x) * ease;
+      velocity.y += (-down * speed - velocity.y) * ease;
+      if (inputLength === 0 && Math.abs(velocity.x) < 1 && Math.abs(velocity.y) < 1) {
+        velocity.x = 0;
+        velocity.y = 0;
+        return;
+      }
+      const seconds = ticker.deltaMS / 1000;
+      const dx = velocity.x * seconds;
+      const dy = velocity.y * seconds;
+      camera.current.x += dx;
+      camera.current.y += dy;
+      cameraStart.current.x += dx;
+      cameraStart.current.y += dy;
+      worldRef.current.position.set(camera.current.x, camera.current.y);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    Ticker.shared.add(tick);
+
     return () => {
+      Ticker.shared.remove(tick);
       stage.off('pointerdown', onDown);
       stage.off('pointermove', onMove);
       stage.off('pointerup', onUp);
       stage.off('pointerupoutside', onUp);
       canvas.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
     };
   }, [app, isInitialised, minScale, worldRef]);
 

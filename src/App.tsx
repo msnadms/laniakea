@@ -24,6 +24,7 @@ const ViewTitle = memo(function ViewTitle() {
   const systemName = useGameStore((s) => s.system?.name ?? null);
 
   const title =
+    view === 'universe' ? 'Observable Universe' :
     view === 'supercluster' ? superclusterName :
     view === 'galaxy' ? galaxyName :
     systemName;

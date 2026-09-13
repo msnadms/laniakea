@@ -36,7 +36,7 @@ function AnomalyStats({ anomaly }: { anomaly: Anomaly }) {
       )}
       {heading && (
         <div className="anomaly-panel-stat">
-          <span className="anomaly-panel-stat-label">{anomaly.kind === 'shkadovThruster' ? 'Heading' : 'Bearing'}</span>
+          <span className="anomaly-panel-stat-label">{anomaly.kind === 'caplanThruster' ? 'Heading' : 'Bearing'}</span>
           <span className="anomaly-panel-stat-value">{heading}</span>
         </div>
       )}

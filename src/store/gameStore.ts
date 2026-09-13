@@ -14,7 +14,7 @@ interface GameState {
   visitedSystemsByGalaxySeed: Record<number, Set<number>>;
   visitedGalaxyBySuperclusterSeed: Record<number, Set<number>>;
   regenerateGalaxy: (seed?: number) => void;
-  regenerateSupercluster: (seed?: number) => void;
+  regenerateSupercluster: (seed: number) => void;
   setSystem: (system: StarSystem | null) => void;
   restoreGalaxyAndSystem: (galaxySeed: number, systemId: number | null) => void;
   markDotVisited: (seed: number) => void;

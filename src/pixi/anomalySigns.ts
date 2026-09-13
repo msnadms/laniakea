@@ -4,7 +4,6 @@ import {
   ANOMALY_BEAM_SIGN_LENGTH,
   ANOMALY_BEAM_SIGN_MIN_SCALE,
   ANOMALY_BEAM_SIGN_SEGMENTS,
-  ANOMALY_CANNON_SIGN_LENGTH,
   ANOMALY_SIGN_FADE_SPAN,
   ANOMALY_SIGN_MIN_SCALE,
 } from '../game/constants';
@@ -29,13 +28,11 @@ const SIGN_Z = 0.01;
 const XRAY_COLOR = 0xd4c4ff;
 const XRAY_OFFSET = 4.5;
 const BEAM_COLOR = 0xffe4bc;
-const WAKE_STEPS = 6;
-const WAKE_LENGTH = 34;
+const JET_STEPS = 8;
+const JET_LENGTH = 52;
+const JET_COLOR = 0xb8ffd0;
 const CANNON_COLOR = 0xbcd6ff;
-const CANNON_PERIOD = 9;
-const CANNON_CHARGE = 2.5;
-const CANNON_FLIGHT = 1.4;
-const CANNON_STREAK = 0.12;
+const CANNON_LENGTH = 14;
 
 function emptyPoint(): ProjectedPoint {
   return { x: 0, y: 0, depth: 0, scale: 1 };
@@ -125,7 +122,7 @@ function createBeamSign(host: StarSystem, anomaly: Anomaly): Sign {
   };
 }
 
-function createWakeSign(host: StarSystem, anomaly: Anomaly): Sign {
+function createJetSign(host: StarSystem, anomaly: Anomaly): Sign {
   const rng = anomalyVisualRng(anomaly);
   const phase = rng() * TAU;
   const headingX = anomaly.direction?.x ?? 1;
@@ -133,24 +130,25 @@ function createWakeSign(host: StarSystem, anomaly: Anomaly): Sign {
   const planeLength = Math.hypot(headingX, headingY) || 1;
   const backX = -headingX / planeLength;
   const backY = -headingY / planeLength;
-  const color = anomaly.living ? mixColor(host.color, 0xffcf82, 0.55) : mixColor(host.color, 0xffffff, 0.45);
+  const color = anomaly.living ? mixColor(host.color, JET_COLOR, 0.7) : mixColor(host.color, 0xffffff, 0.45);
+  const length = anomaly.living ? JET_LENGTH : JET_LENGTH * 0.6;
   const gfx = new Graphics();
   gfx.blendMode = 'add';
-  const points = Array.from({ length: WAKE_STEPS + 1 }, emptyPoint);
+  const points = Array.from({ length: JET_STEPS + 1 }, emptyPoint);
   let depthAlpha = 1;
 
   return {
     nodes: [gfx],
     minScale: ANOMALY_SIGN_MIN_SCALE,
     project(basis) {
-      for (let i = 0; i <= WAKE_STEPS; i++) {
-        const reach = WAKE_LENGTH * i / WAKE_STEPS;
+      for (let i = 0; i <= JET_STEPS; i++) {
+        const reach = length * i / JET_STEPS;
         projectPlanePointWithBasis(host.x + backX * reach, host.y + backY * reach, host.z, basis, points[i]);
       }
       gfx.clear();
-      const strength = anomaly.living ? 1.4 : 1;
-      for (let i = 0; i < WAKE_STEPS; i++) {
-        const fade = 1 - i / WAKE_STEPS;
+      const strength = anomaly.living ? 1.4 : 0.7;
+      for (let i = 0; i < JET_STEPS; i++) {
+        const fade = 1 - i / JET_STEPS;
         gfx
           .moveTo(points[i].x, points[i].y)
           .lineTo(points[i + 1].x, points[i + 1].y)
@@ -168,53 +166,42 @@ function createWakeSign(host: StarSystem, anomaly: Anomaly): Sign {
 
 function createCannonSign(host: StarSystem, anomaly: Anomaly): Sign {
   const rng = anomalyVisualRng(anomaly);
-  const phase = rng() * CANNON_PERIOD;
+  const phase = rng() * TAU;
   const directionX = anomaly.direction?.x ?? 1;
   const directionY = anomaly.direction?.y ?? 0;
-  const shot = new Graphics()
-    .moveTo(0, 0).lineTo(1, 0).stroke({ color: CANNON_COLOR, width: 3.6, alpha: 0.25 })
-    .moveTo(0, 0).lineTo(1, 0).stroke({ color: 0xffffff, width: 1, alpha: 1 });
-  shot.blendMode = 'add';
-  const flash = new Graphics()
-    .circle(0, 0, 3.2).fill({ color: CANNON_COLOR, alpha: 0.35 })
-    .circle(0, 0, 1.1).fill({ color: 0xffffff, alpha: 1 });
-  flash.blendMode = 'add';
+  const barrel = new Graphics()
+    .moveTo(0, 0).lineTo(1, 0).stroke({ color: CANNON_COLOR, width: 2.6, alpha: 0.22 })
+    .moveTo(0, 0).lineTo(1, 0).stroke({ color: 0xffffff, width: 0.6, alpha: 0.7 });
+  barrel.blendMode = 'add';
+  const core = new Graphics()
+    .circle(0, 0, 2.4).fill({ color: CANNON_COLOR, alpha: 0.3 })
+    .circle(0, 0, 0.8).fill({ color: 0xffffff, alpha: 0.9 });
+  core.blendMode = 'add';
   const start = emptyPoint();
   const end = emptyPoint();
-  let flashDepthAlpha = 1;
+  let depthAlpha = 1;
 
   return {
-    nodes: [shot, flash],
-    minScale: ANOMALY_BEAM_SIGN_MIN_SCALE,
+    nodes: [barrel, core],
+    minScale: ANOMALY_SIGN_MIN_SCALE,
     project(basis) {
       projectPlanePointWithBasis(host.x, host.y, host.z, basis, start);
-      projectPlanePointWithBasis(host.x + directionX * ANOMALY_CANNON_SIGN_LENGTH, host.y + directionY * ANOMALY_CANNON_SIGN_LENGTH, host.z, basis, end);
-      flash.position.set(start.x, start.y);
-      flash.scale.set(galaxyDepthScale(start.depth));
-      flash.zIndex = start.depth + SIGN_Z;
-      flashDepthAlpha = galaxyDepthAlpha(start.depth);
+      projectPlanePointWithBasis(host.x + directionX * CANNON_LENGTH, host.y + directionY * CANNON_LENGTH, host.z, basis, end);
+      core.position.set(start.x, start.y);
+      core.scale.set(galaxyDepthScale(start.depth));
+      core.zIndex = start.depth + SIGN_Z;
+      barrel.position.set(start.x, start.y);
+      barrel.rotation = Math.atan2(end.y - start.y, end.x - start.x);
+      barrel.scale.set(Math.hypot(end.x - start.x, end.y - start.y), 1);
+      barrel.zIndex = (start.depth + end.depth) / 2 + SIGN_Z;
+      depthAlpha = galaxyDepthAlpha(start.depth);
     },
     tick(elapsed, visibility) {
-      const t = (elapsed + phase) % CANNON_PERIOD;
-      const charging = 0.45 * Math.max(0, 1 - (CANNON_PERIOD - t) / CANNON_CHARGE) ** 2;
-      flash.alpha = visibility * flashDepthAlpha * Math.min(1, Math.exp(-t * 4) + charging);
-      flash.visible = flash.alpha > 0.002;
-
-      const flight = t / CANNON_FLIGHT;
-      const head = Math.min(1, flight);
-      const tail = Math.max(0, flight - CANNON_STREAK);
-      if (flight > 1 + CANNON_STREAK || head <= tail) {
-        shot.visible = false;
-        return;
-      }
-      const fromX = start.x + (end.x - start.x) * tail;
-      const fromY = start.y + (end.y - start.y) * tail;
-      shot.position.set(fromX, fromY);
-      shot.rotation = Math.atan2(end.y - start.y, end.x - start.x);
-      shot.scale.set(Math.hypot(end.x - start.x, end.y - start.y) * (head - tail), 1);
-      shot.zIndex = start.depth + (end.depth - start.depth) * (head + tail) / 2 + SIGN_Z;
-      shot.alpha = visibility * galaxyDepthAlpha(shot.zIndex) * (1 - 0.75 * head);
-      shot.visible = shot.alpha > 0.002;
+      const alpha = visibility * depthAlpha * (0.6 + 0.25 * Math.sin(elapsed * 0.7 + phase));
+      core.alpha = alpha;
+      barrel.alpha = alpha;
+      core.visible = alpha > 0.002;
+      barrel.visible = alpha > 0.002;
     },
   };
 }
@@ -225,8 +212,8 @@ export function createAnomalySigns(root: Container, systems: readonly StarSystem
     const host = systems[anomaly.hostId];
     if (anomaly.kind === 'blackHole') signs.push(createXRaySign(host, anomaly));
     else if (anomaly.kind === 'nicollDysonBeam') signs.push(createBeamSign(host, anomaly));
-    else if (anomaly.kind === 'shkadovThruster') signs.push(createWakeSign(host, anomaly));
-    else if (anomaly.kind === 'alcubierreCannon') signs.push(createCannonSign(host, anomaly));
+    else if (anomaly.kind === 'caplanThruster') signs.push(createJetSign(host, anomaly));
+    else if (anomaly.kind === 'alcubierreCannon' && anomaly.living) signs.push(createCannonSign(host, anomaly));
   }
   const nodes = signs.flatMap((sign) => sign.nodes);
   for (const node of nodes) {

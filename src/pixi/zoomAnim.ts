@@ -16,6 +16,19 @@ export function fireCodexNavigate(onFadeStart: () => void, onComplete: () => voi
 let _cancelIntro: (() => void) | null = null;
 export function cancelIntroZoom(): void { _cancelIntro?.(); }
 
+const _activeZooms = new Set<(ticker: Ticker) => void>();
+export function isZoomAnimating(): boolean { return _activeZooms.size > 0; }
+
+function startZoomTick(tick: (ticker: Ticker) => void): void {
+  _activeZooms.add(tick);
+  Ticker.shared.add(tick);
+}
+
+function stopZoomTick(tick: (ticker: Ticker) => void): void {
+  _activeZooms.delete(tick);
+  Ticker.shared.remove(tick);
+}
+
 const FADE_START_T = 0.9;
 
 // Anchor math is intentionally identical to scroll-wheel zoom: worldX/Y stays pinned at anchorScreenX/Y.
@@ -58,13 +71,13 @@ export function animateZoomTo(
     }
 
     if (t >= 1) {
-      Ticker.shared.remove(tick);
+      stopZoomTick(tick);
       onComplete();
     }
   };
 
-  Ticker.shared.add(tick);
-  return () => Ticker.shared.remove(tick);
+  startZoomTick(tick);
+  return () => stopZoomTick(tick);
 }
 
 // startScaleMult < 1 → zoom-in (camera position fixed); > 1 → zoom-out (pinX/Y pinned to screen center).
@@ -110,11 +123,11 @@ export function animateIntro(
   };
 
   const stop = () => {
-    Ticker.shared.remove(tick);
+    stopZoomTick(tick);
     if (_cancelIntro === stop) _cancelIntro = null;
   };
 
-  Ticker.shared.add(tick);
+  startZoomTick(tick);
   _cancelIntro = stop;
   return stop;
 }

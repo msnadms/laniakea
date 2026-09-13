@@ -27,6 +27,7 @@ export interface SystemLayout {
   seed: number;
   starType?: StarType;
   dismantledRings?: number;
+  diskRim?: PlanetLayout;
 }
 
 export type ZoneConfig = {
@@ -77,10 +78,11 @@ export const MOON_K = 430;
 
 const INNER_WORLD_CONSUMERS: ReadonlySet<AnomalyKind> = new Set(['dysonSphere', 'matrioshkaBrain']);
 const NO_HABITABLE_ZONE: ReadonlySet<AnomalyKind> = new Set(['blackHole']);
-const DISMANTLED_ZONES: ReadonlySet<ZoneType> = new Set(['hot', 'habitable']);
+const DISK_ZONES: ReadonlySet<ZoneType> = new Set(['hot', 'habitable']);
+const DISMANTLED_ZONES: ReadonlySet<ZoneType> = new Set(['hot', 'habitable', 'gas']);
 
-function innerRingCount(numRings: number): number {
-  return Array.from({ length: numRings }, (_, ring) => getPlanetZone(ring, numRings)).filter((zone) => DISMANTLED_ZONES.has(zone)).length;
+function ringsInZones(numRings: number, zones: ReadonlySet<ZoneType>): number {
+  return Array.from({ length: numRings }, (_, ring) => getPlanetZone(ring, numRings)).filter((zone) => zones.has(zone)).length;
 }
 
 function settledRings(numRings: number): ReadonlySet<number> {
@@ -145,10 +147,12 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   // derive a seed transform itself, and a second renderer always gets the same belt.
   const asteroidSeed = (seed ^ 0xdeadbeef) >>> 0;
 
-  const dismantledRings = anomalyKind === 'aldersonDisk' ? innerRingCount(numRings) : 0;
+  const alderson = anomalyKind === 'aldersonDisk';
+  const dismantledRings = alderson ? ringsInZones(numRings, DISMANTLED_ZONES) : 0;
+  const diskRim = alderson ? planets[ringsInZones(numRings, DISK_ZONES)] : undefined;
   if (asteroidGapIdx !== null) asteroidGapIdx = asteroidGapIdx >= dismantledRings ? asteroidGapIdx - dismantledRings : null;
 
-  return { planets: planets.slice(dismantledRings), asteroidGapIdx, asteroidSeed, seed, starType, dismantledRings };
+  return { planets: planets.slice(dismantledRings), asteroidGapIdx, asteroidSeed, seed, starType, dismantledRings, diskRim };
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];

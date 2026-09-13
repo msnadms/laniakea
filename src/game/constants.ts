@@ -1,5 +1,5 @@
 import type { GalaxyType } from './types';
-import type { AnomalyKind } from './anomalies';
+import type { AnomalyKind, CivilizationStage } from './anomalies';
 
 // ─── Galaxy shape ────────────────────────────────────────────────────────────
 
@@ -287,9 +287,6 @@ export const SC_FILAMENT_DOTS_PER_EDGE = 500;
 // Base scatter width for filament dots as a fraction of SC_WORLD_HALF.
 export const SC_FILAMENT_SCATTER = 0.025;
 
-// 46 billion light years
-export const OBS_UNIVERSE_RADIUS = 46_000_000_000;
-
 // ─── Supercluster projection ─────────────────────────────────────────────────
 
 // The cosmic web is turned in place rather than flown through, so the projection
@@ -319,6 +316,50 @@ export const SC_DEPTH_SIZE = 0.22;
 // Radius the shared dot sprite is rasterised at, in texture pixels.
 export const SC_DOT_TEXTURE_RADIUS = 16;
 
+export const UNIVERSE_SEED = 0x6a09e667;
+// Generation lengths are lattice units, frozen so no acceptance moves; UNIVERSE_SCALE turns them into Mly.
+export const UNIVERSE_VOID_CELL = 11_000;
+export const UNIVERSE_CHUNK_AXIS_BITS = 7;
+export const UNIVERSE_CHUNK_TRIAL_BITS = 11;
+export const UNIVERSE_CHUNK_SPAN = 1 << (UNIVERSE_CHUNK_AXIS_BITS - 1);
+export const UNIVERSE_CHUNK_TRIALS = 1 << UNIVERSE_CHUNK_TRIAL_BITS;
+export const UNIVERSE_LATTICE_RADIUS = (UNIVERSE_CHUNK_SPAN - 1) * UNIVERSE_VOID_CELL;
+export const UNIVERSE_RADIUS = 46_500;
+export const UNIVERSE_SCALE = UNIVERSE_RADIUS / UNIVERSE_LATTICE_RADIUS;
+export const UNIVERSE_CHUNK_CACHE = 1024;
+export const UNIVERSE_CHUNK_BUDGET_MS = 6;
+export const UNIVERSE_CHUNK_REFRESH = 100;
+export const UNIVERSE_VOID_JITTER = 0.8;
+export const UNIVERSE_WALL_WIDTH = 520;
+export const UNIVERSE_WALL_WEIGHT = 0.3;
+export const UNIVERSE_FILAMENT_WIDTH = 900;
+export const UNIVERSE_ANCHOR_RADIUS = 2500;
+export const UNIVERSE_ANCHOR_SAMPLES = 4000;
+export const UNIVERSE_SKY_STAR_COUNT = 2600;
+
+export const UNIVERSE_START_BACKOFF = 120;
+export const UNIVERSE_FOV = 70 * Math.PI / 180;
+export const UNIVERSE_NEAR = 4;
+export const UNIVERSE_NEAR_FADE = 16;
+export const UNIVERSE_FOG_FAR = 2_000;
+export const UNIVERSE_CULL_MARGIN_PX = 80;
+export const UNIVERSE_DOT_SIZE = 6;
+export const UNIVERSE_DOT_MIN_PX = 0.9;
+export const UNIVERSE_DOT_MAX_PX = 60;
+
+export const UNIVERSE_LOOK_SENSITIVITY = 0.004;
+export const UNIVERSE_LOOK_EASE = 0.25;
+export const UNIVERSE_MAX_PITCH = 85 * Math.PI / 180;
+export const UNIVERSE_SPEED_DEFAULT = 80;
+export const UNIVERSE_SPEED_MIN = 2.5;
+export const UNIVERSE_SPEED_MAX = 1_000;
+export const UNIVERSE_SPEED_STEP = 1.25;
+export const UNIVERSE_BOOST = 4;
+export const UNIVERSE_FLIGHT_EASE = 0.08;
+
+export const UNIVERSE_PICK_SCREEN_PX = 14;
+export const UNIVERSE_PICK_MIN_ALPHA = 0.12;
+
 // ─── Camera ──────────────────────────────────────────────────────────────────
 
 // Starting zoom level. 1.0 = 1:1 pixels, < 1 = zoomed out.
@@ -332,6 +373,10 @@ export const CAMERA_MAX_SCALE = 6;
 
 // Zoom multiplier applied per scroll step (12% per tick).
 export const CAMERA_ZOOM_FACTOR = 1.12;
+
+export const CAMERA_KEY_PAN_SPEED = 900;
+export const CAMERA_KEY_PAN_BOOST = 3;
+export const CAMERA_KEY_PAN_EASE = 0.18;
 
 export const GALAXY_TILT = 50 * Math.PI / 180;
 
@@ -399,17 +444,24 @@ export const ANOMALY_DYSON_MIN = 1;
 export const ANOMALY_DYSON_MAX = 3;
 export const ANOMALY_DYSON_EDGE_WEIGHT = 0.15;
 
-export const ANOMALY_SHKADOV_CHANCE = 0.4;
-export const ANOMALY_SHKADOV_HEIGHT_FRACTION = 0.05;
+export const ANOMALY_STAGE_WEIGHTS: Record<CivilizationStage, number> = { 1: 30, 2: 25, 3: 18, 4: 13, 5: 9, 6: 5 };
+export const ANOMALY_RUINED_MIN_STAGE: CivilizationStage = 2;
+export const ANOMALY_STAGE_POPULATED: Record<CivilizationStage, readonly [number, number]> = {
+  1: [0, 0],
+  2: [0, 0],
+  3: [1, 2],
+  4: [2, 3],
+  5: [2, 3],
+  6: [2, 3],
+};
+export const ANOMALY_MEGASTRUCTURES_SOME_MIN = 1;
+export const ANOMALY_MEGASTRUCTURES_SOME_MAX = 2;
 
-export const ANOMALY_BEAM_CHANCE = 0.4;
+export const ANOMALY_THRUSTER_HEIGHT_FRACTION = 0.05;
+
 export const ANOMALY_BEAM_RIM_MIN = 0.8;
 export const ANOMALY_BEAM_RIM_MAX = 1.2;
 
-export const ANOMALY_POPULATED_MIN = 2;
-export const ANOMALY_POPULATED_MAX = 3;
-
-export const ANOMALY_BRAIN_CHANCE = 0.12;
 export const ANOMALY_BRAIN_MIN_DYSON_SPHERES = 2;
 
 export const ANOMALY_BLACK_HOLE_REACH = 0.12 * GALAXY_RADIUS;
@@ -419,22 +471,22 @@ export const ANOMALY_BLACK_HOLE_ACTIVE_CHANCE = 0.35;
 export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> = {
   blackHole: [1, 1],
   dysonSphere: [0.25, 0.6],
-  shkadovThruster: [0.5, 0.8],
+  caplanThruster: [0.4, 0.75],
   nicollDysonBeam: [0.4, 0.7],
   matrioshkaBrain: [0.85, 0.97],
   homeworld: [0.3, 0.65],
-  aldersonDisk: [0.96, 1],
-  alcubierreCannon: [0.94, 1],
+  aldersonDisk: [0.45, 0.8],
+  alcubierreCannon: [0.35, 0.7],
 };
 
 export const ANOMALY_LIVING_CHANCE = 0.2;
-export const ANOMALY_ALDERSON_CHANCE = 0.1;
-export const ANOMALY_CANNON_CHANCE = 0.3;
 
 export const ANOMALY_INTEGRITY_LIVING: Partial<Record<AnomalyKind, readonly [number, number]>> = {
+  aldersonDisk: [0.96, 1],
+  alcubierreCannon: [0.94, 1],
   dysonSphere: [0.9, 1],
   homeworld: [0.92, 1],
-  shkadovThruster: [0.85, 0.98],
+  caplanThruster: [0.85, 0.98],
   nicollDysonBeam: [0.85, 0.98],
   matrioshkaBrain: [0.95, 1],
 };
@@ -444,7 +496,6 @@ export const ANOMALY_BEAM_SIGN_MIN_SCALE = 0.45;
 export const ANOMALY_SIGN_FADE_SPAN = 0.5;
 export const ANOMALY_BEAM_SIGN_LENGTH = 0.8 * GALAXY_RADIUS;
 export const ANOMALY_BEAM_SIGN_SEGMENTS = 12;
-export const ANOMALY_CANNON_SIGN_LENGTH = 0.9 * GALAXY_RADIUS;
 
 export const SC_CIVILIZATION_TINT = 0xff4a2a;
 export const SC_CIVILIZATION_TINT_STRENGTH = 0.6;

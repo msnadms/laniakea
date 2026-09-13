@@ -224,14 +224,15 @@ export function SolarSystem() {
     const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
     const planetExtent = getSystemExtent(layout);
     const innermost = layout.planets[0];
+    const clearanceBody = layout.diskRim ?? innermost;
     const anomalyVisual = anomaly
       ? createAnomalyVisual({
         anomaly,
         sunRadius,
         starColor: system.color,
         innermostOrbit: innermost?.orbitRadius ?? planetExtent,
-        innermostClearance: innermost
-          ? innermost.orbitRadius - Math.max(innermost.radius * 2.4, ...innermost.moons.map((moon) => moon.dist + moon.radius))
+        innermostClearance: clearanceBody
+          ? clearanceBody.orbitRadius - Math.max(clearanceBody.radius * 2.4, ...clearanceBody.moons.map((moon) => moon.dist + moon.radius))
           : planetExtent,
         planetExtent,
         onSelect: () => {

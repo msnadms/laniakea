@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateGalaxy } from './galaxyGen';
-import { generateAnomalies, hasCivilization, type AnomalyKind } from './anomalies';
-import { findCivilizationSeeds } from './civilizationSeeds.testutil';
-import { ANOMALY_ALDERSON_CHANCE, ANOMALY_CANNON_CHANCE, ANOMALY_LIVING_CHANCE } from './constants';
+import { CIVILIZATION_STAGES, generateAnomalies, hasCivilization, type AnomalyKind, type GalaxyAnomalies, type StagePlan } from './anomalies';
+import { expectedShareWhere, expectedStageShare, findCivilizationSeeds, megastructureChance } from './civilizationSeeds.testutil';
+import { ANOMALY_LIVING_CHANCE } from './constants';
 import { generateSupercluster } from './superclusters';
 
 const GALAXY_SAMPLES = 3000;
@@ -10,26 +10,35 @@ const CIVILIZATION_SAMPLES = 400;
 const SUPERCLUSTER_SAMPLES = 100;
 const SUPERCLUSTER_TARGET = 1.5;
 
-type Counts = Record<AnomalyKind, number>;
+type Measure = (anomalies: GalaxyAnomalies) => boolean;
 
-const CIVILIZATION_TARGETS: Array<{ label: string; target: number; measure: (counts: Counts) => boolean }> = [
-  { label: 'Ruined Dyson sphere', target: 1, measure: (counts) => counts.dysonSphere > 0 },
-  { label: 'Homeworld', target: 1 - ANOMALY_LIVING_CHANCE * ANOMALY_ALDERSON_CHANCE, measure: (counts) => counts.homeworld > 0 },
-  { label: 'Alderson disk', target: ANOMALY_LIVING_CHANCE * ANOMALY_ALDERSON_CHANCE, measure: (counts) => counts.aldersonDisk > 0 },
-  { label: 'Alcubierre cannon', target: ANOMALY_LIVING_CHANCE * ANOMALY_ALDERSON_CHANCE * ANOMALY_CANNON_CHANCE, measure: (counts) => counts.alcubierreCannon > 0 },
-  { label: 'Shkadov thruster', target: 0.4, measure: (counts) => counts.shkadovThruster > 0 },
-  { label: 'Nicoll-Dyson beam', target: 0.4, measure: (counts) => counts.nicollDysonBeam > 0 },
-  { label: 'Matrioshka brain', target: 0.08, measure: (counts) => counts.matrioshkaBrain > 0 },
+function has(kind: AnomalyKind): Measure {
+  return (anomalies) => [...anomalies.byHost.values()].some((anomaly) => anomaly.kind === kind);
+}
+
+function where(test: (plan: StagePlan) => boolean): number {
+  return expectedShareWhere((plan) => (test(plan) ? 1 : 0));
+}
+
+const CIVILIZATION_TARGETS: Array<{ label: string; target: number; measure: Measure }> = [
+  ...CIVILIZATION_STAGES.map((stage) => ({
+    label: `Stage ${stage}`,
+    target: expectedStageShare(stage),
+    measure: (anomalies: GalaxyAnomalies) => anomalies.civilization?.stage === stage,
+  })),
+  { label: 'Living', target: ANOMALY_LIVING_CHANCE, measure: (anomalies) => anomalies.civilization?.living === true },
+  { label: 'Homeworld', target: where((plan) => plan.home === 'homeworld'), measure: has('homeworld') },
+  { label: 'Alderson disk', target: where((plan) => plan.home === 'aldersonDisk'), measure: has('aldersonDisk') },
+  { label: 'Home swarm', target: where((plan) => plan.homeSwarm), measure: (anomalies) => [...anomalies.byHost.values()].some((anomaly) => anomaly.swarm) },
+  { label: 'Dyson sphere', target: where((plan) => plan.dysonSpheres), measure: has('dysonSphere') },
+  { label: 'Caplan thruster', target: expectedShareWhere(megastructureChance), measure: has('caplanThruster') },
+  { label: 'Nicoll-Dyson beam', target: expectedShareWhere(megastructureChance), measure: has('nicollDysonBeam') },
+  { label: 'Matrioshka brain', target: expectedShareWhere(megastructureChance), measure: has('matrioshkaBrain') },
+  { label: 'Alcubierre cannon', target: where((plan) => plan.cannon), measure: has('alcubierreCannon') },
 ];
 
 function oneIn(rate: number) {
   return rate > 0 ? `1 in ${(1 / rate).toFixed(1)}` : 'never';
-}
-
-function countKinds(seed: number): Counts {
-  const counts: Counts = { alcubierreCannon: 0, aldersonDisk: 0, blackHole: 0, dysonSphere: 0, homeworld: 0, matrioshkaBrain: 0, nicollDysonBeam: 0, shkadovThruster: 0 };
-  for (const anomaly of generateAnomalies(generateGalaxy(seed)).byHost.values()) counts[anomaly.kind]++;
-  return counts;
 }
 
 describe.skipIf(!import.meta.env.ANOMALY_ODDS)('anomaly odds', () => {
@@ -44,23 +53,23 @@ describe.skipIf(!import.meta.env.ANOMALY_ODDS)('anomaly odds', () => {
     expect(mean).toBeGreaterThan(0);
   });
 
-  it('reports how often each anomaly turns up against its target', { timeout: 600_000 }, () => {
+  it('reports how often each stage and anomaly turns up against its target', { timeout: 600_000 }, () => {
     let blackHoleGalaxies = 0;
     let blackHoles = 0;
     for (let i = 0; i < GALAXY_SAMPLES; i++) {
-      const counts = countKinds(0x51f15e + i * 104729);
-      if (counts.blackHole > 0) blackHoleGalaxies++;
-      blackHoles += counts.blackHole;
+      const count = [...generateAnomalies(generateGalaxy(0x51f15e + i * 104729)).byHost.values()].filter((anomaly) => anomaly.kind === 'blackHole').length;
+      if (count > 0) blackHoleGalaxies++;
+      blackHoles += count;
     }
 
     const hits = CIVILIZATION_TARGETS.map(() => 0);
-    let dysonSpheres = 0;
+    let dysonStructures = 0;
     for (const seed of findCivilizationSeeds(CIVILIZATION_SAMPLES, 0x51f15e)) {
-      const counts = countKinds(seed);
+      const anomalies = generateAnomalies(generateGalaxy(seed));
       CIVILIZATION_TARGETS.forEach((row, index) => {
-        if (row.measure(counts)) hits[index]++;
+        if (row.measure(anomalies)) hits[index]++;
       });
-      dysonSpheres += counts.dysonSphere;
+      dysonStructures += [...anomalies.byHost.values()].filter((anomaly) => anomaly.kind === 'dysonSphere' || anomaly.swarm).length;
     }
 
     console.table([
@@ -72,9 +81,9 @@ describe.skipIf(!import.meta.env.ANOMALY_ODDS)('anomaly odds', () => {
         ratio: ((hits[index] / CIVILIZATION_SAMPLES) / row.target).toFixed(2),
       })),
     ]);
-    console.log(`Dyson spheres per civilisation: ${(dysonSpheres / CIVILIZATION_SAMPLES).toFixed(2)}`);
+    console.log(`Dyson swarms and spheres per civilisation: ${(dysonStructures / CIVILIZATION_SAMPLES).toFixed(2)}`);
     console.log(`Black holes per galaxy with one: ${(blackHoles / Math.max(1, blackHoleGalaxies)).toFixed(2)}`);
 
-    expect(hits[0]).toBeGreaterThan(0);
+    expect(hits.some((hit) => hit > 0)).toBe(true);
   });
 });

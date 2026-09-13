@@ -1,7 +1,8 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
-import { fireBackZoom, fireCodexNavigate } from '../pixi/zoomAnim';
+import { useFlightStore } from '../store/flightStore';
+import { fireBackZoom } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { getAnomalyLore } from '../game/anomalyLore';
 import './ShipHUD.css';
@@ -33,7 +34,9 @@ const NavBack = memo(function NavBack() {
   const setSelectedPlanet = useUIStore((s) => s.setSelectedPlanet);
   const setSystem = useGameStore((s) => s.setSystem);
 
-  const disabled = view === 'supercluster';
+  const clearAddress = useUIStore((s) => s.clearAddress);
+
+  const disabled = view === 'universe';
 
   function handleBack() {
     if (fireBackZoom()) return;
@@ -46,39 +49,26 @@ const NavBack = memo(function NavBack() {
       popAddress();
       removeAddressType('attractor');
       setView('supercluster');
+    } else if (view === 'supercluster') {
+      clearAddress();
+      setView('universe');
     }
   }
 
   return (
     <button className={`side-btn nav-back-btn${disabled ? ' nav-back-btn--disabled' : ''}`} onClick={disabled ? undefined : handleBack}>
-      <TrapezoidOutline points="0.99,0.19 0.38,0.19 0.22,1 0.825,1" />
+      <TrapezoidOutline points="1,0.1 0.39,0.1 0.05,1 0.65,1" />
       <span className="nav-back-btn-icon nav-back-content">◀</span>
       <span className="nav-back-btn-label">Back</span>
     </button>
   );
 });
 
-const NavJump = memo(function NavJump() {
-  const regenerateSupercluster = useGameStore((s) => s.regenerateSupercluster);
-  const clearAddress = useUIStore((s) => s.clearAddress);
-  const view = useUIStore((s) => s.view);
-
-  const disabled = view !== 'supercluster';
-
-  function handleJump() {
-    const jump = () => { regenerateSupercluster(); clearAddress(); };
-    if (fireCodexNavigate(() => useUIStore.getState().setViewTransitioning(true), jump)) return;
-    jump();
-  }
-
-  return (
-    <button className={`side-btn nav-regen-btn${disabled ? ' nav-back-btn--disabled' : ''}`} onClick={disabled ? undefined : handleJump}>
-      <TrapezoidOutline points="0.8,0 0.2,0 0.05,1 0.65,1" />
-      <span className="nav-back-btn-icon nav-regen-icon">⟳</span>
-      <span className="nav-back-btn-label">JUMP</span>
-    </button>
-  );
-});
+function LiveCoords() {
+  const position = useFlightStore((s) => s.position);
+  if (!position) return null;
+  return <div className="hud-address-coords hud-address-coords--live">{position.join('.')}</div>;
+}
 
 function AddressReadout() {
   const address = useUIStore((s) => s.address);
@@ -98,7 +88,7 @@ function AddressReadout() {
           </span>
         ))}
       </div>
-      {coords && <div className="hud-address-coords">{coords}</div>}
+      {coords ? <div className="hud-address-coords">{coords}</div> : <LiveCoords />}
     </div>
   );
 }
@@ -158,7 +148,6 @@ export function ShipHUD() {
     <div className="ship-hud">
       <Codex />
       <NavBack />
-      <NavJump />
       <HudOutline />
       <div className="hud-header">Navigation</div>
       <AddressReadout />

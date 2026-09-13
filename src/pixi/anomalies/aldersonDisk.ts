@@ -12,7 +12,7 @@ const BAND_COUNT = 18;
 const ARC_STEPS = 3;
 const SEAM_EVERY = 3;
 const SPOKE_EVERY = 3;
-const THICKNESS = 0.018;
+const THICKNESS_SUN_RADII = 0.025;
 const INNER_SUN_RADII = 2.6;
 const OUTER_CLEARANCE = 0.88;
 const MIN_WIDTH_RATIO = 2;
@@ -25,6 +25,15 @@ const CLOUD_COLOR = 0xf4f6f8;
 const OUTER_WALL_COLOR = 0x2a2e34;
 const INNER_WALL_COLOR = 0x5a5048;
 const SEAM_COLOR = 0x0e1218;
+const BROKEN_WALL_COLOR = 0x191512;
+const RUINED_TONE = 0x5a4e42;
+const RUINED_LIGHT_FRACTION = 0.08;
+const RUINED_CLOUD_FRACTION = 0.25;
+const RUINED_SCHEDULE_RATE = 0.3;
+const BREACH_RUNS_MAX = 5;
+const BREACH_RUN_LENGTH_MAX = 4;
+const BREACH_MIN_REACH = 0.38;
+const BREACH_REACH_SPREAD = 0.45;
 
 export function aldersonDiskOuterRadius(sunRadius: number, innermostClearance: number): number {
   const inner = sunRadius * INNER_SUN_RADII;
@@ -94,6 +103,7 @@ interface Wedge {
   rates: number[];
   start: number;
   end: number;
+  reach: number;
 }
 
 function gradient(stops: ColorStops, t: number): number {
@@ -168,10 +178,12 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
   const inner = sunRadius * INNER_SUN_RADII;
   const outer = aldersonDiskOuterRadius(sunRadius, innermostClearance);
   const span = outer - inner;
-  const height = outer * THICKNESS;
+  const height = sunRadius * THICKNESS_SUN_RADII;
   const radiusAt = (t: number) => inner + span * t;
+  const { living, integrity } = anomaly;
+  const weather = (color: number) => (living ? color : scaleColor(mixColor(color, RUINED_TONE, 0.6), 0.8));
   const lit = (color: number, t: number) =>
-    scaleColor(mixColor(color, starColor, 0.4 * (1 - smoothstep(0, 0.25, t))), 1 - 0.55 * smoothstep(0.1, 1, t));
+    scaleColor(mixColor(weather(color), starColor, 0.4 * (1 - smoothstep(0, 0.25, t))), 1 - 0.55 * smoothstep(0.1, 1, t));
 
   const wedges: Wedge[] = Array.from({ length: WEDGE_COUNT }, (_, index) => {
     const node = new Container();
@@ -198,8 +210,21 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
       rates: lights.map(() => 0.6 + rng() * 1.4),
       start: index / WEDGE_COUNT * TAU,
       end: (index + 1) / WEDGE_COUNT * TAU,
+      reach: 1,
     };
   });
+
+  if (!living) {
+    const runs = 1 + Math.floor((1 - integrity) * BREACH_RUNS_MAX);
+    for (let run = 0; run < runs; run++) {
+      const first = Math.floor(rng() * WEDGE_COUNT);
+      const length = 1 + Math.floor(rng() * BREACH_RUN_LENGTH_MAX);
+      for (let k = 0; k < length; k++) {
+        const wedge = wedges[(first + k) % WEDGE_COUNT];
+        wedge.reach = Math.min(wedge.reach, BREACH_MIN_REACH + rng() * BREACH_REACH_SPREAD);
+      }
+    }
+  }
 
   const noise = createNoise(rng, TAU * radiusAt((LAND_T0 + LAND_T1) / 2) / span);
   const elevations = new Float32Array((LAND_COLUMNS + 1) * (LAND_ROWS + 1));
@@ -219,6 +244,7 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
         const t = landT(groupRow + LAND_ROW_GROUP / 2);
         const layer: LandLayer = { color: lit(gradient(stops, (t - LAND_T0) / (LAND_T1 - LAND_T0)), t), alpha, polygons: [] };
         for (let row = groupRow; row < groupRow + LAND_ROW_GROUP; row++) {
+          if (landT(row + 1) > wedge.reach) continue;
           for (let column = index * LAND_COLUMNS_PER_WEDGE; column < (index + 1) * LAND_COLUMNS_PER_WEDGE; column++) {
             const refs = traceCell(elevations, column, row, elevation);
             if (refs) layer.polygons.push(refs);
@@ -229,10 +255,13 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
     }
   });
 
-  for (let i = 0; i < CLOUDS; i++) {
+  const clouds = living ? CLOUDS : Math.round(CLOUDS * RUINED_CLOUD_FRACTION);
+  for (let i = 0; i < clouds; i++) {
     const t = 0.3 + rng() * 0.5;
     const angle = rng() * TAU;
-    wedges[wedgeIndex(angle)].clouds.push({
+    const wedge = wedges[wedgeIndex(angle)];
+    if (t > wedge.reach) continue;
+    wedge.clouds.push({
       angle,
       radius: radiusAt(t),
       size: span * (0.015 + rng() * 0.035),
@@ -244,6 +273,7 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
   const addLight = (angle: number, radius: number, size: number) => {
     const t = (radius - inner) / span;
     const wedge = wedges[wedgeIndex(angle)];
+    if (t > wedge.reach) return;
     wedge.groups[Math.floor(rng() * LIGHT_GROUPS)].push({ angle, radius, size, alpha: 0.3 + 0.7 * smoothstep(0.3, 0.9, t) });
   };
   const cityElevation = elevationCovering(CITY_COVERAGE);
@@ -253,7 +283,8 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
   });
   const cellAngle = TAU / LAND_COLUMNS;
   const cellDepth = span * (LAND_T1 - LAND_T0) / LAND_ROWS;
-  for (let i = 0; i < CITIES && inhabited.length > 0; i++) {
+  const lightFraction = living ? 1 : RUINED_LIGHT_FRACTION;
+  for (let i = 0; i < Math.round(CITIES * lightFraction) && inhabited.length > 0; i++) {
     const vertex = inhabited[Math.floor(rng() * inhabited.length)];
     const angle = vertex % (LAND_COLUMNS + 1) * cellAngle;
     const radius = radiusAt(landT(Math.floor(vertex / (LAND_COLUMNS + 1))));
@@ -262,7 +293,7 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
       addLight(angle + (rng() - 0.5) * cellAngle * 3, radius + (rng() - 0.5) * cellDepth * 3, 1.2 + rng() * 1.6);
     }
   }
-  for (let i = 0; i < DUSK_LIGHTS; i++) {
+  for (let i = 0; i < Math.round(DUSK_LIGHTS * lightFraction); i++) {
     addLight(rng() * TAU, radiusAt(0.75 + rng() * 0.23), 1 + rng());
   }
 
@@ -298,14 +329,15 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
   };
 
   const drawWedge = (wedge: Wedge, index: number, basis: ProjectionBasis) => {
-    const { surface, start, end } = wedge;
+    const { surface, start, end, reach } = wedge;
+    const edge = radiusAt(reach);
     surface.clear();
-    surface.poly(sector(outer, outer, start, end, -height, height, basis)).fill({ color: OUTER_WALL_COLOR });
+    surface.poly(sector(edge, edge, start, end, -height, height, basis)).fill({ color: reach < 1 ? BROKEN_WALL_COLOR : OUTER_WALL_COLOR });
     surface.poly(sector(inner, inner, start, end, -height, height, basis)).fill({ color: mixColor(INNER_WALL_COLOR, starColor, 0.5) });
-    for (let band = 0; band < BAND_COUNT; band++) {
+    for (let band = 0; band < BAND_COUNT && band / BAND_COUNT < reach; band++) {
       const t0 = band / BAND_COUNT;
-      const t1 = (band + 1) / BAND_COUNT;
-      const t = (t0 + t1) / 2;
+      const t1 = Math.min(reach, (band + 1) / BAND_COUNT);
+      const t = (band + 0.5) / BAND_COUNT;
       surface.poly(sector(radiusAt(t0), radiusAt(t1), start, end, height, height, basis)).fill({ color: lit(gradient(SURFACE_STOPS, t), t) });
     }
     for (const layer of wedge.land) {
@@ -325,13 +357,13 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
       const p = project(cloud.angle, cloud.radius, height, basis);
       surface.ellipse(p.x, p.y, cloud.size * p.scale, cloud.size * p.scale * basis.cosTilt).fill({ color: cloud.color, alpha: cloud.alpha });
     }
-    for (let band = SEAM_EVERY; band < BAND_COUNT; band += SEAM_EVERY) {
+    for (let band = SEAM_EVERY; band < BAND_COUNT && band / BAND_COUNT < reach; band += SEAM_EVERY) {
       surface.poly(arc([], radiusAt(band / BAND_COUNT), start, end, height, basis), false);
     }
     if (index % SPOKE_EVERY === 0) {
       const from = project(start, inner, height, basis);
       surface.moveTo(from.x, from.y);
-      const to = project(start, outer, height, basis);
+      const to = project(start, edge, height, basis);
       surface.lineTo(to.x, to.y);
     }
     surface.stroke({ color: SEAM_COLOR, width: 1, alpha: 0.3 });
@@ -346,8 +378,8 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
       }
     });
 
-    wedge.node.hitArea = new Polygon(sector(inner, outer, start, end, height, height, basis));
-    wedge.node.zIndex = project((start + end) / 2, (inner + outer) / 2, height, basis).depth;
+    wedge.node.hitArea = new Polygon(sector(inner, edge, start, end, height, height, basis));
+    wedge.node.zIndex = project((start + end) / 2, (inner + edge) / 2, height, basis).depth;
   };
 
   let drawnTilt = NaN;
@@ -368,7 +400,9 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
       }
       for (const wedge of wedges) {
         wedge.lights.forEach((gfx, groupIndex) => {
-          gfx.alpha = 0.72 + 0.28 * Math.sin(elapsed * wedge.rates[groupIndex] + wedge.phases[groupIndex]);
+          gfx.alpha = living
+            ? 0.72 + 0.28 * Math.sin(elapsed * wedge.rates[groupIndex] + wedge.phases[groupIndex])
+            : smoothstep(0.4, 0.9, Math.sin(elapsed * wedge.rates[groupIndex] * RUINED_SCHEDULE_RATE + wedge.phases[groupIndex]));
         });
       }
     },

@@ -37,7 +37,9 @@ import { createPointerLabel } from './labels';
 import { createSuperclusterDotTexture } from './textures';
 import { BackgroundStars } from './BackgroundStars';
 import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
-import { getSuperclusterCoords, pushAttractorAddress } from '../game/superclusters';
+import { pushAttractorAddress } from '../game/superclusters';
+import { getSuperclusterCoords } from '../game/universe';
+import { drawCrosshair, drawVisitedRings } from './dotOverlays';
 
 const SC_NICE_VALUES = [5, 10, 25, 50, 100, 150, 200, 300, 500];
 
@@ -106,7 +108,12 @@ export function SuperclusterWorld() {
     return projectPlanePointWithBasis(current.x, current.y, current.z, basis);
   }, [orbitCamera]);
 
-  const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, { getCurrentPos });
+  const onNavigateBack = useCallback(() => {
+    useUIStore.getState().clearAddress();
+    useUIStore.getState().setView('universe');
+  }, []);
+
+  const { isAnimatingRef, cancelZoomRef } = useZoomController(camera, worldRef, isReady, { getCurrentPos, onNavigateBack });
 
   const visitedDotsRef = useRef<SuperclusterDot[]>([]);
   const currentDotRef = useRef<SuperclusterDot | null>(null);
@@ -389,6 +396,8 @@ export function SuperclusterWorld() {
   );
 }
 
+const visitedPoints: { x: number; y: number }[] = [];
+
 function drawVisited(
   gfx: Graphics,
   dots: SuperclusterDot[],
@@ -396,17 +405,13 @@ function drawVisited(
   projected: ProjectedPoint,
 ) {
   gfx.clear();
-  if (dots.length === 0) return;
-  for (const dot of dots) {
-    projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
-    gfx.circle(projected.x, projected.y, 8);
+  for (let i = 0; i < dots.length; i++) {
+    projectPlanePointWithBasis(dots[i].x, dots[i].y, dots[i].z, basis, projected);
+    const point = visitedPoints[i] ?? (visitedPoints[i] = { x: 0, y: 0 });
+    point.x = projected.x;
+    point.y = projected.y;
   }
-  gfx.stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
-  for (const dot of dots) {
-    projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
-    gfx.circle(projected.x, projected.y, 11);
-  }
-  gfx.stroke({ color: 0xffffff, width: 0.5, alpha: 0.25 });
+  drawVisitedRings(gfx, visitedPoints, dots.length);
 }
 
 function drawCurrent(
@@ -419,33 +424,5 @@ function drawCurrent(
   gfx.clear();
   if (!dot) return;
   projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
-  const { x, y } = projected;
-
-  gfx.circle(x, y, 5);
-  gfx.fill({ color: 0x00e8ff, alpha: 0.55 });
-  gfx.circle(x, y, 12);
-  gfx.stroke({ color: 0x00e8ff, width: 2, alpha: 0.95 });
-  gfx.circle(x, y, 18);
-  gfx.stroke({ color: 0x00e8ff, width: 1, alpha: 0.55 });
-
-  const gap = 20, arm = 38;
-  gfx.moveTo(x - arm, y).lineTo(x - gap, y);
-  gfx.moveTo(x + gap, y).lineTo(x + arm, y);
-  gfx.moveTo(x, y - arm).lineTo(x, y - gap);
-  gfx.moveTo(x, y + gap).lineTo(x, y + arm);
-  gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.85 });
-
-  const nub = 4;
-  gfx.moveTo(x - arm, y - nub).lineTo(x - arm, y + nub);
-  gfx.moveTo(x + arm, y - nub).lineTo(x + arm, y + nub);
-  gfx.moveTo(x - nub, y - arm).lineTo(x + nub, y - arm);
-  gfx.moveTo(x - nub, y + arm).lineTo(x + nub, y + arm);
-  gfx.stroke({ color: 0x00e8ff, width: 1.5, alpha: 0.65 });
-
-  const pulse = 0.5 + 0.5 * Math.sin(elapsedSecs * Math.PI * 2 * 0.7);
-  const outerR = 26 + pulse * 10;
-  gfx.circle(x, y, outerR);
-  gfx.stroke({ color: 0x00e8ff, width: 1.2, alpha: 0.2 + pulse * 0.45 });
-  gfx.circle(x, y, outerR + 6);
-  gfx.stroke({ color: 0x00e8ff, width: 0.6, alpha: 0.08 + pulse * 0.18 });
+  drawCrosshair(gfx, projected.x, projected.y, elapsedSecs);
 }

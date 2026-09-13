@@ -18,17 +18,18 @@ Implement phases in order. Every phase should leave the app usable.
 
 ---
 
-## Invariants (existing saves)
+## Generation invariants
 
-Existing discovery records point at systems by id, name and seed, so these must hold
-throughout:
+There are no production users or supported legacy saves, so this work requires no data
+migration or compatibility layer. These constraints keep the implementation deterministic
+and avoid unrelated changes while the feature is built:
 
 1. `generateGalaxy`, `generateSystemLayout`, `generatePlanets` and `generateSupercluster` keep
    their exact RNG sequences. The identity and geometry digests in `galaxyGen.test.ts` must
    pass without being re-baselined.
 2. An anomaly never changes its host system's data: star type, size, colour, seed or planets.
-   Every difference is applied when rendering. Planet names and Codex records stay identical
-   to what existing saves recorded.
+   Every difference is applied when rendering. Planet names and Codex records remain
+   internally consistent with the current generator.
 3. Anomaly generation uses its own RNGs, with new XOR constants that appear nowhere else in
    `src/` (checked: `0x6c8e9cf5`, `0x3c6ef372`, `0x165667b1` are unused).
 4. Found anomalies are stored in a new `users/{uid}/anomalies` collection. `discoveries` and

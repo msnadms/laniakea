@@ -15,6 +15,27 @@ type TutorialContent = {
 };
 
 const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
+  universe: {
+    title: 'Universe View',
+    intro: 'Fly through the cosmic web and choose a supercluster to explore.',
+    sections: [
+      {
+        title: 'Fly',
+        items: [
+          'W and S fly forward and back, A and D strafe, Q and E drop and climb.',
+          'Hold Shift to boost, and scroll to change your cruising speed.',
+          'Drag to look around.',
+        ],
+      },
+      {
+        title: 'Explore',
+        items: [
+          'Hover over a supercluster to read its name.',
+          'Select a supercluster to enter it. Every explorer shares this same universe.',
+        ],
+      },
+    ],
+  },
   supercluster: {
     title: 'Supercluster View',
     intro: 'Survey the cosmic web and choose a galaxy to explore.',
@@ -22,7 +43,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
       {
         title: 'Navigate',
         items: [
-          'Drag to pan and scroll to zoom through the supercluster.',
+          'Drag or use W, A, S and D to pan, and scroll to zoom through the supercluster. Hold Shift with the keys to move faster.',
           'Hold Shift while dragging, or use the right mouse button, to rotate the cosmic web and reveal its depth.',
           'Zoom in and select a galaxy to enter it and record it in your Codex.',
         ],
@@ -30,7 +51,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
       {
         title: 'Go further',
         items: [
-          'JUMP generates a new supercluster to explore.',
+          'Use Back to return to the universe and choose another supercluster.',
           'The Codex lists every supercluster, galaxy, and star you have visited, and can take you back to any of them.',
         ],
       },
@@ -43,7 +64,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
       {
         title: 'Explore',
         items: [
-          'Drag to pan and scroll to zoom around the galaxy.',
+          'Drag or use W, A, S and D to pan, and scroll to zoom around the galaxy. Hold Shift with the keys to move faster.',
           'Hold Shift while dragging, or use the right mouse button, to turn the disk.',
           'Select a star to enter its system and add it to your Codex.',
           'Use Back to return to the surrounding supercluster.',
@@ -58,6 +79,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
       {
         title: 'Survey',
         items: [
+          'Drag or use W, A, S and D to pan, and scroll to zoom. Hold Shift with the keys to move faster.',
           'Select a planet to see its orbital zone and moons.',
           'Turn on Orbit Rings in Settings to trace each orbit.',
           'Use Back to return to the galaxy when you are finished in this system.',

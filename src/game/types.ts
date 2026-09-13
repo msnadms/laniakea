@@ -89,6 +89,24 @@ export interface SuperclusterData {
   seed: number;
 }
 
+export interface UniverseChunk {
+  key: number;
+  count: number;
+  x: Float32Array;
+  y: Float32Array;
+  z: Float32Array;
+  brightness: Float32Array;
+  seeds: Uint32Array;
+}
+
+export interface FlyCamera {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+}
+
 export interface Moon {
   name: string;
 }
