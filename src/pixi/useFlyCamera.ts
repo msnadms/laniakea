@@ -7,6 +7,7 @@ import {
   DRAG_THRESHOLD_PX,
   UNIVERSE_BOOST,
   UNIVERSE_FLIGHT_EASE,
+  UNIVERSE_KEY_YAW_SPEED,
   UNIVERSE_LOOK_EASE,
   UNIVERSE_LOOK_SENSITIVITY,
   UNIVERSE_RADIUS,
@@ -15,8 +16,9 @@ import {
   UNIVERSE_SPEED_MIN,
   UNIVERSE_SPEED_STEP,
 } from '../game/constants';
-import { clampPitch, flyForward, flyRight, flyUp } from './flyProjection';
+import { clampPitch, flyForward, flyRight } from './flyProjection';
 import { isEditable } from './keyboard';
+import { useScanStore } from '../store/scanStore';
 
 const FRAME_MS = 1000 / 60;
 const LOOK_SNAP = 1e-4;
@@ -50,13 +52,12 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
     const velocity = { x: 0, y: 0, z: 0 };
     const forward = { x: 0, y: 0, z: 0 };
     const right = { x: 0, y: 0, z: 0 };
-    const up = { x: 0, y: 0, z: 0 };
     const dragStart = { x: 0, y: 0, yaw: 0, pitch: 0 };
     let isLooking = false;
 
     const onDown = (event: FederatedPointerEvent) => {
       didLook.current = false;
-      if (isFrozenRef.current()) return;
+      if (isFrozenRef.current() || useScanStore.getState().active) return;
       isLooking = true;
       dragStart.x = event.globalX;
       dragStart.y = event.globalY;
@@ -107,6 +108,13 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
         return;
       }
 
+      const turn = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0);
+      if (turn !== 0) {
+        const step = turn * UNIVERSE_KEY_YAW_SPEED * ticker.deltaMS / 1000;
+        look.current.yaw += step;
+        dragStart.yaw += step;
+      }
+
       const yawGap = look.current.yaw - cam.yaw;
       const pitchGap = look.current.pitch - cam.pitch;
       if (Math.abs(yawGap) < LOOK_SNAP && Math.abs(pitchGap) < LOOK_SNAP) {
@@ -120,18 +128,16 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
 
       const thrust = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
       const strafe = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
-      const lift = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0);
-      const inputLength = Math.hypot(thrust, strafe, lift);
+      const inputLength = Math.hypot(thrust, strafe);
       const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') ? UNIVERSE_BOOST : 1;
       const cruise = inputLength === 0 ? 0 : speed.current * boost / inputLength;
       flyForward(cam, forward);
       flyRight(cam, right);
-      flyUp(cam, up);
 
       const flightEase = 1 - Math.pow(1 - UNIVERSE_FLIGHT_EASE, ticker.deltaMS / FRAME_MS);
-      velocity.x += ((forward.x * thrust + right.x * strafe + up.x * lift) * cruise - velocity.x) * flightEase;
-      velocity.y += ((forward.y * thrust + right.y * strafe + up.y * lift) * cruise - velocity.y) * flightEase;
-      velocity.z += ((forward.z * thrust + right.z * strafe + up.z * lift) * cruise - velocity.z) * flightEase;
+      velocity.x += ((forward.x * thrust + right.x * strafe) * cruise - velocity.x) * flightEase;
+      velocity.y += ((forward.y * thrust + right.y * strafe) * cruise - velocity.y) * flightEase;
+      velocity.z += ((forward.z * thrust + right.z * strafe) * cruise - velocity.z) * flightEase;
 
       const seconds = ticker.deltaMS / 1000;
       cam.x += velocity.x * seconds;

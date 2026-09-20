@@ -24,6 +24,13 @@ import {
   UNIVERSE_FOG_FAR,
   UNIVERSE_PICK_MIN_ALPHA,
   UNIVERSE_PICK_SCREEN_PX,
+  SCAN_AIM_BACK_ALPHA,
+  SCAN_AIM_FRONT_ALPHA,
+  SCAN_BUDGET_MS,
+  SCAN_SHELL_COLOR,
+  SCAN_SHELL_LINE_PX,
+  SCAN_SHELL_DENIED_COLOR,
+  SCAN_UNIVERSE_MAX_TARGETS,
 } from '../game/constants';
 import type { FlyCamera, UniverseChunk } from '../game/types';
 import { createSuperclusterDotTexture } from './textures';
@@ -36,13 +43,21 @@ import {
   faceTarget,
   projectSkyDirection,
   projectUniverseField,
+  projectUniverseMark,
   projectUniversePoint,
+  universeMarkDepth,
   updateFlyBasis,
 } from './flyProjection';
 import type { ProjectedPoint } from './projection';
 import { drawCrosshair, drawVisitedRings } from './dotOverlays';
 import { createUniverseMinimap } from './universeMinimap';
 import { createUniverseAnomalyDebug } from './anomalyDebug';
+import { useScanStore } from '../store/scanStore';
+import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
+import { createScanShell } from './scanShell';
+import { createUniverseScanOverlay } from './scanOverlay';
+import { createUniverseScanRun, recordContact, type ScanRun } from './scanRun';
+import { scanCost, scanPrecisionRadius, type ScanSphere } from '../game/scan';
 
 const N_BLINK_GROUPS = 10;
 const BLINK_FREQ = 0.22;
@@ -160,9 +175,15 @@ export function UniverseWorld() {
     const visitedGfx = new Graphics();
     const currentGfx = new Graphics();
     const hoverLayer = new Container();
+    const scanOverlay = createUniverseScanOverlay();
+    const scanShell = createScanShell();
+    world.addChild(scanShell.back);
+    world.addChild(scanOverlay.backNode);
     world.addChild(dotsContainer);
     world.addChild(visitedGfx);
     world.addChild(currentGfx);
+    world.addChild(scanShell.front);
+    world.addChild(scanOverlay.node);
     world.addChild(hoverLayer);
 
     const skyContainer = new Container();
@@ -281,6 +302,120 @@ export function UniverseWorld() {
     let lastSpeed = -1;
     let hoveredSeed = -1;
     let debug: ReturnType<typeof createUniverseAnomalyDebug> | null = null;
+    let scanRun: ScanRun | null = null;
+    let shellSphere: ScanSphere | null = null;
+    let shellColor = SCAN_SHELL_COLOR;
+
+    const drawShell = () => {
+      const sphere = shellSphere;
+      if (!sphere) {
+        scanShell.clear();
+        return;
+      }
+      scanShell.draw(
+        (ux, uy, uz, out) => projectUniverseMark(
+          sphere.x + ux * sphere.radius,
+          sphere.y + uy * sphere.radius,
+          sphere.z + uz * sphere.radius,
+          basis,
+          out,
+        ),
+        {
+          color: shellColor,
+          width: SCAN_SHELL_LINE_PX / screenCamera.current.scale,
+          backAlpha: SCAN_AIM_BACK_ALPHA,
+          frontAlpha: SCAN_AIM_FRONT_ALPHA,
+          centreDepth: universeMarkDepth(sphere.x, sphere.y, sphere.z, basis),
+        },
+      );
+    };
+
+    const aimCentre: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
+
+    const anchorAt = (screenX: number, screenY: number): ScanAnchor | null => {
+      const slot = pick(screenX, screenY);
+      if (slot < 0) return null;
+      const cam = screenCamera.current;
+      const chunk = slotChunk[slot];
+      const i = slotIndex[slot];
+      return {
+        x: chunk.x[i],
+        y: chunk.y[i],
+        z: chunk.z[i],
+        name: generateSuperclusterName(chunk.seeds[i]),
+        screenX: slotX[slot] * cam.scale + cam.x,
+        screenY: slotY[slot] * cam.scale + cam.y,
+      };
+    };
+
+    const aimAt = (anchor: ScanAnchor, screenX: number, screenY: number): ScanAim | null => {
+      if (!projectUniverseMark(anchor.x, anchor.y, anchor.z, basis, aimCentre)) return null;
+      const cam = screenCamera.current;
+      const centreX = aimCentre.x * cam.scale + cam.x;
+      const centreY = aimCentre.y * cam.scale + cam.y;
+      const screenRadius = Math.hypot(screenX - centreX, screenY - centreY);
+      const radius = screenRadius / cam.scale / aimCentre.scale;
+      return {
+        sphere: { x: anchor.x, y: anchor.y, z: anchor.z, radius },
+        cost: scanCost('universe', radius),
+        screenX: centreX,
+        screenY: centreY,
+        screenRadius,
+      };
+    };
+
+    const beginScan = ({ sphere }: ScanAim) => {
+      const refs = universeChunksNear(sphere.x, sphere.y, sphere.z, sphere.radius);
+      scanRun = createUniverseScanRun(
+        { sphere, refs, maxTargets: SCAN_UNIVERSE_MAX_TARGETS },
+        scanPrecisionRadius('universe', sphere.radius),
+      );
+      shellSphere = sphere;
+      shellColor = SCAN_SHELL_COLOR;
+      useScanStore.getState().setProgress({ scope: 'universe', done: 0, total: scanRun.total });
+    };
+
+    let scanSelect: ReturnType<typeof createScanSelect> | null = null;
+    const syncScanMode = (active: boolean) => {
+      if (active && !scanSelect) {
+        scanSelect = createScanSelect(app, {
+          targetNoun: 'supercluster',
+          anchorAt,
+          aimAt,
+          onAim: (aim) => {
+            if (scanRun) return;
+            shellSphere = aim?.sphere ?? null;
+            shellColor = aim && useScanStore.getState().condensate < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
+          },
+          onSelect: beginScan,
+        });
+      }
+      else if (!active && scanSelect) {
+        scanSelect.destroy();
+        scanSelect = null;
+        if (!scanRun) shellSphere = null;
+      }
+    };
+    syncScanMode(useScanStore.getState().active);
+    const unsubScan = useScanStore.subscribe((state, prev) => {
+      if (state.active !== prev.active) syncScanMode(state.active);
+    });
+
+    const advanceScan = () => {
+      if (!scanRun) return;
+      const deadline = performance.now() + SCAN_BUDGET_MS;
+      let working = true;
+      while (working && performance.now() < deadline) working = scanRun.step();
+      const store = useScanStore.getState();
+      if (working) {
+        store.setProgress({ scope: 'universe', done: scanRun.done, total: scanRun.total });
+        return;
+      }
+      recordContact('universe', null, scanRun.contact(), shellSphere);
+      scanRun = null;
+      shellSphere = null;
+      store.setProgress(null);
+    };
 
     const removeDebug = () => {
       if (!debug) return;
@@ -385,6 +520,9 @@ export function UniverseWorld() {
       }
       skyDim.alpha = 0.2 + Math.abs(Math.sin(elapsedSecs * 1.5)) * 0.4;
       skyBright.alpha = 0.45 + Math.abs(Math.sin(elapsedSecs * 2.0 + 1.0)) * 0.45;
+      advanceScan();
+      drawShell();
+      scanOverlay.update(basis, screenCamera.current.scale, elapsedSecs);
       minimap.update(camera, width, elapsedSecs);
       useFlightStore.getState().setPosition(camera.x, camera.y, camera.z);
 
@@ -405,7 +543,9 @@ export function UniverseWorld() {
         drawCrosshair(currentGfx, projected.x, projected.y, elapsedSecs);
       }
 
-      const slot = isAnimatingRef.current || !pointer.current.inside ? -1 : pick(pointer.current.x, pointer.current.y);
+      const slot = isAnimatingRef.current || !pointer.current.inside || useScanStore.getState().active
+        ? -1
+        : pick(pointer.current.x, pointer.current.y);
       const nextSeed = slot >= 0 ? slotChunk[slot].seeds[slotIndex[slot]] : -1;
       if (nextSeed !== hoveredSeed) {
         hoveredSeed = nextSeed;
@@ -419,6 +559,7 @@ export function UniverseWorld() {
 
     const onTap = (event: FederatedPointerEvent) => {
       if (isAnimatingRef.current || didLook.current || event.button > 0) return;
+      if (useScanStore.getState().active) return;
       const slot = pick(event.global.x, event.global.y);
       if (slot < 0) return;
       const seed = slotChunk[slot].seeds[slotIndex[slot]];
@@ -455,6 +596,15 @@ export function UniverseWorld() {
       }
       app.canvas.style.cursor = '';
       removeDebug();
+      unsubScan();
+      scanSelect?.destroy();
+      useScanStore.getState().setProgress(null);
+      world.removeChild(scanOverlay.node);
+      world.removeChild(scanOverlay.backNode);
+      scanOverlay.destroy();
+      world.removeChild(scanShell.back);
+      world.removeChild(scanShell.front);
+      scanShell.destroy();
       world.removeChild(dotsContainer);
       world.removeChild(visitedGfx);
       world.removeChild(currentGfx);

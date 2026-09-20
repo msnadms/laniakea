@@ -40,6 +40,21 @@ import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/disc
 import { pushAttractorAddress } from '../game/superclusters';
 import { getSuperclusterCoords } from '../game/universe';
 import { drawCrosshair, drawVisitedRings } from './dotOverlays';
+import { useScanStore } from '../store/scanStore';
+import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
+import { createScanShell } from './scanShell';
+import { createSuperclusterScanOverlay } from './scanOverlay';
+import { createSuperclusterScanRun, recordContact, type ScanRun, type ScanTarget } from './scanRun';
+import { scanCost, scanPrecisionRadius, type ScanSphere } from '../game/scan';
+import {
+  SCAN_AIM_BACK_ALPHA,
+  SCAN_AIM_FRONT_ALPHA,
+  SCAN_BUDGET_MS,
+  SCAN_SHELL_COLOR,
+  SCAN_SHELL_LINE_PX,
+  SCAN_SUPERCLUSTER_ANCHOR_PX,
+  SCAN_SHELL_DENIED_COLOR,
+} from '../game/constants';
 
 const SC_NICE_VALUES = [5, 10, 25, 50, 100, 150, 200, 300, 500];
 
@@ -94,7 +109,10 @@ export function SuperclusterWorld() {
 
   const worldRef = useRef<Container>(null);
   const { orbitCamera, didOrbit } = useOrbit();
-  const shouldPan = useCallback((event: FederatedPointerEvent) => !isOrbitGesture(event), []);
+  const shouldPan = useCallback(
+    (event: FederatedPointerEvent) => !isOrbitGesture(event) && !useScanStore.getState().active,
+    [],
+  );
   const { camera, isReady } = useCamera(worldRef, SC_CAMERA_INITIAL_SCALE, undefined, shouldPan);
   const showAttractorLabelsRef = useRef(showAttractorLabels);
   useEffect(() => {
@@ -314,10 +332,176 @@ export function SuperclusterWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
+    const overlay = createSuperclusterScanOverlay(scSeed);
+    const shell = createScanShell();
+    world.addChildAt(shell.back, 0);
+    world.addChildAt(overlay.backNode, 1);
+    world.addChild(shell.front);
+    world.addChild(overlay.node);
+    const basis = updateProjectionBasis(orbitCamera.current);
+    const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
+    let run: ScanRun | null = null;
+    let shellSphere: ScanSphere | null = null;
+    let shellColor = SCAN_SHELL_COLOR;
+
+    const drawShell = () => {
+      const sphere = shellSphere;
+      if (!sphere) {
+        shell.clear();
+        return;
+      }
+      shell.draw(
+        (ux, uy, uz, out) => {
+          projectPlanePointWithBasis(
+            sphere.x + ux * sphere.radius,
+            sphere.y + uz * sphere.radius,
+            sphere.z + uy * sphere.radius,
+            basis,
+            out,
+          );
+          return true;
+        },
+        {
+          color: shellColor,
+          width: SCAN_SHELL_LINE_PX / camera.current.scale,
+          backAlpha: SCAN_AIM_BACK_ALPHA,
+          frontAlpha: SCAN_AIM_FRONT_ALPHA,
+          frontIsLowerDepth: false,
+        },
+      );
+    };
+
+    const anchorAt = (screenX: number, screenY: number): ScanAnchor | null => {
+      const cam = camera.current;
+      const localX = (screenX - cam.x) / cam.scale;
+      const localY = (screenY - cam.y) / cam.scale;
+      const maxDist = SCAN_SUPERCLUSTER_ANCHOR_PX / cam.scale;
+      updateProjectionBasis(orbitCamera.current, basis);
+      let nearest: ScanAnchor | null = null;
+      let nearestDepth = -Infinity;
+      for (const dot of useGameStore.getState().supercluster.dots) {
+        projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
+        if (Math.hypot(projected.x - localX, projected.y - localY) > maxDist) continue;
+        if (projected.depth <= nearestDepth) continue;
+        nearestDepth = projected.depth;
+        nearest = {
+          x: dot.x,
+          y: dot.y,
+          z: dot.z,
+          name: dot.name,
+          screenX: projected.x * cam.scale + cam.x,
+          screenY: projected.y * cam.scale + cam.y,
+        };
+      }
+      return nearest;
+    };
+
+    const aimAt = (anchor: ScanAnchor, screenX: number, screenY: number): ScanAim | null => {
+      const cam = camera.current;
+      updateProjectionBasis(orbitCamera.current, basis);
+      projectPlanePointWithBasis(anchor.x, anchor.y, anchor.z, basis, projected);
+      const centreX = projected.x * cam.scale + cam.x;
+      const centreY = projected.y * cam.scale + cam.y;
+      const screenRadius = Math.hypot(screenX - centreX, screenY - centreY);
+      const radius = screenRadius / cam.scale;
+      return {
+        sphere: { x: anchor.x, y: anchor.y, z: anchor.z, radius },
+        cost: scanCost('supercluster', radius),
+        screenX: centreX,
+        screenY: centreY,
+        screenRadius,
+      };
+    };
+
+    const beginScan = ({ sphere }: ScanAim) => {
+      const targets: ScanTarget[] = [];
+      const radiusSq = sphere.radius * sphere.radius;
+      for (const dot of useGameStore.getState().supercluster.dots) {
+        const dx = dot.x - sphere.x;
+        const dy = dot.y - sphere.y;
+        const dz = dot.z - sphere.z;
+        if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
+        targets.push({ seed: dot.seed, x: dot.x, y: dot.y, z: dot.z });
+      }
+      if (targets.length === 0) {
+        useScanStore.getState().setOutcome('No contact', null);
+        return;
+      }
+      run = createSuperclusterScanRun(targets, scanPrecisionRadius('supercluster', sphere.radius));
+      shellSphere = sphere;
+      shellColor = SCAN_SHELL_COLOR;
+      useScanStore.getState().setProgress({ scope: 'supercluster', done: 0, total: targets.length });
+    };
+
+    let scanSelect: ReturnType<typeof createScanSelect> | null = null;
+    const syncScanMode = (active: boolean) => {
+      if (active && !scanSelect) {
+        scanSelect = createScanSelect(app, {
+          targetNoun: 'galaxy',
+          anchorAt,
+          aimAt,
+          onAim: (aim) => {
+            if (run) return;
+            shellSphere = aim?.sphere ?? null;
+            shellColor = aim && useScanStore.getState().condensate < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
+          },
+          onSelect: beginScan,
+        });
+      } else if (!active && scanSelect) {
+        scanSelect.destroy();
+        scanSelect = null;
+        if (!run) shellSphere = null;
+      }
+    };
+    syncScanMode(useScanStore.getState().active);
+    const unsubScan = useScanStore.subscribe((state, prev) => {
+      if (state.active !== prev.active) syncScanMode(state.active);
+    });
+
+    let elapsedSecs = 0;
+    const tick = (ticker: Ticker) => {
+      elapsedSecs += ticker.deltaMS / 1000;
+      if (run) {
+        const deadline = performance.now() + SCAN_BUDGET_MS;
+        let working = true;
+        while (working && performance.now() < deadline) working = run.step();
+        const store = useScanStore.getState();
+        if (working) {
+          store.setProgress({ scope: 'supercluster', done: run.done, total: run.total });
+        } else {
+          recordContact('supercluster', scSeed, run.contact(), shellSphere);
+          run = null;
+          shellSphere = null;
+          store.setProgress(null);
+        }
+      }
+      updateProjectionBasis(orbitCamera.current, basis);
+      drawShell();
+      overlay.update(basis, camera.current.scale, elapsedSecs);
+    };
+    Ticker.shared.add(tick);
+
+    return () => {
+      Ticker.shared.remove(tick);
+      unsubScan();
+      scanSelect?.destroy();
+      useScanStore.getState().setProgress(null);
+      world.removeChild(overlay.node);
+      world.removeChild(overlay.backNode);
+      overlay.destroy();
+      world.removeChild(shell.back);
+      world.removeChild(shell.front);
+      shell.destroy();
+    };
+  }, [app, isInitialised, scSeed, camera, orbitCamera]);
+
+  useEffect(() => {
+    if (!isInitialised || !worldRef.current) return;
+    const world = worldRef.current;
     const stage = app.stage;
 
     const onTap = (e: FederatedPointerEvent) => {
-      if (isAnimatingRef.current) return;
+      if (isAnimatingRef.current || useScanStore.getState().active) return;
       if (didOrbit.current || isOrbitGesture(e)) return;
       if (camera.current.scale < 0.5) return;
       const local = world.toLocal(e.global);

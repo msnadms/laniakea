@@ -4,6 +4,8 @@ import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAnomalies } from '../firebase/anomalies';
+import { loadScanFindings } from '../firebase/scans';
+import { useScanStore } from './scanStore';
 import { useAnomalyStore } from './anomalyStore';
 import { applyUserSettings, useUIStore } from './uiStore';
 import { useCodexStore } from './codexStore';
@@ -36,10 +38,11 @@ export function initAuth(): () => void {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
-        const [baseSettings, discoveries, anomalies] = await Promise.all([
+        const [baseSettings, discoveries, anomalies, scans] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
           loadAnomalies(user.uid),
+          loadScanFindings(user.uid),
         ]);
         // localStorage nav is more recent than Firebase's debounced write — prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
@@ -48,6 +51,7 @@ export function initAuth(): () => void {
         applyUserSettings(settings);
         useCodexStore.getState().setAll(discoveries);
         useAnomalyStore.getState().setAll(anomalies);
+        useScanStore.getState().setAllFindings(scans);
 
         const visitedSystems: Record<number, number[]> = {};
         const visitedGalaxies: Record<number, number[]> = {};

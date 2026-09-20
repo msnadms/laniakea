@@ -122,6 +122,31 @@ export function projectUniversePoint(px: number, py: number, pz: number, basis: 
   return alpha;
 }
 
+export function projectUniverseMark(px: number, py: number, pz: number, basis: FlyBasis, out: ProjectedPoint): boolean {
+  const rx = px - basis.x;
+  const ry = py - basis.y;
+  const rz = pz - basis.z;
+  const x1 = rx * basis.cosYaw - rz * basis.sinYaw;
+  const z1 = rx * basis.sinYaw + rz * basis.cosYaw;
+  const y2 = ry * basis.cosPitch - z1 * basis.sinPitch;
+  const depth = z1 * basis.cosPitch + ry * basis.sinPitch;
+  if (depth < UNIVERSE_NEAR) return false;
+  const inv = basis.focal / depth;
+  out.x = x1 * inv;
+  out.y = -y2 * inv;
+  out.depth = depth;
+  out.scale = inv;
+  return true;
+}
+
+export function universeMarkDepth(px: number, py: number, pz: number, basis: FlyBasis): number {
+  const rx = px - basis.x;
+  const ry = py - basis.y;
+  const rz = pz - basis.z;
+  const z1 = rx * basis.sinYaw + rz * basis.cosYaw;
+  return z1 * basis.cosPitch + ry * basis.sinPitch;
+}
+
 export function projectUniverseField(
   x: Float32Array,
   y: Float32Array,

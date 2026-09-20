@@ -19,7 +19,7 @@ export const ANOMALY_LORE: Record<AnomalyKind, AnomalyLore> = {
     notes: [
       'Several coils have split open, and the rails that joined them now hang loose between the ones still standing.',
       'Its field reservoirs are empty. Whatever the shot was aimed at, nothing has come back along the bearing.',
-      'Traffic between this civilisation\'s systems stopped soon after the shot, once there was too little condensate left to cross the distances.',
+      'Traffic between this civilisation\'s systems stopped soon after the shot, once there was too little negative-energy condensate left to cross the distances.',
     ],
   },
   aldersonDisk: {

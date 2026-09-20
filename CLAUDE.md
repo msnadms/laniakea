@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## This branch
 
-`laniakea-explore-version` is an **exploration-only** cut of the galaxy game: universe, supercluster, galaxy and system views, the Codex, and the navigation HUD. There is no economy, logistics, fabrication, colonies, research, milestones, fuel, travel cost or probe detection — do not reintroduce them here.
+`laniakea-explore-version` is an **exploration** cut of the galaxy game: universe, supercluster, galaxy and system views, the Codex, the probe scan, and the navigation HUD. Travel is free and there is no logistics, fabrication, colonies, research or milestones — do not reintroduce them here. Negative-energy condensate is the one resource: it is found at civilisations and spent only on probe sweeps.
 
-Saves live in Firebase behind Google login: `users/{uid}/discoveries`, `users/{uid}/anomalies`, and the navigation fields of `users/{uid}.settings` (`lastView`, `lastSuperclusterSeed`, `lastGalaxySeed`, `lastSystemId`, `address`, plus the display toggles), written with `merge: true`.
+Saves live in Firebase behind Google login: `users/{uid}/discoveries`, `users/{uid}/anomalies`, `users/{uid}/scans`, and the navigation fields of `users/{uid}.settings` (`lastView`, `lastSuperclusterSeed`, `lastGalaxySeed`, `lastSystemId`, `address`, plus `condensate` and the display toggles), written with `merge: true`.
 
 **Pre-release persistence policy.** There are no production users and no supported legacy saves. Schema, navigation, seed, and generator changes may invalidate existing local or development Firestore data; do not add migrations or compatibility fallbacks for them. It is acceptable to clear that data while developing. The generation tests protect deliberate deterministic behaviour in the current version, not backward compatibility with prior saves.
 
@@ -19,7 +19,7 @@ npm run lint      # ESLint
 npm run preview   # Serve the production build locally
 ```
 
-`npm test` runs the vitest suite (universe generation, galaxy generation, galaxy shapes, projection, fly projection, anomalies). `ANOMALY_ODDS=1 npx vitest run src/game/anomalies.odds.test.ts --silent=false` prints civilisations per supercluster over 100 superclusters (target ~1.5), black holes over 3,000 galaxies, and each stage's and structure's rate per civilisation. `ANOMALY_CIVILIZATION_CHANCE` is 1 in 20,000 against ~31k galaxies per supercluster, so tests that need civilisations find them with `findCivilizationSeeds` (`civilizationSeeds.testutil.ts`) rather than by sampling.
+`npm test` runs the vitest suite (universe generation, galaxy generation, galaxy shapes, projection, fly projection, anomalies). `ANOMALY_ODDS=1 npx vitest run src/game/anomalies.odds.test.ts --silent=false` prints civilisations per supercluster over 400 superclusters (target ~1 in 50), black holes over 3,000 galaxies, and each stage's and structure's rate per civilisation. `ANOMALY_CIVILIZATION_CHANCE` is 1 in 1,500,000 against ~31k galaxies per supercluster, so tests that need civilisations find them with `findCivilizationSeeds` (`civilizationSeeds.testutil.ts`) rather than by sampling.
 
 ## Code style
 
@@ -104,10 +104,27 @@ Brown dwarfs (`L`) get 2–4 ice planets; neutron stars (`N`) get 2–4 moonless
 - `uiStore` — `view` (`'universe' | 'supercluster' | 'galaxy' | 'system'`, also saved as `settings.lastView`), transition flags, `universePose` (unsaved fly-camera pose restored when returning to the universe), `showAttractorLabels`, `showOrbitRings`, `showHUD`, `showScanlines`, `showAnomalyDebug` (unsaved; `anomalyDebug.ts` rings civilisation galaxies, labels anomaly hosts and each region's stage, and in the universe view scans superclusters within 600 Mly nearest first and labels each with the rarest anomaly its civilisations hold, cached by seed), `selectedPlanetName`, `anomalyPanelOpen`, and the address breadcrumb stack (`pushAddress`, `popAddress`, `removeAddressType`, `clearAddress`)
 - `codexStore` — discovery records (supercluster → galaxy → system), seeded with Laniakea / Milky Way / Sol
 - `anomalyStore` — catalogued `AnomalyRecord`s keyed `${galaxySeed}-${systemId}`, plus `latest` for the toast; `remove*` return the removed keys so the Codex can delete them in Firestore
+- `scanStore` — negative-energy condensate, scan mode (`active`), the running sweep's `progress`, the last `outcome` for the probe readout, and the catalogued `findings` keyed by id
 - `flightStore` — the universe camera's position rounded to whole Mly, written by the `Universe` tick only when it changes and cleared on unmount, so the HUD can show it without the Pixi layer re-rendering React every frame
 - `authStore` — Firebase user; `initAuth` loads settings, discoveries and anomalies, restores visited flags, and restores the last supercluster/galaxy/system and view. A fresh `localStorage` nav entry (`lib/navLocalStorage.ts`, < 30s old) wins over Firestore's debounced write
 
 `useSettingsPersist` mirrors navigation and display settings to `localStorage` synchronously and to Firestore on a 2s debounce.
+
+### Probe scan
+
+Von Neumann probes carry negative-energy condensate, so they reach areas rather than addresses: a sweep narrows the search, it never pins a system. `ProbeButton` (`ui/Probes.tsx`, in `ShipHUD` beside the Codex) arms scan mode in the universe and supercluster views; `ProbePanel` shows the cost hint, the sweep's progress and its outcome above the HUD.
+
+**Negative-energy condensate.** `CONDENSATE_START` to begin with, `CONDENSATE_PER_HOMEWORLD` each time `useAnomalyWatcher` catalogues a new homeworld — missions at living civilisations will replace that. The balance lives in `scanStore` and persists through `settings.condensate`, and a Settings row grants a homeworld's worth for testing. Write the resource out in full wherever a player can read it — never shorten it to "condensate".
+
+**Aiming.** While scan mode is on, a sweep is anchored on a dot and then pulled open: the press must land on a supercluster (universe) or galaxy (supercluster) dot, and the drag away from it sets the radius, not a look or a pan (`scanSelect.ts` owns the gesture, marks the anchor and shows the running cost; `useFlyCamera`, `useCamera`'s `shouldPan`, `useOrbit` and both tap handlers stand down, so the shift-drag that turns a field elsewhere only aims here; Escape disarms scan mode outright, as does hiding the HUD, since `ProbeButton` goes with it). Anchoring on a real dot is what makes the sphere's depth readable — it is centred on an object whose distance the player can already see, so the shell reads as a volume around it rather than a circle on the screen. **A sweep is a sphere in world space, never the screen region**: a screen-shaped volume would cover different galaxies after the camera turned, and in the universe view turning is the whole interaction. Each view supplies `anchorAt` (its own dot pick, frontmost first, returning the dot's world position, name and screen position — hovering it before pressing marks the dot) and `aimAt`, which re-projects the anchor every frame and converts the drag's screen distance to a world radius — divided by `projectUniverseMark`'s pixels-per-unit at the anchor's depth in the universe, taken as-is in the orthographic supercluster. The sweep then takes every galaxy within that radius in 3D, including ones the drag never reached. A press that lands on no dot starts nothing and is never charged; an unaffordable sweep is refused before the drag resolves.
+
+**Cost and precision** (`game/scan.ts`) follow the sphere's radius: `scanCost` charges on swept volume (`scanVolumeFraction`, cubed and clamped at `SCAN_*_FULL_RADIUS`) and `scanPrecisionRadius` returns `SCAN_PRECISION_FRACTION` of the radius, floored at `SCAN_*_MIN_RADIUS`, so the loop is sweep wide, then re-scan the hit to split it. A universe sweep surveys at most `SCAN_UNIVERSE_MAX_TARGETS` superclusters, sampled by stride through the candidates sorted outward from the sphere's centre, since probes cannot visit every one.
+
+**Running** (`scanRun.ts`). A sweep resolves progressively on the view's tick inside `SCAN_BUDGET_MS`, like the anomaly debug scanner. The universe run owns the whole sweep, not just the survey: it walks the chunks `universeChunksNear` reports for the sphere one per step — the sphere's own volume, never the chunks the camera happens to have loaded, so the same sweep costs and finds the same thing whatever is on screen — then samples the candidates by stride and walks each one's galaxy seeds `SCAN_SEEDS_PER_STEP` at a time, caching each supercluster's strongest profile by seed. Those seeds come from `superclusterGalaxySeeds`, a generator over the same dot stream `generateSupercluster` consumes, so a step never builds a whole supercluster in one frame and the two can never disagree about the RNG order; the supercluster run only walks its dots. Both read `civilizationProfile(galaxySeed)`, which replays the civilisation RNG's first three draws — the roll, living, then the stage — so a sweep never generates a galaxy. Reordering those draws moves every scan result as well as every anomaly.
+
+**Findings.** A finding is forgotten with the supercluster that holds it (Codex forget) or cleared wholesale from the Settings row, locally and in Firestore; nothing else removes one. `mergeSignals` collapses everything a sweep found into one `ScanContact`: the centroid, a radius covering every signal but never tighter than the sweep's precision, and the strongest signal's strength (stage tier, one tier higher while living). A sweep that found nothing records nothing — barren volumes are not marked. `recordContact` writes the finding to `scanStore` and `users/{uid}/scans/{id}`. A `ScanFinding` carries two things: the volume it draws (`x`/`y`/`z`/`radius`) and the contact it marks (`markX`/`markY`/`markZ`). In both scopes the finding keeps the sphere that was swept, centred on the supercluster or galaxy the sweep was anchored on, and marks the contact inside it with the reticle alone: the swept volume is the honest answer, it stays anchored on a dot whose distance the player can already read, and a sphere redrawn around the centroid would slide off that anchor and read as a new place rather than as a reading taken of the first. The volume narrows because the next sweep is drawn smaller, not because the finding recentres. `ScanContact.radius` is therefore no longer drawn; `scanPrecisionRadius` only floors it.
+
+**Drawing** (`scanShell.ts`, `scanOverlay.ts`). A sphere is drawn as a wireframe shell — five latitude rings and four meridians, each segment sorted into a back or a front `Graphics` by its depth against the centre's. There is no fill: the wireframe alone carries the volume. `frontIsLowerDepth` flips that test for the supercluster, where a larger `projected.depth` is nearer. The live aim uses the shell in cyan (red when it costs more than you hold) and holds through the sweep; a finding uses it in `SCAN_FINDING_COLOR`, faint behind and brighter in front. In both views the back half and the tint are a node of their own (`backNode`) that the view puts under the dot field while the front half goes over it, which is what makes a sphere read as a volume the dots are inside of rather than a disc in front of them. A finding's reticle and label sit on `mark*`, stay strength-coloured, and neither ever names the kind — a probe reports that something is there and how loud, not what it is.
 
 ### Navigation
 
@@ -117,7 +134,7 @@ Brown dwarfs (`L`) get 2–4 ice planets; neutron stars (`N`) get 2–4 moonless
 
 Eight rare finds: black holes, and the works of civilisations — homeworld ecumenopolises, Dyson spheres, Matrioshka brains, Nicoll-Dyson beams, Caplan thrusters, Alderson disks and Alcubierre cannons. `src/game/anomalies.ts → generateAnomalies(galaxy)` places them, and every rate lives in `constants.ts` (`ANOMALY_*`). They are derived, never stored on the galaxy: `gameStore.galaxyAnomalies` is recomputed wherever `makeGalaxy` runs, and an anomaly never changes its host's data — every difference is applied while rendering. The Milky Way hosts none.
 
-**Stages.** A galaxy holds at most one civilisation (`ANOMALY_CIVILIZATION_CHANCE`). It rolls living (`ANOMALY_LIVING_CHANCE`), then a stage from `ANOMALY_STAGE_WEIGHTS` — ruined ones only from `ANOMALY_RUINED_MIN_STAGE` up — and `CIVILIZATION_STAGE_PLANS` names what that stage built. A ruined civilisation leaves the same structures, ruined.
+**Stages.** A galaxy holds at most one civilisation (`ANOMALY_CIVILIZATION_CHANCE`), so roughly one supercluster in fifty holds any: a full universe sweep of `SCAN_UNIVERSE_MAX_TARGETS` superclusters is expected to turn up one or two contacts, and often none. It rolls living (`ANOMALY_LIVING_CHANCE`), then a stage from `ANOMALY_STAGE_WEIGHTS` — ruined ones only from `ANOMALY_RUINED_MIN_STAGE` up — and `CIVILIZATION_STAGE_PLANS` names what that stage built. A ruined civilisation leaves the same structures, ruined.
 1. One populated world, its home.
 2. A homeworld ecumenopolis.
 3. Homeworld with a swarm around the home star, plus 1–2 populated worlds.
@@ -125,7 +142,7 @@ Eight rare finds: black holes, and the works of civilisations — homeworld ecum
 5. As stage 4, plus a random 1–2 of Matrioshka brain, Nicoll-Dyson beam and Caplan thruster.
 6. Alderson disk, Dyson spheres, brain, beam, thruster and Alcubierre cannon, plus 2–3 populated worlds.
 
-Negative-energy condensate, which powers Alcubierre travel, is scarce: it is why a civilisation stays inside one region, and why the Alcubierre cannon is a deterrent, since firing it would spend nearly all of a civilisation's condensate. The order is deliberate: a civilisation harvests its own star and settles another world before it builds at any other star (`anomalies.test.ts` checks the plans for it). Dyson spheres are closed swarms, not rigid shells, and the Alderson disk's lore leans on exotic material and star lifting because the physics cannot carry it.
+Negative-energy condensate, which powers Alcubierre travel, is scarce: it is why a civilisation stays inside one region, and why the Alcubierre cannon is a deterrent, since firing it would spend nearly all of a civilisation's negative-energy condensate. The order is deliberate: a civilisation harvests its own star and settles another world before it builds at any other star (`anomalies.test.ts` checks the plans for it). Dyson spheres are closed swarms, not rigid shells, and the Alderson disk's lore leans on exotic material and star lifting because the physics cannot carry it.
 
 **Placement.** The home region (`ANOMALY_HOME_RADIUS`) is centred on a G/K star in the disk, bar or outer arm — or on any G/K star outside the bulge and starbursts, which is how ellipticals get one. Distances are in the plane. A structure whose rule finds no host is skipped.
 - Dyson sphere — 1–3 F/G/K stars inside the region, never bulge or starburst, weighted toward the centre; at least two when the stage wants a brain.
@@ -167,7 +184,7 @@ The top zoom level: one universe for every player, generated from `UNIVERSE_SEED
 
 **Camera.** This view is first-person with perspective, unlike the orthographic orbit views, because the player flies through the web rather than turning it. `useFlyCamera` owns a `FlyCamera` (position, yaw, pitch) in refs:
 - Dragging turns the view with an eased target, grab-style.
-- WASD flies along the look direction, Q/E drops and climbs, Shift boosts, and the wheel sets cruise speed.
+- WASD flies along the look direction, Q/E turn the look yaw left and right, Shift boosts, and the wheel sets cruise speed.
 - Keys are read by `event.code` from `window` and ignored while typing in an input.
 - Flight stops at `UNIVERSE_RADIUS`, and input freezes during zoom animations and view transitions.
 - `flyProjection.ts` holds the maths: `projectUniverseField` does one fused pass over a chunk's dots (cull behind `UNIVERSE_NEAR` and off screen, size by `UNIVERSE_DOT_SIZE * focal / depth`, alpha by distance fog to `UNIVERSE_FOG_FAR`). `projectSkyDirection` turns the unit-sphere skybox by rotation only.
@@ -213,8 +230,9 @@ scene re-projects `dot.z` into screen space on every frame:
   `labels.ts`). Attractor label visibility is toggled by `showAttractorLabels` and hidden when
   zoomed out below scale 0.25.
 
-**Input:** left-drag pans and the wheel zooms as before (`useCamera`); shift-drag or right-drag
-turns the field (`isOrbitGesture`). `useCamera` takes a `shouldPan` predicate so it declines the
+**Input:** left-drag pans and the wheel zooms as before (`useCamera`); shift-drag, right-drag or
+Q/E turns the field (`isOrbitGesture`, and `OrbitConfig.keyYawSpeed` for the keys, which only the
+supercluster sets). `useCamera` takes a `shouldPan` predicate so it declines the
 orbit gesture rather than panning during it, and the tap handler ignores a pointertap that ended
 an orbit drag.
 

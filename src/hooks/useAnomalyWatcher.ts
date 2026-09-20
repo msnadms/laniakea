@@ -6,6 +6,8 @@ import type { StarSystem } from '../game/types';
 import { useAnomalyStore } from '../store/anomalyStore';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
+import { useScanStore } from '../store/scanStore';
+import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
 
 function catalogue(system: StarSystem | null) {
   if (!system) return;
@@ -26,6 +28,7 @@ function catalogue(system: StarSystem | null) {
     discoveredAt: Date.now(),
   };
   anomalies.add(record);
+  if (anomaly.kind === 'homeworld') useScanStore.getState().gainCondensate(CONDENSATE_PER_HOMEWORLD);
   const uid = auth.currentUser?.uid;
   if (uid) saveAnomalyDiscovery(uid, record).catch((err) => console.error('saveAnomalyDiscovery failed:', err));
 }

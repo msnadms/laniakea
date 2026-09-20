@@ -81,3 +81,8 @@
   color: #ff7a62;
   text-shadow: 0 0 10px rgba(255, 90, 60, 0.6);
 }
+
+.anomaly-toast-gain {
+  color: rgba(120, 230, 210, 0.9);
+  text-shadow: 0 0 8px rgba(80, 220, 200, 0.4);
+}

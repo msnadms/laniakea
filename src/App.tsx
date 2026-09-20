@@ -16,6 +16,7 @@ import { TopNavBar } from './ui/TopNavBar';
 import { AnomalyPanel } from './ui/AnomalyPanel';
 import { AnomalyToast } from './ui/AnomalyToast';
 import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
+import { ProbePanel } from './ui/Probes';
 
 const ViewTitle = memo(function ViewTitle() {
   const view = useUIStore((s) => s.view);
@@ -69,6 +70,7 @@ export default function App() {
       )}
       <ViewTitle />
       <AnomalyToast />
+      <ProbePanel />
       {view === 'system' && <PlanetPanel />}
       {view === 'system' && <AnomalyPanel />}
     </div>

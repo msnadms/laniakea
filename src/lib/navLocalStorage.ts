@@ -7,6 +7,7 @@ interface StoredNav {
   lastGalaxySeed: number;
   lastSystemId: number | null;
   address: AddressComponent[];
+  condensate: number;
   savedAt: number;
 }
 

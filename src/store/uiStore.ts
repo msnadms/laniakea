@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AddressComponent, AddressComponentType, FlyCamera } from '../game/types';
 import type { UserSettings } from '../firebase/userDoc';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
+import { useScanStore } from './scanStore';
 
 export type AppView = 'system' | 'galaxy' | 'supercluster' | 'universe';
 
@@ -80,6 +81,7 @@ export const useUIStore = create<UIState>((set) => ({
 }));
 
 export function applyUserSettings(settings: UserSettings): void {
+  useScanStore.setState({ condensate: settings.condensate, active: false, progress: null, outcome: null });
   useUIStore.setState({
     showOrbitRings: settings.showOrbitRings,
     showAttractorLabels: settings.showAttractorLabels,

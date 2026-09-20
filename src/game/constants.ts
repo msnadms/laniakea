@@ -303,6 +303,9 @@ export const SC_ORBIT_SENSITIVITY = 0.005;
 // Fraction of the remaining rotation covered per 60fps frame.
 export const SC_ORBIT_EASE = 0.18;
 
+// Radians of rotation per second while Q or E is held.
+export const SC_ORBIT_KEY_YAW_SPEED = 0.8;
+
 // Half-depth that the aerial-perspective cues normalize against.
 export const SC_DEPTH_HALF = SC_WORLD_HALF * 1.2;
 
@@ -348,6 +351,7 @@ export const UNIVERSE_DOT_MIN_PX = 0.9;
 export const UNIVERSE_DOT_MAX_PX = 60;
 
 export const UNIVERSE_LOOK_SENSITIVITY = 0.004;
+export const UNIVERSE_KEY_YAW_SPEED = 0.9;
 export const UNIVERSE_LOOK_EASE = 0.25;
 export const UNIVERSE_MAX_PITCH = 85 * Math.PI / 180;
 export const UNIVERSE_SPEED_DEFAULT = 80;
@@ -436,7 +440,7 @@ export const GALAXY_PICK_MAX_WORLD = 25;
 // drag rather than a click.
 export const DRAG_THRESHOLD_PX = 4;
 
-export const ANOMALY_CIVILIZATION_CHANCE = 1 / 20000;
+export const ANOMALY_CIVILIZATION_CHANCE = 1 / 1500000;
 export const ANOMALY_HOME_RADIUS = 0.25 * GALAXY_RADIUS;
 export const ANOMALY_HOME_OUTER_ARM_FRACTION = 0.45;
 
@@ -501,3 +505,30 @@ export const SC_CIVILIZATION_TINT = 0xff4a2a;
 export const SC_CIVILIZATION_TINT_STRENGTH = 0.6;
 export const SC_CIVILIZATION_TINT_MIN_SCALE = 1.4;
 export const SC_CIVILIZATION_TINT_FULL_SCALE = 2.6;
+
+export const CONDENSATE_START = 8;
+export const CONDENSATE_PER_HOMEWORLD = 10;
+
+export const SCAN_COST_MIN = 1;
+export const SCAN_COST_UNIVERSE_SPAN = 11;
+export const SCAN_COST_SUPERCLUSTER_SPAN = 7;
+
+export const SCAN_UNIVERSE_MIN_RADIUS = 60;
+export const SCAN_UNIVERSE_FULL_RADIUS = 0.5 * UNIVERSE_FOG_FAR;
+export const SCAN_SUPERCLUSTER_MIN_RADIUS = 80;
+export const SCAN_SUPERCLUSTER_FULL_RADIUS = SC_WORLD_HALF;
+export const SCAN_PRECISION_FRACTION = 0.35;
+
+export const SCAN_MIN_DRAG_PX = 24;
+export const SCAN_SUPERCLUSTER_ANCHOR_PX = 15;
+export const SCAN_BUDGET_MS = 6;
+export const SCAN_UNIVERSE_MAX_TARGETS = 100;
+export const SCAN_SEEDS_PER_STEP = 4000;
+export const SCAN_SHELL_COLOR = 0x00e8ff;
+export const SCAN_SHELL_DENIED_COLOR = 0xff5a3c;
+export const SCAN_FINDING_COLOR = 0xff3b2a;
+export const SCAN_FINDING_BACK_ALPHA = 0.34;
+export const SCAN_FINDING_FRONT_ALPHA = 0.9;
+export const SCAN_AIM_BACK_ALPHA = 0.38;
+export const SCAN_AIM_FRONT_ALPHA = 1;
+export const SCAN_SHELL_LINE_PX = 1.5;

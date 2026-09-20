@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { type User } from 'firebase/auth';
 import { db } from './firebase';
 import { MILKY_WAY_SEED, LANIAKEA_SEED, DEFAULT_ADDRESS } from '../game/hardcoded';
+import { CONDENSATE_START } from '../game/constants';
 import type { AddressComponent } from '../game/types';
 import type { AppView } from '../store/uiStore';
 
@@ -14,6 +15,7 @@ export interface UserSettings {
   lastGalaxySeed: number;
   lastSystemId: number | null;
   address: AddressComponent[];
+  condensate: number;
 }
 
 export const defaultSettings: UserSettings = {
@@ -25,6 +27,7 @@ export const defaultSettings: UserSettings = {
   lastGalaxySeed: MILKY_WAY_SEED,
   lastSystemId: 0,
   address: DEFAULT_ADDRESS,
+  condensate: CONDENSATE_START,
 };
 
 export async function initUserDoc(user: User): Promise<UserSettings> {

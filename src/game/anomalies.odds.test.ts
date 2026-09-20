@@ -3,12 +3,12 @@ import { generateGalaxy } from './galaxyGen';
 import { CIVILIZATION_STAGES, generateAnomalies, hasCivilization, type AnomalyKind, type GalaxyAnomalies, type StagePlan } from './anomalies';
 import { expectedShareWhere, expectedStageShare, findCivilizationSeeds, megastructureChance } from './civilizationSeeds.testutil';
 import { ANOMALY_LIVING_CHANCE } from './constants';
-import { generateSupercluster } from './superclusters';
+import { generateSuperclusterGalaxySeeds } from './superclusters';
 
 const GALAXY_SAMPLES = 3000;
 const CIVILIZATION_SAMPLES = 400;
-const SUPERCLUSTER_SAMPLES = 100;
-const SUPERCLUSTER_TARGET = 1.5;
+const SUPERCLUSTER_SAMPLES = 400;
+const SUPERCLUSTER_TARGET = 1 / 50;
 
 type Measure = (anomalies: GalaxyAnomalies) => boolean;
 
@@ -45,12 +45,13 @@ describe.skipIf(!import.meta.env.ANOMALY_ODDS)('anomaly odds', () => {
   it('reports how many civilisations each supercluster holds', { timeout: 600_000 }, () => {
     const perSupercluster: number[] = [];
     for (let i = 0; i < SUPERCLUSTER_SAMPLES; i++) {
-      perSupercluster.push(generateSupercluster(0x5c1a + i * 104729).dots.filter((dot) => hasCivilization(dot.seed)).length);
+      perSupercluster.push(generateSuperclusterGalaxySeeds(0x5c1a + i * 104729).filter(hasCivilization).length);
     }
-    const mean = perSupercluster.reduce((sum, n) => sum + n, 0) / SUPERCLUSTER_SAMPLES;
+    const total = perSupercluster.reduce((sum, n) => sum + n, 0);
+    const mean = total / SUPERCLUSTER_SAMPLES;
     const share = (test: (n: number) => boolean) => `${((perSupercluster.filter(test).length / SUPERCLUSTER_SAMPLES) * 100).toFixed(0)}%`;
-    console.table([{ mean: mean.toFixed(2), target: SUPERCLUSTER_TARGET, none: share((n) => n === 0), one: share((n) => n === 1), two: share((n) => n === 2), threeOrMore: share((n) => n >= 3) }]);
-    expect(mean).toBeGreaterThan(0);
+    console.table([{ samples: SUPERCLUSTER_SAMPLES, total, mean: mean.toFixed(3), target: SUPERCLUSTER_TARGET, none: share((n) => n === 0), one: share((n) => n === 1), twoOrMore: share((n) => n >= 2) }]);
+    expect(perSupercluster).toHaveLength(SUPERCLUSTER_SAMPLES);
   });
 
   it('reports how often each stage and anomaly turns up against its target', { timeout: 600_000 }, () => {

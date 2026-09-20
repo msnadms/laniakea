@@ -22,7 +22,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
       {
         title: 'Fly',
         items: [
-          'W and S fly forward and back, A and D strafe, Q and E drop and climb.',
+          'W and S fly forward and back, A and D strafe, and Q and E turn the view left and right.',
           'Hold Shift to boost, and scroll to change your cruising speed.',
           'Drag to look around.',
         ],
@@ -44,7 +44,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
         title: 'Navigate',
         items: [
           'Drag or use W, A, S and D to pan, and scroll to zoom through the supercluster. Hold Shift with the keys to move faster.',
-          'Hold Shift while dragging, or use the right mouse button, to rotate the cosmic web and reveal its depth.',
+          'Hold Shift while dragging, use the right mouse button, or press Q and E, to rotate the cosmic web and reveal its depth.',
           'Zoom in and select a galaxy to enter it and record it in your Codex.',
         ],
       },

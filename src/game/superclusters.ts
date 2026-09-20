@@ -128,13 +128,24 @@ export function generateSupercluster(seed: number): SuperclusterData {
 }
 
 export function generateSuperclusterGalaxySeeds(seed: number): number[] {
-  return buildSupercluster(seed, false).dots.map((dot) => dot.seed);
+  return [...superclusterGalaxySeeds(seed)];
 }
 
-function buildSupercluster(seed: number, named: boolean): SuperclusterData {
+export function* superclusterGalaxySeeds(seed: number): Generator<number> {
+  for (const dot of streamDots(seed, buildSkeleton(seed), false)) yield dot.seed;
+}
+
+interface SuperclusterSkeleton {
+  rng: Rng;
+  name: string;
+  attractors: SuperclusterAttractor[];
+  filaments: SuperclusterFilament[];
+}
+
+function buildSkeleton(seed: number): SuperclusterSkeleton {
   const rng = createRng(seed);
 
-  let name = makeSuperclusterName(rng);
+  const name = makeSuperclusterName(rng);
 
   const attractors: SuperclusterAttractor[] = [];
   for (let i = 0; i < SC_ATTRACTOR_COUNT; i++) {
@@ -179,7 +190,12 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
     }
   }
 
-  const dots: SuperclusterDot[] = [];
+  return { rng, name, attractors, filaments };
+}
+
+function* streamDots(seed: number, skeleton: SuperclusterSkeleton, named: boolean): Generator<SuperclusterDot> {
+  const { rng, attractors, filaments } = skeleton;
+
   const sigma = SC_CLUSTER_SIGMA * SC_WORLD_HALF;
   let dotIndex = 0;
 
@@ -202,7 +218,7 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
       const brightness = (0.5 + rng() * 0.5) * radialFade;
       if (brightness < 0.02) { continue; }
       const dotSeed = (seed ^ (dotIndex++ * 2654435761)) >>> 0;
-      dots.push({ x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: named ? generateGalaxyName(dotSeed) : '', visited: false, current: false });
+      yield { x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: named ? generateGalaxyName(dotSeed) : '', visited: false, current: false };
     }
   }
 
@@ -246,7 +262,7 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
       const brightness = (0.1 + rng() * 0.6) * perpFade;
       if (brightness < 0.02) { continue; }
       const dotSeed = (seed ^ (dotIndex++ * 2654435761)) >>> 0;
-      dots.push({
+      yield {
         x: bx + perpX * scatter,
         y: by + perpY * scatter,
         z: A.z + t * (B.z - A.z) + zScatter,
@@ -255,9 +271,29 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
         name: named ? generateGalaxyName(dotSeed) : '',
         visited: false,
         current: false,
-      });
+      };
     }
   }
+
+  if (seed === LANIAKEA_SEED) {
+    yield {
+      x: attractors[0].x + MW_DOT_OFFSET[0],
+      y: attractors[0].y + MW_DOT_OFFSET[1],
+      z: attractors[0].z,
+      brightness: 0.9,
+      seed: MILKY_WAY_SEED,
+      name: MILKY_WAY_NAME,
+      visited: false,
+      current: false,
+    };
+  }
+}
+
+function buildSupercluster(seed: number, named: boolean): SuperclusterData {
+  const skeleton = buildSkeleton(seed);
+  const { attractors, filaments } = skeleton;
+  let name = skeleton.name;
+  const dots = [...streamDots(seed, skeleton, named)];
 
   const bgRng = createRng((seed ^ 0xdeadbeef) >>> 0);
   const backgroundStars: BackgroundStar[] = [];
@@ -274,16 +310,6 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
     for (let i = 0; i < Math.min(attractors.length, LANIAKEA_ATTRACTOR_NAMES.length); i++) {
       attractors[i].name = LANIAKEA_ATTRACTOR_NAMES[i];
     }
-    dots.push({
-      x: attractors[0].x + MW_DOT_OFFSET[0],
-      y: attractors[0].y + MW_DOT_OFFSET[1],
-      z: attractors[0].z,
-      brightness: 0.9,
-      seed: MILKY_WAY_SEED,
-      name: MILKY_WAY_NAME,
-      visited: false,
-      current: false,
-    });
   }
 
   return { name, attractors, filaments, dots, backgroundStars, seed };

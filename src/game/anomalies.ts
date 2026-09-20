@@ -168,6 +168,19 @@ export function hasCivilization(galaxySeed: number): boolean {
   return galaxySeed !== MILKY_WAY_SEED && civilizationRng(galaxySeed)() < ANOMALY_CIVILIZATION_CHANCE;
 }
 
+export interface CivilizationProfile {
+  living: boolean;
+  stage: CivilizationStage;
+}
+
+export function civilizationProfile(galaxySeed: number): CivilizationProfile | null {
+  if (galaxySeed === MILKY_WAY_SEED) return null;
+  const rng = civilizationRng(galaxySeed);
+  if (rng() >= ANOMALY_CIVILIZATION_CHANCE) return null;
+  const living = rng() < ANOMALY_LIVING_CHANCE;
+  return { living, stage: rollStage(rng, living) };
+}
+
 function normalize(x: number, y: number, z: number): Vector3 {
   const length = Math.hypot(x, y, z);
   return length === 0 ? { x: 1, y: 0, z: 0 } : { x: x / length, y: y / length, z: z / length };

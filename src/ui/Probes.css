@@ -1,0 +1,126 @@
+.probe-btn {
+  position: absolute;
+  right: calc(100% + 42px);
+  top: 0;
+  bottom: 0;
+  width: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 232, 0.3));
+  color: rgba(0, 180, 220, 0.55);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
+.probe-btn:hover:not(.probe-btn--disabled) {
+  color: rgba(0, 215, 255, 0.95);
+  filter: drop-shadow(0 0 6px rgba(0, 200, 232, 0.65));
+}
+
+.probe-btn--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.probe-btn--active {
+  color: rgba(0, 232, 255, 1);
+  filter: drop-shadow(0 0 8px rgba(0, 220, 255, 0.8));
+}
+
+.probe-btn-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.probe-btn-icon {
+  position: relative;
+  top: 3px;
+  width: 15px;
+  height: 15px;
+  margin-top: 15px;
+}
+
+.probe-btn-count {
+  position: relative;
+  text-align: center;
+  line-height: 1;
+  font-size: 9px;
+  color: rgba(0, 190, 230, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.probe-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 252px;
+  transform: translateX(-50%);
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.probe-panel-rule {
+  width: 64px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 190, 230, 0.6));
+}
+
+.probe-panel-rule:last-child {
+  background: linear-gradient(90deg, rgba(0, 190, 230, 0.6), transparent);
+}
+
+.probe-panel-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.probe-panel-label {
+  color: rgba(0, 180, 220, 0.5);
+}
+
+.probe-panel-value {
+  color: rgba(0, 200, 235, 0.9);
+  text-shadow: 0 0 8px rgba(0, 200, 232, 0.35);
+}
+
+.probe-panel-value--gain {
+  color: rgba(255, 205, 130, 0.9);
+  text-shadow: 0 0 8px rgba(255, 190, 100, 0.45);
+}
+
+.probe-panel-bar {
+  width: 120px;
+  height: 2px;
+  background: rgba(0, 190, 230, 0.15);
+}
+
+.probe-panel-bar-fill {
+  height: 100%;
+  background: rgba(0, 220, 255, 0.8);
+  box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+  transition: width 0.2s linear;
+}

@@ -7,6 +7,8 @@ import { STAR_TYPE_LABELS, type StarType } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
 import { anomalyRecordKey, deleteAnomalyDiscoveries, type AnomalyRecord } from '../firebase/anomalies';
+import { deleteScanFindings } from '../firebase/scans';
+import { superclusterFindings, useScanStore } from '../store/scanStore';
 import { getAnomalyLore } from '../game/anomalyLore';
 import { populatedWorldIds, type AnomalyKind } from '../game/anomalies';
 import { useAnomalyStore } from '../store/anomalyStore';
@@ -87,7 +89,13 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
   function handleDeleteSupercluster(scSeed: number) {
     deleteSupercluster(scSeed);
     forgetAnomalies(useAnomalyStore.getState().removeSupercluster(scSeed));
-    if (user) deleteSuperclusterDiscovery(user.uid, scSeed);
+    const scan = useScanStore.getState();
+    const forgotten = superclusterFindings(scan.findings, scSeed).map((finding) => finding.id);
+    for (const id of forgotten) scan.removeFinding(id);
+    if (user) {
+      deleteSuperclusterDiscovery(user.uid, scSeed);
+      if (forgotten.length > 0) deleteScanFindings(user.uid, forgotten);
+    }
   }
 
   const enriched = useMemo<EnrichedSupercluster[]>(
