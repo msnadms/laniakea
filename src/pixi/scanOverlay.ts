@@ -1,80 +1,70 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import type { ScanFinding } from '../firebase/scans';
-import { SCAN_STRENGTH_COLORS, SCAN_STRENGTH_LABELS } from '../game/scan';
+import { heatBloom, jitteredHeat } from '../game/scanGraph';
 import {
-  SCAN_FINDING_BACK_ALPHA,
-  SCAN_FINDING_COLOR,
-  SCAN_FINDING_FRONT_ALPHA,
-  SCAN_SHELL_LINE_PX,
+  SCAN_HEAT_NOISE_CELL,
+  SCAN_MARK_COLOR,
+  SCAN_MARK_LINE_PX,
+  SCAN_WEB_LINE_PX,
 } from '../game/constants';
 import { superclusterFindings, universeFindings, useScanStore } from '../store/scanStore';
-import { projectUniverseMark, universeFog, universeMarkDepth, type FlyBasis } from './flyProjection';
-import { drawScanShell } from './scanShell';
+import { projectUniverseMark, universeFog, type FlyBasis } from './flyProjection';
+import { drawScanWeb } from './scanWeb';
 import { projectPlanePointWithBasis, type ProjectedPoint, type ProjectionBasis } from './projection';
 
-const RETICLE_ARM = 9;
-const RETICLE_GAP = 4;
 const MARK_MIN_ALPHA = 0.55;
 const MARK_FADE_FOG = 0.05;
+const MARK_ARM_PX = 11;
+const MARK_GAP_PX = 4;
 
 function emptyPoint(): ProjectedPoint {
   return { x: 0, y: 0, depth: 0, scale: 1 };
 }
 
-function findingLabel(finding: ScanFinding): string {
-  const strength = SCAN_STRENGTH_LABELS[finding.strength];
-  return finding.sources > 1 ? `${strength} · ${finding.sources} sources` : strength;
-}
-
-function drawReticle(gfx: Graphics, x: number, y: number, color: number, scale: number, alpha: number) {
-  const arm = RETICLE_ARM / scale;
-  const gap = RETICLE_GAP / scale;
-  gfx.moveTo(x - arm, y).lineTo(x - gap, y);
-  gfx.moveTo(x + gap, y).lineTo(x + arm, y);
-  gfx.moveTo(x, y - arm).lineTo(x, y - gap);
-  gfx.moveTo(x, y + gap).lineTo(x, y + arm);
-  gfx.stroke({ color, width: 1.5 / scale, alpha });
-}
-
-function createLabelLayer(container: Container) {
-  const labels = new Map<string, Text>();
+// A node's heat is read from every sweep that covers it, so a narrower overlapping sweep
+// tightens the map the moment it lands.
+function createHeatCache() {
+  let key = '';
+  let heats = new Map<string, number[]>();
   return {
-    labels,
+    get key() {
+      return key;
+    },
     sync(findings: readonly ScanFinding[]) {
-      const live = new Set(findings.map((finding) => finding.id));
-      for (const [id, text] of labels) {
-        if (live.has(id)) continue;
-        text.destroy();
-        labels.delete(id);
-      }
+      const next = findings.map((finding) => `${finding.id}:${finding.strength}`).join(',');
+      if (next === key) return heats;
+      key = next;
+      heats = new Map();
       for (const finding of findings) {
-        if (labels.has(finding.id)) continue;
-        const text = new Text({
-          text: findingLabel(finding),
-          style: { fontFamily: 'IBM Plex Sans', fontSize: 12, fill: SCAN_STRENGTH_COLORS[finding.strength] },
-        });
-        text.anchor.set(0.5, 1);
-        container.addChild(text);
-        labels.set(finding.id, text);
+        const cell = heatBloom(finding) * SCAN_HEAT_NOISE_CELL;
+        const values: number[] = [];
+        for (let i = 0; i * 3 < finding.nodes.length; i++) {
+          values.push(jitteredHeat(
+            findings,
+            finding.nodes[i * 3],
+            finding.nodes[i * 3 + 1],
+            finding.nodes[i * 3 + 2],
+            cell,
+          ));
+        }
+        heats.set(finding.id, values);
       }
+      return heats;
     },
   };
 }
 
-function shellStyle(width: number, alpha: number, frontIsLowerDepth: boolean, centreDepth?: number) {
-  return {
-    color: SCAN_FINDING_COLOR,
-    width,
-    backAlpha: SCAN_FINDING_BACK_ALPHA * alpha,
-    frontAlpha: SCAN_FINDING_FRONT_ALPHA * alpha,
-    frontIsLowerDepth,
-    centreDepth,
-  };
+// The web's geometry only moves when the view or the findings do, so a still frame redraws
+// nothing and the pulse rides on the layers' alpha instead.
+function fold(values: readonly number[]): number {
+  let hash = 0;
+  for (const value of values) hash = hash * 31 + value;
+  return hash;
 }
 
-// The back half and the tint sit under the dot field so a sphere reads as a volume the
-// dots are inside of, so they are a node of their own for the view to place.
-function createShellLayers(container: Container) {
+// The back half sits under the dot field so the web reads as a volume the dots are inside of,
+// so it is a node of its own for the view to place.
+function createWebLayers(container: Container) {
   const back = new Graphics();
   const front = new Graphics();
   back.eventMode = 'none';
@@ -86,56 +76,47 @@ function createShellLayers(container: Container) {
 export function createUniverseScanOverlay() {
   const container = new Container();
   container.eventMode = 'none';
-  const shell = createShellLayers(container);
-  const rings = new Graphics();
-  container.addChild(rings);
-  const layer = createLabelLayer(container);
-  const projected = emptyPoint();
+  const web = createWebLayers(container);
+  const cache = createHeatCache();
+  let drawnAt = NaN;
+  let drawnKey = '';
 
   return {
     node: container,
-    backNode: shell.back,
+    backNode: web.back,
     update(basis: FlyBasis, cameraScale: number, elapsedSecs: number) {
       const findings = universeFindings(useScanStore.getState().findings);
-      layer.sync(findings);
-      shell.back.clear();
-      shell.front.clear();
-      rings.clear();
+      const heatmap = cache.sync(findings);
       const pulse = 0.85 + 0.15 * Math.sin(elapsedSecs * Math.PI);
+      web.back.alpha = pulse;
+      web.front.alpha = pulse;
+      const signature = fold([
+        basis.x, basis.y, basis.z, basis.cosYaw, basis.sinYaw, basis.cosPitch, basis.sinPitch,
+        basis.focal, basis.halfWidth, basis.halfHeight, cameraScale,
+      ]);
+      if (signature === drawnAt && cache.key === drawnKey) return;
+      drawnAt = signature;
+      drawnKey = cache.key;
+      web.back.clear();
+      web.front.clear();
       for (const finding of findings) {
-        const label = layer.labels.get(finding.id)!;
-        label.visible = false;
+        if (finding.nodes.length <= 3) continue;
         const distance = Math.hypot(finding.x - basis.x, finding.y - basis.y, finding.z - basis.z);
         const fog = universeFog(distance);
         if (fog <= 0) continue;
         const alpha = (MARK_MIN_ALPHA + (1 - MARK_MIN_ALPHA) * fog) * Math.min(1, fog / MARK_FADE_FOG);
-        drawScanShell(
-          shell.back,
-          shell.front,
-          (ux, uy, uz, out) => projectUniverseMark(
-            finding.x + ux * finding.radius,
-            finding.y + uy * finding.radius,
-            finding.z + uz * finding.radius,
-            basis,
-            out,
-          ),
-          shellStyle(
-            SCAN_SHELL_LINE_PX / cameraScale,
-            alpha * pulse,
-            true,
-            universeMarkDepth(finding.x, finding.y, finding.z, basis),
-          ),
+        drawScanWeb(
+          web.back,
+          web.front,
+          finding,
+          heatmap.get(finding.id)!,
+          (x, y, z, out) => projectUniverseMark(x, y, z, basis, out),
+          { width: SCAN_WEB_LINE_PX / cameraScale, alpha },
         );
-        if (!projectUniverseMark(finding.markX, finding.markY, finding.markZ, basis, projected)) continue;
-        drawReticle(rings, projected.x, projected.y, SCAN_STRENGTH_COLORS[finding.strength], cameraScale, alpha);
-        label.visible = true;
-        label.position.set(projected.x, projected.y - finding.radius * projected.scale - 6 / cameraScale);
-        label.scale.set(1 / cameraScale);
-        label.alpha = alpha;
       }
     },
     destroy() {
-      shell.back.destroy();
+      web.back.destroy();
       container.destroy({ children: true });
     },
   };
@@ -144,47 +125,35 @@ export function createUniverseScanOverlay() {
 export function createSuperclusterScanOverlay(superclusterSeed: number) {
   const container = new Container();
   container.eventMode = 'none';
-  const shell = createShellLayers(container);
-  const rings = new Graphics();
-  container.addChild(rings);
-  const layer = createLabelLayer(container);
-  const mark = emptyPoint();
+  const marks = new Graphics();
+  marks.eventMode = 'none';
+  container.addChild(marks);
+  const projected = emptyPoint();
 
   return {
     node: container,
-    backNode: shell.back,
+    // A sweep inside a supercluster resolves to the galaxy itself, so it is marked outright
+    // rather than drawn as a field to narrow.
     update(basis: ProjectionBasis, cameraScale: number, elapsedSecs: number) {
       const findings = superclusterFindings(useScanStore.getState().findings, superclusterSeed);
-      layer.sync(findings);
-      shell.back.clear();
-      shell.front.clear();
-      rings.clear();
-      const pulse = 0.85 + 0.15 * Math.sin(elapsedSecs * Math.PI);
+      marks.clear();
+      const pulse = 0.72 + 0.28 * Math.abs(Math.sin(elapsedSecs * Math.PI * 0.6));
+      const arm = MARK_ARM_PX / cameraScale;
+      const gap = MARK_GAP_PX / cameraScale;
       for (const finding of findings) {
-        projectPlanePointWithBasis(finding.markX, finding.markY, finding.markZ, basis, mark);
-        drawScanShell(
-          shell.back,
-          shell.front,
-          (ux, uy, uz, out) => {
-            projectPlanePointWithBasis(
-              finding.x + ux * finding.radius,
-              finding.y + uz * finding.radius,
-              finding.z + uy * finding.radius,
-              basis,
-              out,
-            );
-            return true;
-          },
-          shellStyle(SCAN_SHELL_LINE_PX / cameraScale, pulse, false),
-        );
-        drawReticle(rings, mark.x, mark.y, SCAN_STRENGTH_COLORS[finding.strength], cameraScale, 0.9);
-        const label = layer.labels.get(finding.id)!;
-        label.position.set(mark.x, mark.y - (RETICLE_ARM + 6) / cameraScale);
-        label.scale.set(1 / cameraScale);
+        for (let i = 0; i + 3 < finding.signals.length; i += 4) {
+          projectPlanePointWithBasis(finding.signals[i], finding.signals[i + 1], finding.signals[i + 2], basis, projected);
+          const { x, y } = projected;
+          marks.moveTo(x - arm, y).lineTo(x - gap, y);
+          marks.moveTo(x + gap, y).lineTo(x + arm, y);
+          marks.moveTo(x, y - arm).lineTo(x, y - gap);
+          marks.moveTo(x, y + gap).lineTo(x, y + arm);
+          marks.circle(x, y, gap);
+        }
       }
+      marks.stroke({ color: SCAN_MARK_COLOR, width: SCAN_MARK_LINE_PX / cameraScale, alpha: pulse });
     },
     destroy() {
-      shell.back.destroy();
       container.destroy({ children: true });
     },
   };

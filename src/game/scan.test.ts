@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { civilizationProfile, generateAnomalies, hasCivilization } from './anomalies';
 import { generateGalaxy } from './galaxyGen';
 import { findCivilizationSeeds } from './civilizationSeeds.testutil';
-import { mergeSignals, scanCost, scanPrecisionRadius, scanVolumeFraction, signalStrength, SCAN_STRENGTH_LABELS } from './scan';
+import { mergeSignals, scanCost, scanPrecisionRadius, scanVolumeFraction, signalStrength, SCAN_STRENGTH_TIERS } from './scan';
 import { SCAN_UNIVERSE_FULL_RADIUS, SCAN_UNIVERSE_MIN_RADIUS } from './constants';
 
 describe('civilizationProfile', () => {
@@ -41,9 +41,9 @@ describe('scan cost and precision', () => {
 describe('signal strength', () => {
   it('rises with stage and with a living civilisation', () => {
     expect(signalStrength({ stage: 1, living: false })).toBe(0);
-    expect(signalStrength({ stage: 6, living: false })).toBe(SCAN_STRENGTH_LABELS.length - 1);
+    expect(signalStrength({ stage: 6, living: false })).toBe(SCAN_STRENGTH_TIERS - 1);
     expect(signalStrength({ stage: 3, living: true })).toBeGreaterThan(signalStrength({ stage: 3, living: false }));
-    expect(signalStrength({ stage: 6, living: true })).toBe(SCAN_STRENGTH_LABELS.length - 1);
+    expect(signalStrength({ stage: 6, living: true })).toBe(SCAN_STRENGTH_TIERS - 1);
   });
 });
 

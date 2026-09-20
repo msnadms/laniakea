@@ -56,7 +56,7 @@ import { useScanStore } from '../store/scanStore';
 import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
 import { createScanShell } from './scanShell';
 import { createUniverseScanOverlay } from './scanOverlay';
-import { createUniverseScanRun, recordContact, type ScanRun } from './scanRun';
+import { createUniverseScanRun, recordSweep, type ScanRun } from './scanRun';
 import { scanCost, scanPrecisionRadius, type ScanSphere } from '../game/scan';
 
 const N_BLINK_GROUPS = 10;
@@ -411,7 +411,7 @@ export function UniverseWorld() {
         store.setProgress({ scope: 'universe', done: scanRun.done, total: scanRun.total });
         return;
       }
-      recordContact('universe', null, scanRun.contact(), shellSphere);
+      recordSweep('universe', null, scanRun);
       scanRun = null;
       shellSphere = null;
       store.setProgress(null);

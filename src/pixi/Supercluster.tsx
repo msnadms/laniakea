@@ -44,7 +44,7 @@ import { useScanStore } from '../store/scanStore';
 import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
 import { createScanShell } from './scanShell';
 import { createSuperclusterScanOverlay } from './scanOverlay';
-import { createSuperclusterScanRun, recordContact, type ScanRun, type ScanTarget } from './scanRun';
+import { createSuperclusterScanRun, recordSweep, type ScanRun, type ScanTarget } from './scanRun';
 import { scanCost, scanPrecisionRadius, type ScanSphere } from '../game/scan';
 import {
   SCAN_AIM_BACK_ALPHA,
@@ -335,7 +335,6 @@ export function SuperclusterWorld() {
     const overlay = createSuperclusterScanOverlay(scSeed);
     const shell = createScanShell();
     world.addChildAt(shell.back, 0);
-    world.addChildAt(overlay.backNode, 1);
     world.addChild(shell.front);
     world.addChild(overlay.node);
     const basis = updateProjectionBasis(orbitCamera.current);
@@ -427,7 +426,7 @@ export function SuperclusterWorld() {
         useScanStore.getState().setOutcome('No contact', null);
         return;
       }
-      run = createSuperclusterScanRun(targets, scanPrecisionRadius('supercluster', sphere.radius));
+      run = createSuperclusterScanRun(targets, sphere, scanPrecisionRadius('supercluster', sphere.radius));
       shellSphere = sphere;
       shellColor = SCAN_SHELL_COLOR;
       useScanStore.getState().setProgress({ scope: 'supercluster', done: 0, total: targets.length });
@@ -469,7 +468,7 @@ export function SuperclusterWorld() {
         if (working) {
           store.setProgress({ scope: 'supercluster', done: run.done, total: run.total });
         } else {
-          recordContact('supercluster', scSeed, run.contact(), shellSphere);
+          recordSweep('supercluster', scSeed, run);
           run = null;
           shellSphere = null;
           store.setProgress(null);
@@ -487,7 +486,6 @@ export function SuperclusterWorld() {
       scanSelect?.destroy();
       useScanStore.getState().setProgress(null);
       world.removeChild(overlay.node);
-      world.removeChild(overlay.backNode);
       overlay.destroy();
       world.removeChild(shell.back);
       world.removeChild(shell.front);

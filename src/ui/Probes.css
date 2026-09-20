@@ -1,6 +1,6 @@
 .probe-btn {
   position: absolute;
-  right: calc(100% + 42px);
+  right: calc(100% + 38px);
   top: 0;
   bottom: 0;
   width: 78px;
@@ -71,7 +71,7 @@
   transform: translateX(-50%);
   z-index: 110;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   white-space: nowrap;
   pointer-events: none;
@@ -85,6 +85,7 @@
 .probe-panel-rule {
   width: 64px;
   height: 1px;
+  margin-top: 6px;
   background: linear-gradient(90deg, transparent, rgba(0, 190, 230, 0.6));
 }
 
@@ -93,6 +94,13 @@
 }
 
 .probe-panel-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.probe-panel-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -110,6 +118,24 @@
 .probe-panel-value--gain {
   color: rgba(255, 205, 130, 0.9);
   text-shadow: 0 0 8px rgba(255, 190, 100, 0.45);
+}
+
+.probe-panel-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.probe-panel-legend-bar {
+  width: 96px;
+  height: 4px;
+  border: 1px solid rgba(0, 190, 230, 0.25);
+}
+
+.probe-panel-legend-cap {
+  color: rgba(0, 180, 220, 0.5);
+  font-size: 11px;
+  letter-spacing: 0.08em;
 }
 
 .probe-panel-bar {

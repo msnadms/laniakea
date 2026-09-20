@@ -35,13 +35,11 @@ export interface ScanContact {
   sources: number;
 }
 
-export const SCAN_STRENGTH_LABELS = ['Faint', 'Clear', 'Strong', 'Overwhelming'];
-
-export const SCAN_STRENGTH_COLORS = [0x3fd8c8, 0x6ee06a, 0xffc24a, 0xff5a3c];
+export const SCAN_STRENGTH_TIERS = 4;
 
 export function signalStrength(profile: CivilizationProfile): number {
   const tier = profile.stage <= 2 ? 0 : profile.stage <= 4 ? 1 : profile.stage === 5 ? 2 : 3;
-  return Math.min(SCAN_STRENGTH_LABELS.length - 1, tier + (profile.living ? 1 : 0));
+  return Math.min(SCAN_STRENGTH_TIERS - 1, tier + (profile.living ? 1 : 0));
 }
 
 function fullRadius(scope: ScanScope): number {

@@ -1,7 +1,8 @@
 import { civilizationProfile, type CivilizationProfile } from '../game/anomalies';
 import { superclusterGalaxySeeds } from '../game/superclusters';
 import { getUniverseChunk, type ChunkRef } from '../game/universe';
-import { mergeSignals, SCAN_STRENGTH_LABELS, type ScanContact, type ScanScope, type ScanSignal, type ScanSphere } from '../game/scan';
+import { mergeSignals, signalStrength, type ScanContact, type ScanScope, type ScanSignal, type ScanSphere } from '../game/scan';
+import { buildScanGraph, NO_CONTACT_STRENGTH, type ScanGraph } from '../game/scanGraph';
 import { SCAN_SEEDS_PER_STEP } from '../game/constants';
 import { auth } from '../firebase/firebase';
 import { saveScanFinding, type ScanFinding } from '../firebase/scans';
@@ -15,10 +16,14 @@ export interface ScanTarget {
 }
 
 export interface ScanRun {
+  sphere: ScanSphere;
+  precisionRadius: number;
   total: number;
   done: number;
   step: () => boolean;
   contact: () => ScanContact | null;
+  signals: () => number[];
+  graph: () => ScanGraph;
 }
 
 const superclusterProfiles = new Map<number, CivilizationProfile | null>();
@@ -28,6 +33,12 @@ function stronger(a: CivilizationProfile | null, b: CivilizationProfile): Civili
   if (b.stage > a.stage) return b;
   if (b.stage === a.stage && b.living && !a.living) return b;
   return a;
+}
+
+function flattenSignals(signals: readonly ScanSignal[]): number[] {
+  const flat: number[] = [];
+  for (const signal of signals) flat.push(signal.x, signal.y, signal.z, signalStrength(signal.profile));
+  return flat;
 }
 
 export function sampleTargets<T>(targets: readonly T[], max: number): T[] {
@@ -77,6 +88,8 @@ export function createUniverseScanRun(source: UniverseScanSource, precisionRadiu
   };
 
   const run: ScanRun = {
+    sphere,
+    precisionRadius,
     total: refs.length,
     done: 0,
     step: () => {
@@ -117,15 +130,23 @@ export function createUniverseScanRun(source: UniverseScanSource, precisionRadiu
       return index < targets.length;
     },
     contact: () => mergeSignals(signals, precisionRadius),
+    signals: () => flattenSignals(signals),
+    graph: () => buildScanGraph(sphere, candidates),
   };
   return run;
 }
 
-export function createSuperclusterScanRun(targets: readonly ScanTarget[], precisionRadius: number): ScanRun {
+export function createSuperclusterScanRun(
+  targets: readonly ScanTarget[],
+  sphere: ScanSphere,
+  precisionRadius: number,
+): ScanRun {
   const signals: ScanSignal[] = [];
   let index = 0;
 
   const run: ScanRun = {
+    sphere,
+    precisionRadius,
     total: targets.length,
     done: 0,
     step: () => {
@@ -139,6 +160,8 @@ export function createSuperclusterScanRun(targets: readonly ScanTarget[], precis
       return index < targets.length;
     },
     contact: () => mergeSignals(signals, precisionRadius),
+    signals: () => flattenSignals(signals),
+    graph: () => ({ nodes: [], edges: [] }),
   };
   return run;
 }
@@ -147,35 +170,36 @@ function newScanId(): string {
   return `${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffff).toString(36)}`;
 }
 
-export function recordContact(
-  scope: ScanScope,
-  superclusterSeed: number | null,
-  contact: ScanContact | null,
-  sweep: ScanSphere | null,
-): void {
+export function recordSweep(scope: ScanScope, superclusterSeed: number | null, run: ScanRun): void {
   const store = useScanStore.getState();
-  if (!contact) {
-    store.setOutcome('No contact', null);
-    return;
-  }
-  const volume = sweep ?? contact;
+  const contact = run.contact();
+  const graph = run.graph();
+  const drawable = scope === 'universe' ? graph.nodes.length > 3 : contact !== null;
   const finding: ScanFinding = {
     id: newScanId(),
     scope,
     superclusterSeed,
-    x: volume.x,
-    y: volume.y,
-    z: volume.z,
-    radius: volume.radius,
-    markX: contact.x,
-    markY: contact.y,
-    markZ: contact.z,
-    strength: contact.strength,
-    sources: contact.sources,
+    x: run.sphere.x,
+    y: run.sphere.y,
+    z: run.sphere.z,
+    radius: run.sphere.radius,
+    markX: contact?.x ?? run.sphere.x,
+    markY: contact?.y ?? run.sphere.y,
+    markZ: contact?.z ?? run.sphere.z,
+    bloom: run.precisionRadius,
+    signals: run.signals(),
+    strength: contact?.strength ?? NO_CONTACT_STRENGTH,
+    sources: contact?.sources ?? 0,
+    nodes: graph.nodes,
+    edges: graph.edges,
     foundAt: Date.now(),
   };
+  if (!drawable) {
+    store.setOutcome('No contact', null);
+    return;
+  }
   store.addFinding(finding);
-  store.setOutcome(`Contact — ${SCAN_STRENGTH_LABELS[contact.strength]}`, contact.strength);
+  store.setOutcome(contact ? 'Contact' : 'No contact — volume swept', contact?.strength ?? null);
   const uid = auth.currentUser?.uid;
   if (uid) saveScanFinding(uid, finding).catch((err) => console.error('saveScanFinding failed:', err));
 }

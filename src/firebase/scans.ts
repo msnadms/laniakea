@@ -13,8 +13,12 @@ export interface ScanFinding {
   markX: number;
   markY: number;
   markZ: number;
+  bloom: number;
+  signals: number[];
   strength: number;
   sources: number;
+  nodes: number[];
+  edges: number[];
   foundAt: number;
 }
 
@@ -27,7 +31,7 @@ export async function saveScanFinding(uid: string, finding: ScanFinding): Promis
 
 export async function loadScanFindings(uid: string): Promise<ScanFinding[]> {
   const snap = await getDocs(collection(db, 'users', uid, 'scans'));
-  return snap.docs.map((scanDoc) => {
+  return snap.docs.filter((scanDoc) => Array.isArray(scanDoc.data().nodes)).map((scanDoc) => {
     const data = scanDoc.data();
     return {
       id: scanDoc.id,
@@ -40,8 +44,12 @@ export async function loadScanFindings(uid: string): Promise<ScanFinding[]> {
       markX: data.markX as number,
       markY: data.markY as number,
       markZ: data.markZ as number,
+      bloom: data.bloom as number,
+      signals: (data.signals as number[]) ?? [],
       strength: data.strength as number,
       sources: data.sources as number,
+      nodes: (data.nodes as number[]) ?? [],
+      edges: (data.edges as number[]) ?? [],
       foundAt: (data.foundAt as FirestoreTimestamp)?.toMillis?.() ?? Date.now(),
     };
   });

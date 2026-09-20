@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useScanStore } from '../store/scanStore';
 import { useUIStore } from '../store/uiStore';
-import { SCAN_STRENGTH_COLORS } from '../game/scan';
+import { SCAN_HEAT_COLORS } from '../game/constants';
 import './Probes.css';
 
 const SCAN_VIEWS = new Set(['universe', 'supercluster']);
@@ -9,6 +9,18 @@ const OUTCOME_MS = 6000;
 
 function hexColor(value: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
+}
+
+const HEAT_GRADIENT = `linear-gradient(90deg, ${SCAN_HEAT_COLORS.map(hexColor).join(', ')})`;
+
+function HeatLegend() {
+  return (
+    <div className="probe-panel-legend">
+      <span className="probe-panel-legend-cap">silent</span>
+      <div className="probe-panel-legend-bar" style={{ background: HEAT_GRADIENT }} />
+      <span className="probe-panel-legend-cap">something here</span>
+    </div>
+  );
 }
 
 export function ProbeButton() {
@@ -70,7 +82,7 @@ export function ProbePanel() {
       <div className="probe-panel-rule" />
       <div className="probe-panel-body">
         {progress ? (
-          <>
+          <div className="probe-panel-row">
             <span className="probe-panel-label">Probes away</span>
             <span className="probe-panel-value">{progress.done} / {progress.total} surveyed</span>
             <div className="probe-panel-bar">
@@ -79,18 +91,16 @@ export function ProbePanel() {
                 style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }}
               />
             </div>
-          </>
+          </div>
         ) : outcome ? (
-          <span
-            className="probe-panel-value"
-            style={outcome.strength === null ? undefined : { color: hexColor(SCAN_STRENGTH_COLORS[outcome.strength]) }}
-          >
-            {outcome.strength === null ? outcome.text : `${outcome.text} signature`}
-          </span>
+          <span className="probe-panel-value">{outcome.text}</span>
         ) : (
           <>
-            <span className="probe-panel-label">Probe sweep</span>
-            <span className="probe-panel-value">Drag out from a dot to aim · {condensate} negative-energy condensate held</span>
+            <div className="probe-panel-row">
+              <span className="probe-panel-label">Probe sweep</span>
+              <span className="probe-panel-value">Drag out from a dot to aim · {condensate} negative-energy condensate held</span>
+            </div>
+            <HeatLegend />
           </>
         )}
       </div>
