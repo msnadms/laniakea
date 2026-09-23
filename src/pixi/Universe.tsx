@@ -30,6 +30,7 @@ import {
   SCAN_SHELL_COLOR,
   SCAN_SHELL_LINE_PX,
   SCAN_SHELL_DENIED_COLOR,
+  SCAN_UNIVERSE_MAX_RADIUS,
   SCAN_UNIVERSE_MAX_TARGETS,
 } from '../game/constants';
 import type { FlyCamera, UniverseChunk } from '../game/types';
@@ -354,7 +355,7 @@ export function UniverseWorld() {
       const centreX = aimCentre.x * cam.scale + cam.x;
       const centreY = aimCentre.y * cam.scale + cam.y;
       const screenRadius = Math.hypot(screenX - centreX, screenY - centreY);
-      const radius = screenRadius / cam.scale / aimCentre.scale;
+      const radius = Math.min(SCAN_UNIVERSE_MAX_RADIUS, screenRadius / cam.scale / aimCentre.scale);
       return {
         sphere: { x: anchor.x, y: anchor.y, z: anchor.z, radius },
         cost: scanCost('universe', radius),

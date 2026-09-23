@@ -28,6 +28,7 @@ export interface ScanHeatSource {
   z: number;
   radius: number;
   bloom: number;
+  confidence: number;
   signals: number[];
 }
 
@@ -94,7 +95,7 @@ export function heatAt(source: ScanHeatSource, x: number, y: number, z: number):
   for (let i = 0; i + 3 < source.signals.length; i += 4) {
     const reach = bloom * signalReach(source.signals[i + 3]);
     const spread = distanceSq(x, y, z, source.signals[i], source.signals[i + 1], source.signals[i + 2]) / (reach * reach);
-    heat = Math.max(heat, 1 / (1 + spread));
+    heat = Math.max(heat, 1 / (1 + spread * spread));
   }
   return heat;
 }
@@ -108,19 +109,51 @@ export interface HeatReading {
   coverage: number;
 }
 
+export function sweepConfidence(source: ScanHeatSource): number {
+  return Math.min(1, Math.max(0, source.confidence));
+}
+
+// A sweep resolves a contact to within its own bloom, so inside that ball it heard the thing
+// outright rather than blooming toward it.
+export function detectedAt(source: ScanHeatSource, x: number, y: number, z: number): boolean {
+  const reachSq = source.bloom * source.bloom;
+  for (let i = 0; i + 3 < source.signals.length; i += 4) {
+    if (distanceSq(x, y, z, source.signals[i], source.signals[i + 1], source.signals[i + 2]) <= reachSq) return true;
+  }
+  return false;
+}
+
 // Each sweep over a point is an independent reading of it, so overlapping sweeps multiply:
 // the shared swell survives and everything either one doubts falls away, which is what makes
-// re-scanning the way to narrow a contact down.
+// re-scanning the way to narrow a contact down. Silence is the weaker reading: a sweep rules out
+// only the fraction of its sphere it surveyed (`confidence`). A sweep that surveyed all of it
+// heard nothing there and cools it outright; only a sampled one is excused where another sweep
+// resolved a contact, since it may never have checked there at all.
 export function readHeat(sources: readonly ScanHeatSource[], x: number, y: number, z: number): HeatReading {
-  let heat = 1;
   let coverage = 0;
+  let heard = false;
+  let detected = false;
   for (const source of sources) {
     if (!covers(source, x, y, z)) continue;
+    if (source.signals.length === 0) {
+      coverage += sweepConfidence(source);
+      continue;
+    }
+    heard = true;
     coverage++;
-    heat *= heatAt(source, x, y, z);
+    detected = detected || detectedAt(source, x, y, z);
+  }
+  if (!heard) return { heat: 0, coverage };
+  let heat = 1;
+  for (const source of sources) {
+    if (!covers(source, x, y, z)) continue;
+    if (source.signals.length > 0) heat *= heatAt(source, x, y, z);
+    else {
+      const surveyed = sweepConfidence(source);
+      if (surveyed >= 1 || !detected) heat *= 1 - surveyed;
+    }
     if (heat <= 0) return { heat: 0, coverage };
   }
-  if (coverage === 0) return { heat: 0, coverage: 0 };
   return { heat: Math.pow(heat, 1 + (coverage - 1) * SCAN_HEAT_OVERLAP_SHARPEN), coverage };
 }
 

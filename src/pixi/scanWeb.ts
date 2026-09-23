@@ -7,6 +7,7 @@ import {
   SCAN_WEB_BACK_ALPHA,
   SCAN_WEB_FRONT_ALPHA,
   SCAN_WEB_MIN_ALPHA,
+  SCAN_WEB_NODE_RADIUS_PX,
   SCAN_WEB_SEGMENTS,
 } from '../game/constants';
 import type { ProjectedPoint } from './projection';
@@ -72,6 +73,21 @@ export function drawScanWeb(
         ax + (bx - ax) * t0, ay + (by - ay) * t0,
         ax + (bx - ax) * t1, ay + (by - ay) * t1,
       );
+    }
+  }
+
+  // A sweep small enough to hold one supercluster has a contact but no route to draw it along.
+  if (graph.edges.length === 0) {
+    for (let i = 0; i < count; i++) {
+      if (!visible[i]) continue;
+      const heat = heats[i];
+      const target = depthSign * depth[i] < depthSign * centreDepth ? front : back;
+      target.circle(screenX[i], screenY[i], style.width * SCAN_WEB_NODE_RADIUS_PX);
+      target.stroke({
+        color: heatColor(heat),
+        width: style.width,
+        alpha: style.alpha * (SCAN_WEB_MIN_ALPHA + (1 - SCAN_WEB_MIN_ALPHA) * Math.sqrt(heat)),
+      });
     }
   }
 

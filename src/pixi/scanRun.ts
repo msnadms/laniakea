@@ -1,4 +1,4 @@
-import { civilizationProfile, type CivilizationProfile } from '../game/anomalies';
+import { civilizationProfile, superclusterMayHoldCivilization, type CivilizationProfile } from '../game/anomalies';
 import { superclusterGalaxySeeds } from '../game/superclusters';
 import { getUniverseChunk, type ChunkRef } from '../game/universe';
 import { mergeSignals, signalStrength, type ScanContact, type ScanScope, type ScanSignal, type ScanSphere } from '../game/scan';
@@ -21,6 +21,7 @@ export interface ScanRun {
   total: number;
   done: number;
   step: () => boolean;
+  confidence: () => number;
   contact: () => ScanContact | null;
   signals: () => number[];
   graph: () => ScanGraph;
@@ -115,6 +116,11 @@ export function createUniverseScanRun(source: UniverseScanSource, precisionRadiu
           run.done = refs.length + index;
           return index < targets.length;
         }
+        if (!superclusterMayHoldCivilization(target.seed)) {
+          finishTarget(null);
+          run.done = refs.length + index;
+          return index < targets.length;
+        }
         seeds = superclusterGalaxySeeds(target.seed);
       }
       for (let walked = 0; walked < SCAN_SEEDS_PER_STEP; walked++) {
@@ -129,6 +135,7 @@ export function createUniverseScanRun(source: UniverseScanSource, precisionRadiu
       run.done = refs.length + index;
       return index < targets.length;
     },
+    confidence: () => (candidates.length === 0 ? 1 : (targets?.length ?? 0) / candidates.length),
     contact: () => mergeSignals(signals, precisionRadius),
     signals: () => flattenSignals(signals),
     graph: () => buildScanGraph(sphere, candidates),
@@ -159,6 +166,7 @@ export function createSuperclusterScanRun(
       run.done = index;
       return index < targets.length;
     },
+    confidence: () => 1,
     contact: () => mergeSignals(signals, precisionRadius),
     signals: () => flattenSignals(signals),
     graph: () => ({ nodes: [], edges: [] }),
@@ -174,7 +182,7 @@ export function recordSweep(scope: ScanScope, superclusterSeed: number | null, r
   const store = useScanStore.getState();
   const contact = run.contact();
   const graph = run.graph();
-  const drawable = scope === 'universe' ? graph.nodes.length > 3 : contact !== null;
+  const drawable = scope === 'universe' ? contact !== null || graph.nodes.length > 3 : contact !== null;
   const finding: ScanFinding = {
     id: newScanId(),
     scope,
@@ -187,6 +195,7 @@ export function recordSweep(scope: ScanScope, superclusterSeed: number | null, r
     markY: contact?.y ?? run.sphere.y,
     markZ: contact?.z ?? run.sphere.z,
     bloom: run.precisionRadius,
+    confidence: run.confidence(),
     signals: run.signals(),
     strength: contact?.strength ?? NO_CONTACT_STRENGTH,
     sources: contact?.sources ?? 0,
@@ -199,7 +208,8 @@ export function recordSweep(scope: ScanScope, superclusterSeed: number | null, r
     return;
   }
   store.addFinding(finding);
-  store.setOutcome(contact ? 'Contact' : 'No contact — volume swept', contact?.strength ?? null);
+  const barren = finding.confidence >= 1 ? 'No contact — volume swept' : 'No contact — volume sampled';
+  store.setOutcome(contact ? 'Contact' : barren, contact?.strength ?? null);
   const uid = auth.currentUser?.uid;
   if (uid) saveScanFinding(uid, finding).catch((err) => console.error('saveScanFinding failed:', err));
 }

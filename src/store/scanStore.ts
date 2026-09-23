@@ -67,6 +67,21 @@ export function superclusterFindings(findings: Record<string, ScanFinding>, supe
   return Object.values(findings).filter((f) => f.scope === 'supercluster' && f.superclusterSeed === superclusterSeed);
 }
 
+export function galaxyWasScanned(
+  findings: Record<string, ScanFinding>,
+  superclusterSeed: number,
+  x: number,
+  y: number,
+  z: number,
+): boolean {
+  return superclusterFindings(findings, superclusterSeed).some((finding) => {
+    const dx = x - finding.x;
+    const dy = y - finding.y;
+    const dz = z - finding.z;
+    return dx * dx + dy * dy + dz * dz <= finding.radius * finding.radius;
+  });
+}
+
 export function universeFindings(findings: Record<string, ScanFinding>): ScanFinding[] {
   return Object.values(findings).filter((f) => f.scope === 'universe');
 }

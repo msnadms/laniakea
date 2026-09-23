@@ -17,7 +17,7 @@ const origin = { x: 0, y: 0, z: 0 };
 function source(partial: Partial<ScanHeatSource>): ScanHeatSource {
   return {
     x: 0, y: 0, z: 0, radius: 1000,
-    bloom: 200, signals: [0, 0, 0, 3],
+    bloom: 200, confidence: 1, signals: [0, 0, 0, 3],
     ...partial,
   };
 }
@@ -63,6 +63,30 @@ describe('scan heat', () => {
     expect(combinedHeat([wide, barren], 0, 0, 0)).toBeGreaterThan(0);
   });
 
+  it('keeps a contact a sampled sweep may never have checked for', () => {
+    const missed = source({ radius: 1000, confidence: 0.4, signals: [] });
+    const heardIt = source({ x: 600, y: 0, z: 0, radius: 200, bloom: 60, signals: [600, 0, 0, 3] });
+    expect(combinedHeat([missed, heardIt], 600, 0, 0)).toBeCloseTo(combinedHeat([heardIt], 600, 0, 0));
+    const offContact = 600 + heardIt.bloom * 2.5;
+    expect(combinedHeat([missed, heardIt], offContact, 0, 0))
+      .toBeLessThan(combinedHeat([heardIt], offContact, 0, 0));
+  });
+
+  it('lets a sweep rule out only as much as it surveyed', () => {
+    const contact = source({ x: 600, y: 0, z: 0, radius: 200, bloom: 60, signals: [600, 0, 0, 3] });
+    const sampled = source({ radius: 1000, confidence: 0.03, signals: [] });
+    const alone = combinedHeat([contact], 600, 0, 0);
+    expect(combinedHeat([sampled, contact], 600, 0, 0)).toBeGreaterThan(alone * 0.9);
+    expect(combinedHeat([sampled], 600, 0, 0)).toBe(0);
+  });
+
+  it('cuts a wide swell away wherever a tight sweep surveyed it all and heard nothing', () => {
+    const wide = source({ radius: 1000, bloom: 400, signals: [0, 0, 0, 3] });
+    const half = source({ x: 400, y: 0, z: 0, radius: 300, bloom: 60, confidence: 1, signals: [] });
+    expect(combinedHeat([wide, half], 400, 0, 0)).toBe(0);
+    expect(combinedHeat([wide, half], -400, 0, 0)).toBeGreaterThan(0);
+  });
+
   it('reads nothing outside every swept sphere', () => {
     expect(combinedHeat([source({ radius: 100 })], 500, 0, 0)).toBe(0);
   });
@@ -75,14 +99,14 @@ describe('re-scanning the same volume', () => {
   it('keeps the peak and pulls the swell in around it', () => {
     const first = source({ bloom: 200, radius: 2000 });
     const second = source({ bloom: 200, radius: 2000 });
-    const offset = heatBloom(first);
+    const offset = heatBloom(first) * 2;
     expect(combinedHeat([first, second], 0, 0, 0)).toBeCloseTo(combinedHeat([first], 0, 0, 0));
     expect(width([first, second], offset)).toBeLessThan(width([first], offset) * 0.6);
   });
 
   it('narrows further with each further reading', () => {
     const sweep = () => source({ bloom: 200, radius: 2000 });
-    const offset = heatBloom(sweep());
+    const offset = heatBloom(sweep()) * 2;
     const two = width([sweep(), sweep()], offset);
     const three = width([sweep(), sweep(), sweep()], offset);
     expect(three).toBeLessThan(two);
@@ -125,10 +149,10 @@ describe('what a colour means', () => {
 });
 
 describe('ambiguity', () => {
-  it('spreads the peak well past the resolution it was read at', () => {
+  it('hands back a neighbourhood the size of the resolution it read at', () => {
     const wide = source({ bloom: 200, radius: 2000 });
-    expect(heatBloom(wide)).toBeGreaterThan(wide.bloom);
-    expect(heatAt(wide, wide.bloom, 0, 0)).toBeGreaterThan(heatAt(wide, 0, 0, 0) * 0.75);
+    expect(heatAt(wide, wide.bloom * 0.5, 0, 0)).toBeGreaterThan(heatAt(wide, 0, 0, 0) * 0.75);
+    expect(heatAt(wide, wide.bloom * 3, 0, 0)).toBeLessThan(heatAt(wide, 0, 0, 0) * 0.1);
   });
 
   it('is noisy over a whole neighbourhood, not per node', () => {

@@ -283,6 +283,9 @@ export const SC_ATTRACTOR_LABEL_MAX_DIST = 300;
 
 // Number of galaxy dots placed along each filament curve.
 export const SC_FILAMENT_DOTS_PER_EDGE = 500;
+export const SC_DOT_SEED_MIX = 2654435761;
+export const SC_MAX_FILAMENTS = 3 * SC_ATTRACTOR_COUNT;
+export const SC_MAX_GALAXY_DOTS = SC_ATTRACTOR_COUNT * SC_CLUSTER_DOTS_PER_ATTRACTOR + SC_MAX_FILAMENTS * SC_FILAMENT_DOTS_PER_EDGE;
 
 // Base scatter width for filament dots as a fraction of SC_WORLD_HALF.
 export const SC_FILAMENT_SCATTER = 0.025;
@@ -506,23 +509,26 @@ export const SC_CIVILIZATION_TINT_STRENGTH = 0.6;
 export const SC_CIVILIZATION_TINT_MIN_SCALE = 1.4;
 export const SC_CIVILIZATION_TINT_FULL_SCALE = 2.6;
 
-export const CONDENSATE_START = 8;
+export const CONDENSATE_START = 16;
 export const CONDENSATE_PER_HOMEWORLD = 10;
 
-export const SCAN_COST_MIN = 1;
-export const SCAN_COST_UNIVERSE_SPAN = 11;
+export const SCAN_COST_MIN = 2;
+export const SCAN_COST_UNIVERSE_SPAN = 10;
 export const SCAN_COST_SUPERCLUSTER_SPAN = 7;
+// Sub-cubic, so widening a wave is far cheaper per volume than launching another one.
+export const SCAN_COST_RADIUS_EXPONENT = 1.5;
 
 export const SCAN_UNIVERSE_MIN_RADIUS = 60;
 export const SCAN_UNIVERSE_FULL_RADIUS = 0.5 * UNIVERSE_FOG_FAR;
+export const SCAN_UNIVERSE_MAX_RADIUS = SCAN_UNIVERSE_FULL_RADIUS;
 export const SCAN_SUPERCLUSTER_MIN_RADIUS = 80;
 export const SCAN_SUPERCLUSTER_FULL_RADIUS = SC_WORLD_HALF;
 export const SCAN_PRECISION_FRACTION = 0.35;
 
 export const SCAN_MIN_DRAG_PX = 24;
 export const SCAN_SUPERCLUSTER_ANCHOR_PX = 15;
-export const SCAN_BUDGET_MS = 6;
-export const SCAN_UNIVERSE_MAX_TARGETS = 100;
+export const SCAN_BUDGET_MS = 10;
+export const SCAN_UNIVERSE_MAX_TARGETS = 8000;
 export const SCAN_SEEDS_PER_STEP = 4000;
 export const SCAN_SHELL_COLOR = 0x00e8ff;
 export const SCAN_SHELL_DENIED_COLOR = 0xff5a3c;
@@ -533,7 +539,7 @@ export const SCAN_GRAPH_MAX_NODES = 2500;
 export const SCAN_WEB_GRADIENT_MAX_NODES = 250;
 export const SCAN_HEAT_COLORS = [0x3d7fa8, 0x37b6d8, 0x50e39c, 0xffcc4a, 0xff5a38];
 export const SCAN_HEAT_STEPS = 8;
-export const SCAN_HEAT_BLOOM_SCALE = 2.2;
+export const SCAN_HEAT_BLOOM_SCALE = 0.6;
 export const SCAN_HEAT_NOISE_AMOUNT = 0.55;
 export const SCAN_HEAT_DECOY_THRESHOLD = 0.55;
 export const SCAN_HEAT_NOISE_DECAY = 0.4;
@@ -548,3 +554,4 @@ export const SCAN_WEB_MIN_ALPHA = 0.5;
 export const SCAN_WEB_BACK_ALPHA = 0.62;
 export const SCAN_WEB_FRONT_ALPHA = 1;
 export const SCAN_WEB_SEGMENTS = 4;
+export const SCAN_WEB_NODE_RADIUS_PX = 5;

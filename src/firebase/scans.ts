@@ -14,6 +14,7 @@ export interface ScanFinding {
   markY: number;
   markZ: number;
   bloom: number;
+  confidence: number;
   signals: number[];
   strength: number;
   sources: number;
@@ -45,6 +46,7 @@ export async function loadScanFindings(uid: string): Promise<ScanFinding[]> {
       markY: data.markY as number,
       markZ: data.markZ as number,
       bloom: data.bloom as number,
+      confidence: (data.confidence as number | undefined) ?? 1,
       signals: (data.signals as number[]) ?? [],
       strength: data.strength as number,
       sources: data.sources as number,

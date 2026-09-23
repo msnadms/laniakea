@@ -49,11 +49,11 @@ export function createPointerLabel(
   const kx = direction * (diagLen / 1.5); // shallower than 45°: horizontal = half of vertical
 
   const lineGfx = new Graphics();
-  lineGfx.moveTo(0, -dotRadius);
+  lineGfx.moveTo(0, 0);
   lineGfx.lineTo(kx, -(dotRadius + diagLen));
   lineGfx.lineTo(kx, -(dotRadius + lineLength));
   lineGfx.stroke({ color: 0x0088bb, alpha, width: lineWidth });
-  lineGfx.circle(-3, -2, dotRadius);
+  lineGfx.circle(0, 0, dotRadius);
   lineGfx.fill({ color: 0x0088bb, alpha });
 
   box.position.set(kx, -(dotRadius + lineLength + h / 2));

@@ -32,6 +32,10 @@ import { StarNode } from './StarNode';
 import { applyStarProjection, type StarDisplay, type StarViews } from './starView';
 import { createAnomalySigns } from './anomalySigns';
 import { createGalaxyAnomalyDebug } from './anomalyDebug';
+import { createScanRegionLabels, type ScanRegionLabel } from './scanRegionLabels';
+import { isInCivilization } from '../game/anomalies';
+import { getAnomalyLore } from '../game/anomalyLore';
+import { galaxyWasScanned, useScanStore } from '../store/scanStore';
 import { mixColor, scaleColor } from './anomalies/shared';
 import {
   clampGalaxyTilt,
@@ -159,6 +163,8 @@ export function GalaxyWorld() {
   const galaxyBackgroundStars = useGameStore((s) => s.galaxy.backgroundStars);
   const galaxyAnomalies = useGameStore((s) => s.galaxyAnomalies);
   const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
+  const supercluster = useGameStore((s) => s.supercluster);
+  const scanFindings = useScanStore((s) => s.findings);
   const setSystem = useGameStore((s) => s.setSystem);
   const pushAddress = useUIStore((s) => s.pushAddress);
   const popAddress = useUIStore((s) => s.popAddress);
@@ -167,6 +173,21 @@ export function GalaxyWorld() {
 
   const { orbitCamera, orbitTarget, didOrbit } = useOrbit(GALAXY_ORBIT);
   const galaxyProjection = useMemo(() => updateProjectionBasis(orbitCamera.current), [orbitCamera]);
+
+  const scannedAnomalyLabels = useMemo(() => {
+    const region = galaxyAnomalies.civilization;
+    if (!region) return null;
+    const dot = supercluster.dots.find((d) => d.seed === galaxySeed);
+    if (!dot) return null;
+    if (!galaxyWasScanned(scanFindings, supercluster.seed, dot.x, dot.y, dot.z)) return null;
+    const labels: ScanRegionLabel[] = [];
+    for (const anomaly of galaxyAnomalies.byHost.values()) {
+      const host = galaxySystems[anomaly.hostId];
+      if (!isInCivilization(host, region)) continue;
+      labels.push({ x: host.x, y: host.y, z: host.z, name: getAnomalyLore(anomaly).name });
+    }
+    return labels;
+  }, [galaxyAnomalies, galaxySystems, galaxySeed, supercluster, scanFindings]);
 
   const worldRef = useRef<Container>(null);
   const galaxyRootRef = useRef<Container>(null);
@@ -487,6 +508,29 @@ export function GalaxyWorld() {
       debug.destroy();
     };
   }, [showAnomalyDebug, galaxyAnomalies, isInitialised, camera, orbitCamera]);
+
+  useEffect(() => {
+    if (!scannedAnomalyLabels || scannedAnomalyLabels.length === 0 || !isInitialised || !galaxyRootRef.current) return;
+    const marks = createScanRegionLabels(galaxyRootRef.current, scannedAnomalyLabels);
+    const basis = updateProjectionBasis(orbitCamera.current);
+    marks.project(basis);
+    let lastYaw = orbitCamera.current.yaw;
+    let lastTilt = orbitCamera.current.tilt;
+    const tick = () => {
+      const { yaw, tilt } = orbitCamera.current;
+      if (yaw !== lastYaw || tilt !== lastTilt) {
+        lastYaw = yaw;
+        lastTilt = tilt;
+        marks.project(updateProjectionBasis(orbitCamera.current, basis));
+      }
+      marks.tick(camera.current.scale);
+    };
+    Ticker.shared.add(tick);
+    return () => {
+      Ticker.shared.remove(tick);
+      marks.destroy();
+    };
+  }, [scannedAnomalyLabels, isInitialised, camera, orbitCamera]);
 
   return (
     <>

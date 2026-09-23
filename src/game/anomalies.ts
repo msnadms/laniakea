@@ -1,4 +1,4 @@
-import { createRng, generateGalaxy } from './galaxyGen';
+import { createRng, firstRandom, generateGalaxy } from './galaxyGen';
 import { MILKY_WAY_SEED } from './hardcoded';
 import {
   ANOMALY_BEAM_RIM_MAX,
@@ -8,6 +8,8 @@ import {
   ANOMALY_BLACK_HOLE_REACH,
   ANOMALY_BRAIN_MIN_DYSON_SPHERES,
   ANOMALY_CIVILIZATION_CHANCE,
+  SC_DOT_SEED_MIX,
+  SC_MAX_GALAXY_DOTS,
   ANOMALY_DYSON_EDGE_WEIGHT,
   ANOMALY_DYSON_MAX,
   ANOMALY_DYSON_MIN,
@@ -165,7 +167,22 @@ function civilizationRng(galaxySeed: number): Rng {
 }
 
 export function hasCivilization(galaxySeed: number): boolean {
-  return galaxySeed !== MILKY_WAY_SEED && civilizationRng(galaxySeed)() < ANOMALY_CIVILIZATION_CHANCE;
+  return galaxySeed !== MILKY_WAY_SEED && firstRandom((galaxySeed ^ CIVILIZATION_SALT) >>> 0) < ANOMALY_CIVILIZATION_CHANCE;
+}
+
+// A sweep rules a supercluster out by hashing every dot index it could hold, so the roll is
+// inlined here rather than called tens of thousands of times; an index past its real dot count
+// can only add a false pass, which the walk that follows rejects.
+export function superclusterMayHoldCivilization(superclusterSeed: number): boolean {
+  for (let i = 0; i < SC_MAX_GALAXY_DOTS; i++) {
+    const galaxySeed = (superclusterSeed ^ Math.imul(i, SC_DOT_SEED_MIX)) >>> 0;
+    if (galaxySeed === MILKY_WAY_SEED) continue;
+    const state = (((galaxySeed ^ CIVILIZATION_SALT) | 0) + 0x6D2B79F5) | 0;
+    let hash = Math.imul(state ^ (state >>> 15), 1 | state);
+    hash = (hash + Math.imul(hash ^ (hash >>> 7), 61 | hash)) ^ hash;
+    if (((hash ^ (hash >>> 14)) >>> 0) / 4294967296 < ANOMALY_CIVILIZATION_CHANCE) return true;
+  }
+  return false;
 }
 
 export interface CivilizationProfile {

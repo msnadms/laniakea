@@ -8,7 +8,7 @@ import {
   BACKGROUND_STAR_COUNT, BACKGROUND_STAR_AREA_X, BACKGROUND_STAR_AREA_Y,
   SC_WORLD_HALF, SC_ATTRACTOR_COUNT, SC_CLUSTER_DOTS_PER_ATTRACTOR,
   SC_CLUSTER_SIGMA, SC_FILAMENT_DOTS_PER_EDGE, SC_FILAMENT_SCATTER,
-  SC_ATTRACTOR_LABEL_MAX_DIST,
+  SC_ATTRACTOR_LABEL_MAX_DIST, SC_DOT_SEED_MIX,
 } from './constants';
 
 const CLUSTER_ROOTS = [
@@ -131,8 +131,12 @@ export function generateSuperclusterGalaxySeeds(seed: number): number[] {
   return [...superclusterGalaxySeeds(seed)];
 }
 
+export function superclusterGalaxySeedAt(seed: number, index: number): number {
+  return (seed ^ Math.imul(index, SC_DOT_SEED_MIX)) >>> 0;
+}
+
 export function* superclusterGalaxySeeds(seed: number): Generator<number> {
-  for (const dot of streamDots(seed, buildSkeleton(seed), false)) yield dot.seed;
+  for (const dot of streamDots(seed, buildSkeleton(seed), false, true)) yield dot.seed;
 }
 
 interface SuperclusterSkeleton {
@@ -193,11 +197,21 @@ function buildSkeleton(seed: number): SuperclusterSkeleton {
   return { rng, name, attractors, filaments };
 }
 
-function* streamDots(seed: number, skeleton: SuperclusterSkeleton, named: boolean): Generator<SuperclusterDot> {
+// A scan walks tens of thousands of dots per supercluster only to read their seeds, so it skips
+// the position maths and reuses one dot; the draws it makes stay identical either way.
+function* streamDots(seed: number, skeleton: SuperclusterSkeleton, named: boolean, seedsOnly = false): Generator<SuperclusterDot> {
   const { rng, attractors, filaments } = skeleton;
 
   const sigma = SC_CLUSTER_SIGMA * SC_WORLD_HALF;
   let dotIndex = 0;
+  const scratch: SuperclusterDot = { x: 0, y: 0, z: 0, brightness: 0, seed: 0, name: '', visited: false, current: false };
+  const emit = (x: number, y: number, z: number, brightness: number, dotSeed: number): SuperclusterDot => {
+    if (seedsOnly) {
+      scratch.seed = dotSeed;
+      return scratch;
+    }
+    return { x, y, z, brightness, seed: dotSeed, name: named ? generateGalaxyName(dotSeed) : '', visited: false, current: false };
+  };
 
   // Box-Muller transform for Gaussian distribution of galaxies in attractors
   for (const att of attractors) {
@@ -207,18 +221,19 @@ function* streamDots(seed: number, skeleton: SuperclusterSkeleton, named: boolea
       const u2 = rng();
 
       const mag = sigma * Math.sqrt(-2 * Math.log(u1));
-      const dx = mag * Math.cos(2 * Math.PI * u2);
-      const dy = mag * Math.sin(2 * Math.PI * u2);
 
       const u3 = Math.max(rng(), 1e-10);
       const u4 = rng();
-      const dz = sigma * Math.sqrt(-2 * Math.log(u3)) * Math.cos(2 * Math.PI * u4);
 
       const radialFade = Math.exp(-mag / (sigma * 1.2));
       const brightness = (0.5 + rng() * 0.5) * radialFade;
       if (brightness < 0.02) { continue; }
-      const dotSeed = (seed ^ (dotIndex++ * 2654435761)) >>> 0;
-      yield { x: att.x + dx, y: att.y + dy, z: att.z + dz, brightness, seed: dotSeed, name: named ? generateGalaxyName(dotSeed) : '', visited: false, current: false };
+      const dotSeed = superclusterGalaxySeedAt(seed, dotIndex++);
+      if (seedsOnly) { yield emit(0, 0, 0, brightness, dotSeed); continue; }
+      const dx = mag * Math.cos(2 * Math.PI * u2);
+      const dy = mag * Math.sin(2 * Math.PI * u2);
+      const dz = sigma * Math.sqrt(-2 * Math.log(u3)) * Math.cos(2 * Math.PI * u4);
+      yield emit(att.x + dx, att.y + dy, att.z + dz, brightness, dotSeed);
     }
   }
 
@@ -239,6 +254,20 @@ function* streamDots(seed: number, skeleton: SuperclusterSkeleton, named: boolea
       const t = rng();
       const centerFrac = Math.sin(t * Math.PI) - 0.25;
 
+      // Box-Muller again
+      const perpSigma = filamentScatterW / (centerFrac * centerFrac + 0.1);
+      const u1 = Math.max(rng(), 1e-10);
+      const u2 = rng();
+      const rawMag = Math.sqrt(-2 * Math.log(u1));
+      const scatter = perpSigma * rawMag * Math.cos(2 * Math.PI * u2);
+
+      const perpFade = Math.exp(-(scatter * scatter) / (5 * perpSigma * perpSigma));
+
+      const brightness = (0.1 + rng() * 0.6) * perpFade;
+      if (brightness < 0.02) { continue; }
+      const dotSeed = superclusterGalaxySeedAt(seed, dotIndex++);
+      if (seedsOnly) { yield emit(0, 0, 0, brightness, dotSeed); continue; }
+
       // Quadratic Bézier position for curved filaments
       const bx = (1-t)*(1-t)*A.x + 2*(1-t)*t*cx + t*t*B.x;
       const by = (1-t)*(1-t)*A.y + 2*(1-t)*t*cy + t*t*B.y;
@@ -249,43 +278,28 @@ function* streamDots(seed: number, skeleton: SuperclusterSkeleton, named: boolea
       const tanLen = Math.hypot(tanX, tanY);
       const perpX = -tanY / tanLen;
       const perpY =  tanX / tanLen;
-      // Box-Muller again
-      const perpSigma = filamentScatterW / (centerFrac * centerFrac + 0.1);
-      const u1 = Math.max(rng(), 1e-10);
-      const u2 = rng();
-      const rawMag = Math.sqrt(-2 * Math.log(u1));
-      const scatter = perpSigma * rawMag * Math.cos(2 * Math.PI * u2);
       const zScatter = filamentScatterW * 0.5 * rawMag * Math.sin(2 * Math.PI * u2);
 
-      const perpFade = Math.exp(-(scatter * scatter) / (5 * perpSigma * perpSigma));
-
-      const brightness = (0.1 + rng() * 0.6) * perpFade;
-      if (brightness < 0.02) { continue; }
-      const dotSeed = (seed ^ (dotIndex++ * 2654435761)) >>> 0;
-      yield {
-        x: bx + perpX * scatter,
-        y: by + perpY * scatter,
-        z: A.z + t * (B.z - A.z) + zScatter,
+      yield emit(
+        bx + perpX * scatter,
+        by + perpY * scatter,
+        A.z + t * (B.z - A.z) + zScatter,
         brightness,
-        seed: dotSeed,
-        name: named ? generateGalaxyName(dotSeed) : '',
-        visited: false,
-        current: false,
-      };
+        dotSeed,
+      );
     }
   }
 
   if (seed === LANIAKEA_SEED) {
-    yield {
-      x: attractors[0].x + MW_DOT_OFFSET[0],
-      y: attractors[0].y + MW_DOT_OFFSET[1],
-      z: attractors[0].z,
-      brightness: 0.9,
-      seed: MILKY_WAY_SEED,
-      name: MILKY_WAY_NAME,
-      visited: false,
-      current: false,
-    };
+    const milkyWay = emit(
+      attractors[0].x + MW_DOT_OFFSET[0],
+      attractors[0].y + MW_DOT_OFFSET[1],
+      attractors[0].z,
+      0.9,
+      MILKY_WAY_SEED,
+    );
+    milkyWay.name = MILKY_WAY_NAME;
+    yield milkyWay;
   }
 }
 

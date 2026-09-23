@@ -100,7 +100,7 @@ export function createUniverseScanOverlay() {
       web.back.clear();
       web.front.clear();
       for (const finding of findings) {
-        if (finding.nodes.length <= 3) continue;
+        if (finding.nodes.length < 3) continue;
         const distance = Math.hypot(finding.x - basis.x, finding.y - basis.y, finding.z - basis.z);
         const fog = universeFog(distance);
         if (fog <= 0) continue;
