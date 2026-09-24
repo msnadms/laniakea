@@ -1,13 +1,13 @@
 import { useApplication } from '@pixi/react';
 import { Circle, Container, Graphics, Sprite, Texture, Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
-import { CAMERA_INITIAL_SCALE, SYSTEM_CAMERA_MIN_SCALE } from '../game/constants';
+import { CAMERA_INITIAL_SCALE, SKY_LOOKS, SYSTEM_CAMERA_MIN_SCALE } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
 import { generateSystemLayout, MOON_K, ORBITAL_K } from '../game/planetGen';
 import type { PlanetLayout } from '../game/planetGen';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
-import { BackgroundStars } from './BackgroundStars';
+import { SkyBackdrop } from './SkyBackdrop';
 import { ScaleBar } from './ScaleBar';
 import { createMoonOrbitGraphics, createSystemOrbitGraphics } from './systemOrbitGraphics';
 import {
@@ -192,7 +192,7 @@ function updateBodyShadow(shadow: Sprite, strength: number, direction: Point3D) 
 export function SolarSystem() {
   const { isInitialised } = useApplication();
   const worldRef = useRef<Container>(null);
-  const backgroundStars = useGameStore((state) => state.galaxy.backgroundStars);
+  const galaxySeed = useGameStore((state) => state.galaxy.seed);
   const system = useGameStore((state) => state.system);
   const showOrbitRings = useUIStore((state) => state.showOrbitRings);
   const showOrbitRingsRef = useRef(showOrbitRings);
@@ -519,7 +519,7 @@ export function SolarSystem() {
 
   return (
     <>
-      <BackgroundStars stars={backgroundStars} camera={camera} />
+      <SkyBackdrop themeSeed={galaxySeed} viewSeed={system?.seed ?? galaxySeed} look={SKY_LOOKS.system} camera={camera} />
       <pixiContainer ref={worldRef} />
       <ScaleBar camera={camera} unitsPerWorldPx={1 / 180} unit="Light Minutes" niceValues={SYSTEM_NICE_VALUES} />
     </>

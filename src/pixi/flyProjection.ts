@@ -195,15 +195,3 @@ export function projectUniverseField(
     outAlpha[i] = alpha;
   }
 }
-
-export function projectSkyDirection(dx: number, dy: number, dz: number, basis: FlyBasis, out: ProjectedPoint): boolean {
-  const x1 = dx * basis.cosYaw - dz * basis.sinYaw;
-  const z1 = dx * basis.sinYaw + dz * basis.cosYaw;
-  const depth = z1 * basis.cosPitch + dy * basis.sinPitch;
-  if (depth < 0.05) return false;
-  const inv = basis.focal / depth;
-  out.x = x1 * inv;
-  out.y = -(dy * basis.cosPitch - z1 * basis.sinPitch) * inv;
-  out.depth = depth;
-  return Math.abs(out.x) <= basis.halfWidth && Math.abs(out.y) <= basis.halfHeight;
-}

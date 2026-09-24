@@ -14,7 +14,6 @@ import {
   flyForward,
   flyRight,
   flyUp,
-  projectSkyDirection,
   projectUniverseField,
   projectUniversePoint,
   universeFog,
@@ -182,15 +181,5 @@ describe('universe fly camera', () => {
     expect(projectUniversePoint(0, 0, 0, basisFor(camera), projected)).toBeGreaterThan(0);
     expect(projected.x).toBeCloseTo(0);
     expect(projected.y).toBeCloseTo(0);
-  });
-
-  it('turns the sky with the view but ignores position', () => {
-    const here = point();
-    const there = point();
-    expect(projectSkyDirection(0.1, 0.05, 1, basisFor(origin), here)).toBe(true);
-    projectSkyDirection(0.1, 0.05, 1, basisFor({ ...origin, x: 40_000, z: -9000 }), there);
-    expect(there.x).toBeCloseTo(here.x);
-    expect(there.y).toBeCloseTo(here.y);
-    expect(projectSkyDirection(0, 0, -1, basisFor(origin), point())).toBe(false);
   });
 });

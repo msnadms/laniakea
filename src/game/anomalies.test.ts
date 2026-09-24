@@ -57,7 +57,7 @@ function digest(text: string) {
 }
 
 function galaxyDigest(galaxy: Galaxy) {
-  return digest(JSON.stringify({ systems: galaxy.systems, config: galaxy.config, backgroundStars: galaxy.backgroundStars }));
+  return digest(JSON.stringify({ systems: galaxy.systems, config: galaxy.config }));
 }
 
 function anomaliesDigest(anomalies: GalaxyAnomalies) {

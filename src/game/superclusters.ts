@@ -2,10 +2,9 @@ import { Delaunay } from 'd3-delaunay';
 import { createRng } from './galaxyGen';
 import { LANIAKEA_SEED, LANIAKEA_NAME, MILKY_WAY_SEED, MILKY_WAY_NAME, LANIAKEA_ATTRACTOR_NAMES, MW_DOT_OFFSET } from './hardcoded';
 import { pickType } from './galaxyConfig';
-import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, BackgroundStar, Rng, AddressComponent, AddressComponentType, GalaxyType } from './types';
+import type { SuperclusterData, SuperclusterAttractor, SuperclusterFilament, SuperclusterDot, Rng, AddressComponent, AddressComponentType, GalaxyType } from './types';
 import { buildAddressComponent } from './types';
 import {
-  BACKGROUND_STAR_COUNT, BACKGROUND_STAR_AREA_X, BACKGROUND_STAR_AREA_Y,
   SC_WORLD_HALF, SC_ATTRACTOR_COUNT, SC_CLUSTER_DOTS_PER_ATTRACTOR,
   SC_CLUSTER_SIGMA, SC_FILAMENT_DOTS_PER_EDGE, SC_FILAMENT_SCATTER,
   SC_ATTRACTOR_LABEL_MAX_DIST, SC_DOT_SEED_MIX,
@@ -309,16 +308,6 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
   let name = skeleton.name;
   const dots = [...streamDots(seed, skeleton, named)];
 
-  const bgRng = createRng((seed ^ 0xdeadbeef) >>> 0);
-  const backgroundStars: BackgroundStar[] = [];
-  for (let i = 0; i < BACKGROUND_STAR_COUNT; i++) {
-    backgroundStars.push({
-      x: (bgRng() - 0.5) * BACKGROUND_STAR_AREA_X,
-      y: (bgRng() - 0.5) * BACKGROUND_STAR_AREA_Y,
-      brightness: bgRng(),
-    });
-  }
-
   if (seed === LANIAKEA_SEED) {
     name = LANIAKEA_NAME;
     for (let i = 0; i < Math.min(attractors.length, LANIAKEA_ATTRACTOR_NAMES.length); i++) {
@@ -326,5 +315,5 @@ function buildSupercluster(seed: number, named: boolean): SuperclusterData {
     }
   }
 
-  return { name, attractors, filaments, dots, backgroundStars, seed };
+  return { name, attractors, filaments, dots, seed };
 }

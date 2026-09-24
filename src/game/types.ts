@@ -41,17 +41,10 @@ export interface StarSystem {
   planets?: Planet[];
 }
 
-export interface BackgroundStar {
-  x: number;
-  y: number;
-  brightness: number;
-}
-
 export type Rng = () => number;
 
 export interface Galaxy {
   systems: StarSystem[];
-  backgroundStars: BackgroundStar[];
   config: GalaxyConfig;
   seed: number;
 }
@@ -85,7 +78,6 @@ export interface SuperclusterData {
   attractors: SuperclusterAttractor[];
   filaments: SuperclusterFilament[];
   dots: SuperclusterDot[];
-  backgroundStars: BackgroundStar[];
   seed: number;
 }
 

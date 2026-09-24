@@ -13,7 +13,6 @@ import {
   UNIVERSE_LATTICE_RADIUS,
   UNIVERSE_SCALE,
   UNIVERSE_SEED,
-  UNIVERSE_SKY_STAR_COUNT,
   UNIVERSE_VOID_CELL,
   UNIVERSE_VOID_JITTER,
   UNIVERSE_WALL_WEIGHT,
@@ -49,7 +48,6 @@ const RADIUS_SQ = UNIVERSE_LATTICE_RADIUS * UNIVERSE_LATTICE_RADIUS;
 
 const chunkCache = new Map<number, UniverseChunk>();
 let anchor: { x: number; y: number; z: number } | null = null;
-let sky: Float32Array | null = null;
 
 function oddInverse(a: number): number {
   let inverse = a;
@@ -363,20 +361,4 @@ export function universeWebWeight(ux: number, uy: number, uz: number): number {
   const fy = origin.y + uy / UNIVERSE_SCALE;
   const fz = origin.z + uz / UNIVERSE_SCALE;
   return combinedWeight(foamWeight(cellCentres(cellOf(fx), cellOf(fy), cellOf(fz)), fx, fy, fz));
-}
-
-export function getUniverseSky(): Float32Array {
-  if (sky) return sky;
-  const skyRng = createRng((UNIVERSE_SEED ^ 0xdeadbeef) >>> 0);
-  const stars = new Float32Array(UNIVERSE_SKY_STAR_COUNT * 4);
-  for (let i = 0; i < UNIVERSE_SKY_STAR_COUNT; i++) {
-    const p = sampleBall(skyRng, 1);
-    const length = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) || 1;
-    stars[i * 4] = p.x / length;
-    stars[i * 4 + 1] = p.y / length;
-    stars[i * 4 + 2] = p.z / length;
-    stars[i * 4 + 3] = skyRng();
-  }
-  sky = stars;
-  return stars;
 }

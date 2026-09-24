@@ -17,6 +17,7 @@ import {
   SC_CIVILIZATION_TINT_FULL_SCALE,
   SC_CIVILIZATION_TINT_MIN_SCALE,
   SC_CIVILIZATION_TINT_STRENGTH,
+  SKY_LOOKS,
 } from '../game/constants';
 import { hasCivilization } from '../game/anomalies';
 import { mixColor, smoothstep } from './anomalies/shared';
@@ -35,7 +36,7 @@ import {
 import { ScaleBar } from './ScaleBar';
 import { createPointerLabel } from './labels';
 import { createSuperclusterDotTexture } from './textures';
-import { BackgroundStars } from './BackgroundStars';
+import { SkyBackdrop } from './SkyBackdrop';
 import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
 import { pushAttractorAddress } from '../game/superclusters';
 import { getSuperclusterCoords } from '../game/universe';
@@ -98,7 +99,6 @@ export function SuperclusterWorld() {
   const scName = useGameStore((s) => s.supercluster.name);
   const scDots = useGameStore((s) => s.supercluster.dots);
   const scAttractors = useGameStore((s) => s.supercluster.attractors);
-  const scBackgroundStars = useGameStore((s) => s.supercluster.backgroundStars);
   const regenerateGalaxy = useGameStore((s) => s.regenerateGalaxy);
   const markDotVisited = useGameStore((s) => s.markDotVisited);
   const setView = useUIStore((s) => s.setView);
@@ -566,7 +566,7 @@ export function SuperclusterWorld() {
 
   return (
     <>
-      <BackgroundStars stars={scBackgroundStars} />
+      <SkyBackdrop themeSeed={scSeed} viewSeed={scSeed} look={SKY_LOOKS.supercluster} orbit={orbitCamera} />
       <pixiContainer ref={worldRef} visible={isReady} />
       <ScaleBar
         camera={camera}

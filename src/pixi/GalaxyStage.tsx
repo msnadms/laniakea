@@ -24,6 +24,7 @@ import {
   GALAXY_ORBIT_SENSITIVITY,
   GALAXY_PICK_SCREEN_PX,
   GALAXY_PICK_MAX_WORLD,
+  SKY_LOOKS,
 } from '../game/constants';
 import { createDisplacementSetup } from './textures';
 import { createRng } from '../game/galaxyGen';
@@ -54,7 +55,7 @@ import { animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
 import { ScaleBar } from './ScaleBar';
 import { buildAddressComponent, type StarSystem } from '../game/types';
-import { BackgroundStars } from './BackgroundStars';
+import { SkyBackdrop } from './SkyBackdrop';
 import { useCodexStore } from '../store/codexStore';
 import { useAuthStore } from '../store/authStore';
 import { saveSystemDiscovery } from '../firebase/discoveries';
@@ -160,7 +161,6 @@ export function GalaxyWorld() {
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
   const galaxyConfig = useGameStore((s) => s.galaxy.config);
   const galaxySystems = useGameStore((s) => s.galaxy.systems);
-  const galaxyBackgroundStars = useGameStore((s) => s.galaxy.backgroundStars);
   const galaxyAnomalies = useGameStore((s) => s.galaxyAnomalies);
   const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
   const supercluster = useGameStore((s) => s.supercluster);
@@ -534,7 +534,7 @@ export function GalaxyWorld() {
 
   return (
     <>
-      <BackgroundStars stars={galaxyBackgroundStars} />
+      <SkyBackdrop themeSeed={galaxySeed} viewSeed={galaxySeed} look={SKY_LOOKS.galaxy} orbit={orbitCamera} />
       <pixiContainer ref={worldRef} visible={isReady}>
         <pixiContainer ref={galaxyRootRef} sortableChildren>
           {starProjections.map(({ system, projected }) => (

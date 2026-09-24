@@ -8,7 +8,6 @@ import { useCodexStore } from '../store/codexStore';
 import { useFlightStore } from '../store/flightStore';
 import {
   getUniverseChunk,
-  getUniverseSky,
   isUniverseChunkCached,
   locateSupercluster,
   universeChunksNear,
@@ -32,6 +31,9 @@ import {
   SCAN_SHELL_DENIED_COLOR,
   SCAN_UNIVERSE_MAX_RADIUS,
   SCAN_UNIVERSE_MAX_TARGETS,
+  SKY_LOOKS,
+  SKY_UNIVERSE_CELL_FOCAL,
+  UNIVERSE_SEED,
 } from '../game/constants';
 import type { FlyCamera, UniverseChunk } from '../game/types';
 import { createSuperclusterDotTexture } from './textures';
@@ -42,7 +44,6 @@ import { useFlyCamera } from './useFlyCamera';
 import {
   createUniverseCamera,
   faceTarget,
-  projectSkyDirection,
   projectUniverseField,
   projectUniverseMark,
   projectUniversePoint,
@@ -52,6 +53,7 @@ import {
 import type { ProjectedPoint } from './projection';
 import { drawCrosshair, drawVisitedRings } from './dotOverlays';
 import { createUniverseMinimap } from './universeMinimap';
+import { createSky, type SkyView } from './sky';
 import { createUniverseAnomalyDebug } from './anomalyDebug';
 import { useScanStore } from '../store/scanStore';
 import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
@@ -159,7 +161,6 @@ export function UniverseWorld() {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
     const stage = app.stage;
-    const sky = getUniverseSky();
 
     const texture = createSuperclusterDotTexture();
     const dotsContainer = new Container();
@@ -187,12 +188,9 @@ export function UniverseWorld() {
     world.addChild(scanOverlay.node);
     world.addChild(hoverLayer);
 
-    const skyContainer = new Container();
-    const skyDim = new Graphics();
-    const skyBright = new Graphics();
-    skyContainer.addChild(skyDim);
-    skyContainer.addChild(skyBright);
-    stage.addChildAt(skyContainer, 0);
+    const sky = createSky(app.renderer, UNIVERSE_SEED, SKY_LOOKS.universe);
+    const skyView: SkyView = { cosYaw: 1, sinYaw: 0, cosPitch: 1, sinPitch: 0, focal: 1, cellFocal: SKY_UNIVERSE_CELL_FOCAL, orbitYaw: 0, orbitTilt: 0 };
+    stage.addChildAt(sky.node, 0);
 
     const speedText = new Text({
       text: '',
@@ -426,16 +424,12 @@ export function UniverseWorld() {
     };
 
     const drawSky = (width: number, height: number) => {
-      skyDim.clear();
-      skyBright.clear();
-      for (let s = 0; s < sky.length; s += 4) {
-        if (!projectSkyDirection(sky[s], sky[s + 1], sky[s + 2], basis, projected)) continue;
-        if (sky[s + 3] > 0.7) skyBright.circle(projected.x, projected.y, 1.0);
-        else skyDim.circle(projected.x, projected.y, 0.6);
-      }
-      skyDim.fill({ color: 0xffffff });
-      skyBright.fill({ color: 0xffffff });
-      skyContainer.position.set(width / 2, height / 2);
+      skyView.cosYaw = basis.cosYaw;
+      skyView.sinYaw = basis.sinYaw;
+      skyView.cosPitch = basis.cosPitch;
+      skyView.sinPitch = basis.sinPitch;
+      skyView.focal = basis.focal;
+      sky.render(width, height, skyView);
     };
 
     const drawField = () => {
@@ -519,8 +513,7 @@ export function UniverseWorld() {
         lastHeight = height;
         drawSky(width, height);
       }
-      skyDim.alpha = 0.2 + Math.abs(Math.sin(elapsedSecs * 1.5)) * 0.4;
-      skyBright.alpha = 0.45 + Math.abs(Math.sin(elapsedSecs * 2.0 + 1.0)) * 0.45;
+      sky.twinkle(elapsedSecs);
       advanceScan();
       drawShell();
       scanOverlay.update(basis, screenCamera.current.scale, elapsedSecs);
@@ -614,8 +607,8 @@ export function UniverseWorld() {
       visitedGfx.destroy();
       currentGfx.destroy();
       hoverLayer.destroy({ children: true });
-      stage.removeChild(skyContainer);
-      skyContainer.destroy({ children: true });
+      stage.removeChild(sky.node);
+      sky.destroy();
       stage.removeChild(speedText);
       speedText.destroy();
       stage.removeChild(minimap.container);

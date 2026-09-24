@@ -1,9 +1,6 @@
-import type { Galaxy, StarSystem, StarType, StarPopulation, BackgroundStar, Rng } from './types';
+import type { Galaxy, StarSystem, StarType, StarPopulation, Rng } from './types';
 import { MILKY_WAY_SEED, NEARBY_SYSTEMS_DATA, MILKY_WAY_NEBULA_COLOR_INDEX, MILKY_WAY_INNER_NEBULA_COLOR_INDEX } from './hardcoded';
 import {
-  BACKGROUND_STAR_COUNT,
-  BACKGROUND_STAR_AREA_X,
-  BACKGROUND_STAR_AREA_Y,
   STAR_SIZE_MULTIPLIER,
   DISK_SIZE_SCALE,
   NUM_BROWN_DWARFS,
@@ -206,12 +203,6 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
     };
   });
 
-  const backgroundStars: BackgroundStar[] = Array.from({ length: BACKGROUND_STAR_COUNT }, () => ({
-    x: (rng() - 0.5) * BACKGROUND_STAR_AREA_X,
-    y: (rng() - 0.5) * BACKGROUND_STAR_AREA_Y,
-    brightness: rng(),
-  }));
-
   if (seed === MILKY_WAY_SEED) {
     config.nebulaColors = NEBULA_COLORS[MILKY_WAY_NEBULA_COLOR_INDEX];
     config.innerNebulaColors = INNER_NEBULA_COLORS[MILKY_WAY_INNER_NEBULA_COLOR_INDEX];
@@ -227,5 +218,5 @@ export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): 
     }
   }
 
-  return { systems, backgroundStars, config, seed };
+  return { systems, config, seed };
 }

@@ -192,15 +192,45 @@ export const DISK_SIZE_SCALE = 0.6;
 export const NUM_BROWN_DWARFS = 3;
 
 
-// ─── Background starfield ────────────────────────────────────────────────────
+// ─── Sky backdrop ────────────────────────────────────────────────────────────
 
-// Total number of decorative background stars generated.
-export const BACKGROUND_STAR_COUNT = 4800;
+// Nebula palettes for the sky: three cloud colours and a pale emission core, as 0–1 RGB.
+export const SKY_PALETTES: readonly (readonly [number, number, number])[][] = [
+  [[0.42, 0.16, 0.62], [0.12, 0.26, 0.72], [0.06, 0.52, 0.52], [0.85, 0.72, 1.0]],
+  [[0.08, 0.22, 0.60], [0.05, 0.50, 0.62], [0.12, 0.55, 0.30], [0.70, 0.95, 1.0]],
+  [[0.58, 0.12, 0.45], [0.32, 0.12, 0.65], [0.12, 0.30, 0.75], [1.0, 0.76, 0.92]],
+  [[0.05, 0.45, 0.42], [0.10, 0.52, 0.25], [0.35, 0.15, 0.60], [0.80, 1.0, 0.90]],
+  [[0.40, 0.12, 0.55], [0.60, 0.18, 0.32], [0.55, 0.36, 0.12], [1.0, 0.86, 0.72]],
+  [[0.10, 0.12, 0.50], [0.36, 0.14, 0.58], [0.08, 0.50, 0.35], [0.80, 0.86, 1.0]],
+];
 
-// Width and height of the area background stars are scattered across.
-// Should be larger than the visible screen so stars fill the view while panning.
-export const BACKGROUND_STAR_AREA_X = 5000;
-export const BACKGROUND_STAR_AREA_Y = 4000;
+// How much nebula, galactic band and star density each view's sky carries.
+export const SKY_LOOKS = {
+  universe: { nebula: 0.6, band: 0, stars: 0.75 },
+  supercluster: { nebula: 0.65, band: 0, stars: 0.8 },
+  galaxy: { nebula: 0.5, band: 0.4, stars: 0.95 },
+  system: { nebula: 1, band: 1, stars: 1 },
+} as const;
+
+// Background colour the nebula is laid over (matches the app background).
+export const SKY_BASE_COLOR: readonly [number, number, number] = [0.02, 0.031, 0.063];
+
+// Focal length in screen px of the flat views' sky; long enough that the sphere reads flat.
+export const SKY_FLAT_FOCAL = 1400;
+
+// Focal length the universe sky's star cells are laid out at, so a resize does not reshuffle them.
+export const SKY_UNIVERSE_CELL_FOCAL = 770;
+
+// The nebula renders at this fraction of screen resolution and is upscaled; it has no hard edges.
+export const SKY_NEBULA_RESOLUTION = 0.5;
+
+// Star blink: angular speed in radians per second (each star runs at 0.5–1.5x) and the deepest dip in brightness.
+export const SKY_TWINKLE_SPEED = 1.6;
+export const SKY_TWINKLE_DEPTH = 0.45;
+
+// Screen px the system-view sky is rendered beyond each edge, and how far the camera drags it.
+export const SKY_PARALLAX_MARGIN = 48;
+export const SKY_PARALLAX_FACTOR = 0.02;
 
 // ─── Nebula ──────────────────────────────────────────────────────────────────
 
@@ -341,7 +371,6 @@ export const UNIVERSE_WALL_WEIGHT = 0.3;
 export const UNIVERSE_FILAMENT_WIDTH = 900;
 export const UNIVERSE_ANCHOR_RADIUS = 2500;
 export const UNIVERSE_ANCHOR_SAMPLES = 4000;
-export const UNIVERSE_SKY_STAR_COUNT = 2600;
 
 export const UNIVERSE_START_BACKOFF = 120;
 export const UNIVERSE_FOV = 70 * Math.PI / 180;

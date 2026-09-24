@@ -57,7 +57,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleOrbitRings: () => set((s) => ({ showOrbitRings: !s.showOrbitRings })),
   showHUD: true,
   toggleHUD: () => set((s) => ({ showHUD: !s.showHUD })),
-  showScanlines: true,
+  showScanlines: false,
   toggleScanlines: () => set((s) => ({ showScanlines: !s.showScanlines })),
   showAnomalyDebug: false,
   toggleAnomalyDebug: () => set((s) => ({ showAnomalyDebug: !s.showAnomalyDebug })),
