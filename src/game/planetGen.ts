@@ -2,6 +2,7 @@ import { createRng } from "./galaxyGen";
 import type { Planet, StarType, ZoneType } from "./types";
 import type { AnomalyKind } from "./anomalies";
 import { SOL_SEED, SOL_SYSTEM_LAYOUT, SOL_SYSTEM_PLANETS } from "./hardcoded";
+import { BLACK_HOLE_CLEARANCE } from "./constants";
 
 export interface MoonLayout {
   dist: number;
@@ -85,6 +86,15 @@ function ringsInZones(numRings: number, zones: ReadonlySet<ZoneType>): number {
   return Array.from({ length: numRings }, (_, ring) => getPlanetZone(ring, numRings)).filter((zone) => zones.has(zone)).length;
 }
 
+function clearBlackHole(planets: PlanetLayout[]) {
+  const first = planets[0];
+  if (!first) return;
+  const reach = Math.max(first.radius * 2.4, ...first.moons.map((moon) => moon.dist + moon.radius));
+  const stretch = (BLACK_HOLE_CLEARANCE + reach) / first.orbitRadius;
+  if (stretch <= 1) return;
+  for (const planet of planets) planet.orbitRadius *= stretch;
+}
+
 function settledRings(numRings: number): ReadonlySet<number> {
   const rings = Array.from({ length: numRings }, (_, ring) => ring);
   const habitable = rings.filter((ring) => getPlanetZone(ring, numRings) === 'habitable');
@@ -146,6 +156,8 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   // asteroidSeed is isolated from the planet RNG so the renderer never has to
   // derive a seed transform itself, and a second renderer always gets the same belt.
   const asteroidSeed = (seed ^ 0xdeadbeef) >>> 0;
+
+  if (anomalyKind === 'blackHole') clearBlackHole(planets);
 
   const alderson = anomalyKind === 'aldersonDisk';
   const dismantledRings = alderson ? ringsInZones(numRings, DISMANTLED_ZONES) : 0;

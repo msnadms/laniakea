@@ -2,6 +2,7 @@ import type { Container, Texture } from 'pixi.js';
 import type { Anomaly } from '../../game/anomalies';
 import type { SurfaceJob } from '../planetSurfaces';
 import type { ProjectionBasis } from '../projection';
+import type { SkyLens } from '../sky';
 
 export interface AnomalyVisualContext {
   anomaly: Anomaly;
@@ -10,6 +11,7 @@ export interface AnomalyVisualContext {
   innermostOrbit: number;
   innermostClearance: number;
   planetExtent: number;
+  skyLens: { readonly current: SkyLens | null };
   onSelect: () => void;
 }
 

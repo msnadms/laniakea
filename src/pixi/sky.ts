@@ -26,8 +26,20 @@ export interface SkyView {
   orbitTilt: number;
 }
 
+export interface SkyLens {
+  nebula: Texture;
+  stars: Texture;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  seconds: number;
+}
+
 export interface Sky {
   node: Container;
+  nebulaTexture(): Texture | null;
+  starTexture(): Texture | null;
   render(width: number, height: number, view: SkyView): void;
   twinkle(seconds: number): void;
   destroy(): void;
@@ -600,7 +612,7 @@ function createPass(theme: SkyTheme, look: SkyLook, pass: 0 | 1) {
     texture?.destroy(true);
   };
 
-  return { sprite, render, destroy };
+  return { sprite, render, destroy, texture: () => texture };
 }
 
 export function createSky(renderer: Renderer, seed: number, look: SkyLook): Sky {
@@ -615,6 +627,8 @@ export function createSky(renderer: Renderer, seed: number, look: SkyLook): Sky 
 
   return {
     node,
+    nebulaTexture: nebula.texture,
+    starTexture: stars.texture,
     render(width, height, view) {
       nebula.render(renderer, width, height, view, SKY_NEBULA_RESOLUTION);
       stars.render(renderer, width, height, view, 1);

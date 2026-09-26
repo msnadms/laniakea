@@ -531,6 +531,8 @@ export const ANOMALY_BRAIN_MIN_DYSON_SPHERES = 2;
 export const ANOMALY_BLACK_HOLE_REACH = 0.12 * GALAXY_RADIUS;
 export const ANOMALY_BLACK_HOLE_CHANCE = 0.012;
 export const ANOMALY_BLACK_HOLE_ACTIVE_CHANCE = 0.35;
+export const BLACK_HOLE_HORIZON_RADIUS = 100;
+export const BLACK_HOLE_CLEARANCE = 9.5 * BLACK_HOLE_HORIZON_RADIUS;
 
 export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> = {
   blackHole: [1, 1],

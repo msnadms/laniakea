@@ -1,17 +1,26 @@
 import { useApplication } from '@pixi/react';
 import { Circle, Container, Graphics, Particle, ParticleContainer, ParticleShader, Rectangle, Sprite, Texture, Ticker } from 'pixi.js';
-import { useEffect, useRef } from 'react';
-import { CAMERA_INITIAL_SCALE, SKY_LOOKS, SYSTEM_CAMERA_MIN_SCALE } from '../game/constants';
+import { useCallback, useEffect, useRef } from 'react';
+import type { FederatedPointerEvent } from 'pixi.js';
+import {
+  CAMERA_INITIAL_SCALE,
+  GALAXY_ORBIT_EASE,
+  GALAXY_ORBIT_SENSITIVITY,
+  SKY_LOOKS,
+  SYSTEM_CAMERA_MIN_SCALE,
+} from '../game/constants';
 import { createRng } from '../game/galaxyGen';
 import { generateSystemLayout, MOON_K, ORBITAL_K } from '../game/planetGen';
 import type { PlanetLayout } from '../game/planetGen';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import { SkyBackdrop } from './SkyBackdrop';
+import type { SkyLens } from './sky';
 import { ScaleBar } from './ScaleBar';
 import { createMoonOrbitGraphics, createSystemOrbitGraphics } from './systemOrbitGraphics';
 import {
   addSystemPoints,
+  clampGalaxyTilt,
   createSystemCamera,
   getSystemExtent,
   orbitPoint,
@@ -33,6 +42,7 @@ import {
 import { createBodyGeometry, createPlanetBody, createSurfaceTexture, type BodyLook, type PlanetBody } from './planetBody';
 import { paintEcumenopolis, paintGiantPlanet, paintHabitablePlanet, paintMoon, paintRockyPlanet, type SurfaceJob } from './planetSurfaces';
 import { useCamera } from './useCamera';
+import { isOrbitGesture, useOrbit, type OrbitConfig } from './useOrbit';
 import { useZoomController } from './useZoomController';
 import { createAnomalyVisual } from './anomalies';
 import { createCityLights, createSettlementLights, type CityLights } from './ecumenopolis';
@@ -73,6 +83,14 @@ const ASTEROID_COLORS = [0x888888, 0x999999, 0xaaaaaa, 0x776655, 0x887766, 0x998
 const ASTEROID_SIZE_SCALE = 1.15;
 const SYSTEM_NICE_VALUES = [1, 2, 5, 10, 20, 30, 60];
 const SURFACE_BUDGET_MS = 5;
+const INTRO_TILT_OFFSET = 8 * Math.PI / 180;
+
+const SYSTEM_ORBIT: OrbitConfig = {
+  createCamera: () => createSystemCamera({ planets: [] }),
+  clampTilt: clampGalaxyTilt,
+  sensitivity: GALAXY_ORBIT_SENSITIVITY,
+  ease: GALAXY_ORBIT_EASE,
+};
 const RING_BANDS = 28;
 const RING_INNER_FRACTION = 0.56;
 
@@ -256,7 +274,11 @@ export function SolarSystem() {
   const showOrbitRings = useUIStore((state) => state.showOrbitRings);
   const showOrbitRingsRef = useRef(showOrbitRings);
   const orbitGfxRef = useRef<Graphics[]>([]);
-  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE);
+  const { orbitCamera: viewOrbit, didOrbit } = useOrbit(SYSTEM_ORBIT);
+  const skyLens = useRef<SkyLens | null>(null);
+  const publishSkyLens = useCallback((lens: SkyLens | null) => { skyLens.current = lens; }, []);
+  const shouldPan = useCallback((event: FederatedPointerEvent) => !isOrbitGesture(event), []);
+  const { camera, isReady, hasDragged } = useCamera(worldRef, CAMERA_INITIAL_SCALE - 0.3, SYSTEM_CAMERA_MIN_SCALE, shouldPan);
 
   useEffect(() => {
     showOrbitRingsRef.current = showOrbitRings;
@@ -294,8 +316,9 @@ export function SolarSystem() {
           ? clearanceBody.orbitRadius - Math.max(clearanceBody.radius * 2.4, ...clearanceBody.moons.map((moon) => moon.dist + moon.radius))
           : planetExtent,
         planetExtent,
+        skyLens,
         onSelect: () => {
-          if (hasDragged.current) return;
+          if (hasDragged.current || didOrbit.current) return;
           useUIStore.getState().setSelectedPlanet(null);
           useUIStore.getState().setAnomalyPanelOpen(true);
         },
@@ -303,11 +326,10 @@ export function SolarSystem() {
       : null;
     const projectionLayout = { planets: layout.planets, extraExtent: anomalyVisual?.extent };
     const systemCamera = createSystemCamera(projectionLayout);
-    const targetTilt = systemCamera.tilt;
-    const targetTiltCos = Math.cos(targetTilt);
-    const introTilt = targetTilt - 8 * Math.PI / 180;
+    systemCamera.yaw = viewOrbit.current.yaw;
+    systemCamera.tilt = viewOrbit.current.tilt - INTRO_TILT_OFFSET;
     const orbitCamera = { ...systemCamera };
-    systemCamera.tilt = introTilt;
+    const moonOrbitTiltCos = Math.cos(orbitCamera.tilt);
     const projectionBasis = updateProjectionBasis(systemCamera);
     const systemExtent = getSystemExtent(projectionLayout);
     const systemRoot = new Container();
@@ -317,8 +339,8 @@ export function SolarSystem() {
     depthScene.sortableChildren = true;
     systemRoot.addChild(nebulaLayer, depthScene, screenEffectLayer);
     const planets: PlanetState[] = [];
-    const systemOrbitGfx = createSystemOrbitGraphics(layout.planets, orbitCamera);
-    const allOrbitGfx = [...systemOrbitGfx];
+    let systemOrbitGfx = createSystemOrbitGraphics(layout.planets, orbitCamera);
+    const moonOrbitGfx: Graphics[] = [];
     const bodyTextures: Texture[] = [];
     const bodies: PlanetBody[] = [];
     const bodyGeometry = createBodyGeometry();
@@ -406,7 +428,7 @@ export function SolarSystem() {
         planet.moonOrbitFar = moonOrbits.far;
         planet.moonOrbitNear = moonOrbits.near;
         planet.moonOrbitRadius = Math.max(...planetLayout.moons.map((moon) => moon.dist));
-        allOrbitGfx.push(moonOrbits.far, moonOrbits.near);
+        moonOrbitGfx.push(moonOrbits.far, moonOrbits.near);
         depthScene.addChild(moonOrbits.far, moonOrbits.near);
 
         for (let moonIndex = 0; moonIndex < planetLayout.moons.length; moonIndex++) {
@@ -438,6 +460,7 @@ export function SolarSystem() {
         planetVisual.eventMode = 'static';
         planetVisual.cursor = 'pointer';
         planetVisual.on('pointerdown', (event) => {
+          if (isOrbitGesture(event)) return;
           event.stopPropagation();
           useUIStore.getState().setAnomalyPanelOpen(false);
           useUIStore.getState().setSelectedPlanet(planetData.name);
@@ -448,8 +471,8 @@ export function SolarSystem() {
       planets.push(planet);
     }
 
-    for (const gfx of allOrbitGfx) gfx.visible = showOrbitRingsRef.current;
-    orbitGfxRef.current = allOrbitGfx;
+    for (const gfx of [...systemOrbitGfx, ...moonOrbitGfx]) gfx.visible = showOrbitRingsRef.current;
+    orbitGfxRef.current = [...systemOrbitGfx, ...moonOrbitGfx];
 
     const asteroidBelt = layout.asteroidGapIdx === null
       ? null
@@ -494,8 +517,16 @@ export function SolarSystem() {
     world.addChildAt(systemRoot, 0);
 
     function updateProjectionPresentation() {
-      const tiltScale = projectionBasis.cosTilt / targetTiltCos;
-      for (const gfx of systemOrbitGfx) gfx.scale.y = tiltScale;
+      if (systemCamera.tilt !== orbitCamera.tilt) {
+        orbitCamera.tilt = systemCamera.tilt;
+        for (const gfx of systemOrbitGfx) gfx.destroy();
+        systemOrbitGfx = createSystemOrbitGraphics(layout.planets, orbitCamera);
+        for (const gfx of systemOrbitGfx) {
+          gfx.visible = showOrbitRingsRef.current;
+          depthScene.addChild(gfx);
+        }
+        orbitGfxRef.current = [...systemOrbitGfx, ...moonOrbitGfx];
+      }
       asteroidBelt?.update(projectionBasis, asteroidSpin);
     }
 
@@ -517,7 +548,7 @@ export function SolarSystem() {
         if (planet.moonOrbitFar && planet.moonOrbitNear) {
           planet.moonOrbitFar.position.set(planet.projected.x, planet.projected.y);
           planet.moonOrbitNear.position.set(planet.projected.x, planet.projected.y);
-          const tiltScale = projectionBasis.cosTilt / targetTiltCos;
+          const tiltScale = projectionBasis.cosTilt / moonOrbitTiltCos;
           planet.moonOrbitFar.scale.set(planet.projected.scale, planet.projected.scale * tiltScale);
           planet.moonOrbitNear.scale.set(planet.projected.scale, planet.projected.scale * tiltScale);
           const moonDepth = planet.moonOrbitRadius * projectionBasis.sinTilt;
@@ -560,7 +591,8 @@ export function SolarSystem() {
       elapsed += dt;
       const introProgress = Math.min(1, elapsed / 0.9);
       const easedIntro = 1 - Math.pow(1 - introProgress, 3);
-      systemCamera.tilt = introTilt + (targetTilt - introTilt) * easedIntro;
+      systemCamera.yaw = viewOrbit.current.yaw;
+      systemCamera.tilt = viewOrbit.current.tilt - INTRO_TILT_OFFSET * (1 - easedIntro);
       updateProjectionBasis(systemCamera, projectionBasis);
       updateProjectionPresentation();
       sunSprite?.scale.set(sunBaseScale * (1 + Math.sin(elapsed * 0.9) * 0.07));
@@ -587,11 +619,11 @@ export function SolarSystem() {
       flatDetail.destroy(true);
       for (const texture of bodyTextures) texture.destroy(true);
     };
-  }, [system, isInitialised, hasDragged]);
+  }, [system, isInitialised, hasDragged, didOrbit, viewOrbit]);
 
   return (
     <>
-      <SkyBackdrop themeSeed={galaxySeed} viewSeed={system?.seed ?? galaxySeed} look={SKY_LOOKS.system} camera={camera} />
+      <SkyBackdrop themeSeed={galaxySeed} viewSeed={system?.seed ?? galaxySeed} look={SKY_LOOKS.system} camera={camera} orbit={viewOrbit} onLens={publishSkyLens} />
       <pixiContainer ref={worldRef} />
       <ScaleBar camera={camera} unitsPerWorldPx={1 / 180} unit="Light Minutes" niceValues={SYSTEM_NICE_VALUES} />
     </>
