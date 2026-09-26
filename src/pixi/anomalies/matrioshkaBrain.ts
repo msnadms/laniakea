@@ -39,7 +39,7 @@ function dot(a: Point3D, b: Point3D): number {
 
 export function createMatrioshkaBrain({ anomaly, sunRadius, innermostOrbit, onSelect }: AnomalyVisualContext): AnomalyVisual {
   const rng = anomalyVisualRng(anomaly);
-  const innerRadius = sunRadius * 1.3;
+  const innerRadius = Math.min(sunRadius * 1.3, innermostOrbit * 0.55);
   const outerRadius = Math.max(innermostOrbit * 0.8, innerRadius * 1.35);
   const shellCount = 3 + Math.floor(rng() * 3);
   const radii = Array.from({ length: shellCount }, (_, i) => innerRadius * Math.pow(outerRadius / innerRadius, i / (shellCount - 1)));

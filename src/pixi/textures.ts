@@ -1,5 +1,5 @@
 import { CanvasSource, Container, DisplacementFilter, Rectangle, Sprite, Texture } from 'pixi.js';
-import { GALAXY_RADIUS, SC_DOT_TEXTURE_RADIUS } from '../game/constants';
+import { GALAXY_RADIUS, SC_DOT_TEXTURE_RADIUS, SC_GLOW_CORE_FRACTION, SC_GLOW_TEXTURE_RADIUS } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
 
 function colorToRgb(color: number) {
@@ -327,16 +327,21 @@ export function createUniverseStarTexture(): Texture {
 }
 
 export function createSuperclusterDotTexture(): Texture {
-  const radius = SC_DOT_TEXTURE_RADIUS;
+  const radius = SC_GLOW_TEXTURE_RADIUS;
   const size = radius * 2 + 4;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const center = size / 2;
+  const core = SC_GLOW_CORE_FRACTION;
   const gradient = ctx.createRadialGradient(center, center, 0, center, center, radius);
   gradient.addColorStop(0, 'rgba(255,255,255,1)');
-  gradient.addColorStop(0.72, 'rgba(255,255,255,1)');
+  gradient.addColorStop(core * 0.45, 'rgba(255,255,255,1)');
+  gradient.addColorStop(core, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(core * 1.6, 'rgba(255,255,255,0.22)');
+  gradient.addColorStop(core * 2.4, 'rgba(255,255,255,0.09)');
+  gradient.addColorStop(0.7, 'rgba(255,255,255,0.025)');
   gradient.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = gradient;
   ctx.beginPath();

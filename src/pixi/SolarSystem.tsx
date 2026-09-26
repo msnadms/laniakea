@@ -7,6 +7,8 @@ import {
   GALAXY_ORBIT_EASE,
   GALAXY_ORBIT_SENSITIVITY,
   SKY_LOOKS,
+  SUN_RADIUS_BASE,
+  SUN_RADIUS_PER_SIZE,
   SYSTEM_CAMERA_MIN_SCALE,
 } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
@@ -302,7 +304,7 @@ export function SolarSystem() {
     const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind, populated, anomaly?.living);
     const isBrownDwarf = system.starType === 'L';
     const isNeutronStar = system.starType === 'N';
-    const sunRadius = system.size * 120 * (isBrownDwarf ? 0.5 : isNeutronStar ? 0.8 : 1);
+    const sunRadius = isBrownDwarf ? system.size * 60 : isNeutronStar ? system.size * 96 : SUN_RADIUS_BASE + system.size * SUN_RADIUS_PER_SIZE;
     const planetExtent = getSystemExtent(layout);
     const innermost = layout.planets[0];
     const clearanceBody = layout.diskRim ?? innermost;

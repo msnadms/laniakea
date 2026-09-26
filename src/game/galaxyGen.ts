@@ -11,7 +11,7 @@ import {
   POPULATION_SCALE_HEIGHT,
   SPHEROID_FLOOR,
 } from './constants';
-import { GalaxyConfig, type GalaxyOverrides } from './galaxyConfig';
+import { drawGalaxyLook, GalaxyConfig, type GalaxyOverrides } from './galaxyConfig';
 import { sampleStar, edgeStar } from './galaxyShapes';
 
 // Fast seedable PRNG (mulberry32). Returns a function that produces [0, 1) floats.
@@ -137,6 +137,11 @@ function sampleHeight(rng: Rng, population: StarPopulation, planeRadius: number)
 }
 
 
+
+export function galaxyNebulaColors(seed: number): number[] {
+  if (seed === MILKY_WAY_SEED) return NEBULA_COLORS[MILKY_WAY_NEBULA_COLOR_INDEX];
+  return drawGalaxyLook(createRng(seed)).nebulaColors;
+}
 
 export function generateGalaxy(seed = Date.now(), overrides?: GalaxyOverrides): Galaxy {
   const rng = createRng(seed);

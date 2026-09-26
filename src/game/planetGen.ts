@@ -2,7 +2,7 @@ import { createRng } from "./galaxyGen";
 import type { Planet, StarType, ZoneType } from "./types";
 import type { AnomalyKind } from "./anomalies";
 import { SOL_SEED, SOL_SYSTEM_LAYOUT, SOL_SYSTEM_PLANETS } from "./hardcoded";
-import { BLACK_HOLE_CLEARANCE } from "./constants";
+import { BLACK_HOLE_CLEARANCE, SUN_ORBIT_CLEARANCE } from "./constants";
 
 export interface MoonLayout {
   dist: number;
@@ -157,6 +157,7 @@ export function generateSystemLayout(seed: number, starType?: StarType, anomalyK
   // derive a seed transform itself, and a second renderer always gets the same belt.
   const asteroidSeed = (seed ^ 0xdeadbeef) >>> 0;
 
+  if (!isBrownDwarf && !isNeutronStar) for (const planet of planets) planet.orbitRadius += SUN_ORBIT_CLEARANCE;
   if (anomalyKind === 'blackHole') clearBlackHole(planets);
 
   const alderson = anomalyKind === 'aldersonDisk';

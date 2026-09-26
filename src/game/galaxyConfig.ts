@@ -43,6 +43,39 @@ export function pickType(rng: Rng): GalaxyType {
     return 'spiral';
 }
 
+export interface GalaxyLook {
+    type: GalaxyType;
+    numArms: number;
+    galaxyEllipse: number;
+    spiralTwist: number;
+    numStars: number;
+    innerNebulaColors: number[];
+    nebulaColors: number[];
+}
+
+export function drawGalaxyLook(rng: Rng, overrides?: GalaxyOverrides): GalaxyLook {
+    const randInt = (bound: number) => Math.floor(rng() * bound);
+    const randRange = (min: number, max: number) => min + rng() * (max - min);
+
+    const type = overrides?.type ?? pickType(rng);
+    let numArms = overrides?.numArms ?? (randInt(4) + 2); // 2 to 5
+    if (type === 'barred') {
+        // Preserve the historical RNG draw so changing the morphology does
+        // not also reroll the rest of a seeded galaxy's configuration.
+        if (overrides?.numArms === undefined) randInt(2);
+        numArms = 2;
+    }
+    // Mild in-plane ellipticity only; inclination comes from the camera tilt.
+    const galaxyEllipse = rng() * 0.08 + 0.92;
+    const spiralTwist = type === 'barred'
+        ? randRange(BARRED_TWIST_MIN, BARRED_TWIST_MAX)
+        : (SPIRAL_TWISTS[numArms] ?? 2.0);
+    const numStars = randInt(300) + 400; // 400 to 699
+    const innerNebulaColors = INNER_NEBULA_COLORS[randInt(INNER_NEBULA_COLORS.length)];
+    const nebulaColors = NEBULA_COLORS[randInt(NEBULA_COLORS.length)];
+    return { type, numArms, galaxyEllipse, spiralTwist, numStars, innerNebulaColors, nebulaColors };
+}
+
 export class GalaxyConfig {
     type: GalaxyType;
     numArms: number;
@@ -63,22 +96,14 @@ export class GalaxyConfig {
         const randInt = (bound: number) => Math.floor(rng() * bound);
         const randRange = (min: number, max: number) => min + rng() * (max - min);
 
-        this.type = overrides?.type ?? pickType(rng);
-        this.numArms = overrides?.numArms ?? (randInt(4) + 2); // 2 to 5
-        if (this.type === 'barred') {
-            // Preserve the historical RNG draw so changing the morphology does
-            // not also reroll the rest of a seeded galaxy's configuration.
-            if (overrides?.numArms === undefined) randInt(2);
-            this.numArms = 2;
-        }
-        // Mild in-plane ellipticity only; inclination comes from the camera tilt.
-        this.galaxyEllipse = rng() * 0.08 + 0.92;
-        this.spiralTwist = this.type === 'barred'
-            ? randRange(BARRED_TWIST_MIN, BARRED_TWIST_MAX)
-            : (SPIRAL_TWISTS[this.numArms] ?? 2.0);
-        this.numStars = randInt(300) + 400; // 400 to 699
-        this.innerNebulaColors = INNER_NEBULA_COLORS[randInt(INNER_NEBULA_COLORS.length)];
-        this.nebulaColors = NEBULA_COLORS[randInt(NEBULA_COLORS.length)];
+        const look = drawGalaxyLook(rng, overrides);
+        this.type = look.type;
+        this.numArms = look.numArms;
+        this.galaxyEllipse = look.galaxyEllipse;
+        this.spiralTwist = look.spiralTwist;
+        this.numStars = look.numStars;
+        this.innerNebulaColors = look.innerNebulaColors;
+        this.nebulaColors = look.nebulaColors;
         this.baseAngleOffset = 2 * Math.PI * rng();
         this.orientation = 2 * Math.PI * rng();
         this.barAngle = 2 * Math.PI * rng();

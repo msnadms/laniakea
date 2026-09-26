@@ -368,6 +368,10 @@ export const SC_DEPTH_SIZE = 0.22;
 // Radius the shared dot sprite is rasterised at, in texture pixels.
 export const SC_DOT_TEXTURE_RADIUS = 16;
 
+// Supercluster dots draw as a bright core inside a soft halo; the core is the dot's tier radius.
+export const SC_GLOW_TEXTURE_RADIUS = 48;
+export const SC_GLOW_CORE_FRACTION = 0.25;
+
 export const UNIVERSE_SEED = 0x6a09e667;
 // Generation lengths are lattice units, frozen so no acceptance moves; UNIVERSE_SCALE turns them into Mly.
 export const UNIVERSE_VOID_CELL = 11_000;
@@ -533,6 +537,10 @@ export const ANOMALY_BLACK_HOLE_CHANCE = 0.012;
 export const ANOMALY_BLACK_HOLE_ACTIVE_CHANCE = 0.35;
 export const BLACK_HOLE_HORIZON_RADIUS = 100;
 export const BLACK_HOLE_CLEARANCE = 9.5 * BLACK_HOLE_HORIZON_RADIUS;
+
+export const SUN_RADIUS_BASE = 160;
+export const SUN_RADIUS_PER_SIZE = 160;
+export const SUN_ORBIT_CLEARANCE = 450;
 
 export const ANOMALY_INTEGRITY: Record<AnomalyKind, readonly [number, number]> = {
   blackHole: [1, 1],

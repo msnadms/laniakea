@@ -10,7 +10,8 @@ import { buildAddressComponent, type SuperclusterDot } from '../game/types';
 import { useCamera } from './useCamera';
 import {
   SC_CAMERA_INITIAL_SCALE,
-  SC_DOT_TEXTURE_RADIUS,
+  SC_GLOW_TEXTURE_RADIUS,
+  SC_GLOW_CORE_FRACTION,
   SC_WORLD_HALF,
   SC_WORLD_HALF_MLY,
   SC_CIVILIZATION_TINT,
@@ -36,6 +37,7 @@ import {
 import { ScaleBar } from './ScaleBar';
 import { createPointerLabel } from './labels';
 import { createSuperclusterDotTexture } from './textures';
+import { galaxyNebulaColors } from '../game/galaxyGen';
 import { SkyBackdrop } from './SkyBackdrop';
 import { saveGalaxyDiscovery, saveSuperclusterDiscovery } from '../firebase/discoveries';
 import { pushAttractorAddress } from '../game/superclusters';
@@ -64,28 +66,28 @@ const BLINK_FREQ = 0.22;
 const BLINK_MIN  = 0.25;
 const BLINK_MAX  = 1.0;
 
-const TIER_BASE = [
-  { min: 0.80, radius: 3.5, alpha: 1.00 },
-  { min: 0.60, radius: 2.8, alpha: 0.96 },
-  { min: 0.40, radius: 2.3, alpha: 0.88 },
-  { min: 0.20, radius: 1.8, alpha: 0.75 },
-  { min: -Infinity, radius: 1.4, alpha: 0.55 },
+const TIERS = [
+  { min: 0.80, radius: 3.5, alpha: 1.00, whiteMix: 0.55 },
+  { min: 0.60, radius: 2.8, alpha: 0.96, whiteMix: 0.42 },
+  { min: 0.40, radius: 2.3, alpha: 0.88, whiteMix: 0.30 },
+  { min: 0.20, radius: 1.8, alpha: 0.75, whiteMix: 0.18 },
+  { min: -Infinity, radius: 1.4, alpha: 0.55, whiteMix: 0.08 },
 ];
 
-const DOT_PALETTES = [
-  [0xffee44, 0xff44dd, 0xaa00ff, 0xff0066, 0x440088], // Cosmic:   yellow → magenta → purple → hot-pink → deep-violet
-  [0x44ffee, 0xff8800, 0xcc00ff, 0x0088ff, 0x110055], // Plasma:   cyan → orange → violet → electric-blue → midnight
-  [0x99ff33, 0xff55aa, 0xffaa00, 0x00ff88, 0x550022], // Verdant:  lime → rose → gold → mint → deep-rose
-  [0xff5544, 0x44ffee, 0xcc00ff, 0xff0044, 0x110044], // Stellar:  red → cyan → violet → crimson → midnight
-  [0xffcc00, 0x00ffcc, 0xaa00ff, 0xff7700, 0x002244], // Solaris:  gold → teal → violet → amber → deep-teal
-  [0xff88ff, 0x44aaff, 0xff8844, 0xff00bb, 0x001166], // Blossom:  pink → sky-blue → coral → magenta → deep-navy
-  [0xbbffff, 0xffcc00, 0xff00cc, 0x88eeff, 0x440033], // Frost:    ice → gold → magenta → pale-sky → deep-magenta
-  [0xffeeaa, 0xffaa22, 0xee2266, 0x7700ee, 0x220055], // Galactic: gold → amber → crimson → violet → midnight
-];
+const tierColorCache = new Map<number[], number[]>();
 
-function getBrightnessTiers(seed: number) {
-  const colors = DOT_PALETTES[seed % DOT_PALETTES.length];
-  return TIER_BASE.map((t, i) => ({ ...t, color: colors[i] }));
+function nebulaTierColors(palette: number[]): number[] {
+  const cached = tierColorCache.get(palette);
+  if (cached) return cached;
+  const average = (shift: number) => palette.reduce((sum, c) => sum + ((c >> shift) & 0xff), 0) / palette.length;
+  const r = average(16);
+  const g = average(8);
+  const b = average(0);
+  const gain = 255 / Math.max(r, g, b, 1);
+  const base = (Math.round(r * gain) << 16) | (Math.round(g * gain) << 8) | Math.round(b * gain);
+  const colors = TIERS.map((t) => mixColor(base, 0xffffff, t.whiteMix));
+  tierColorCache.set(palette, colors);
+  return colors;
 }
 
 const LABEL_DEPTH_FADE = 0.4;
@@ -147,7 +149,6 @@ export function SuperclusterWorld() {
     const [x, y, z] = getSuperclusterCoords(scSeed);
     pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'));
 
-    const tiers = getBrightnessTiers(scSeed);
     // Read dots directly from store — position/brightness never change, only the
     // visited flag does, and the overlay below redraws that from its own ref.
     const initialDots = useGameStore.getState().supercluster.dots;
@@ -170,22 +171,24 @@ export function SuperclusterWorld() {
     const dotTexture = createSuperclusterDotTexture();
     for (let i = 0; i < count; i++) {
       const dot = initialDots[i];
-      const tier = tiers[tiers.findIndex((t) => dot.brightness > t.min)];
+      const tierIndex = TIERS.findIndex((t) => dot.brightness > t.min);
+      const tier = TIERS[tierIndex];
+      const color = nebulaTierColors(galaxyNebulaColors(dot.seed))[tierIndex];
       planeX[i] = dot.x;
       planeY[i] = dot.y;
       height[i] = dot.z;
-      baseScale[i] = tier.radius / SC_DOT_TEXTURE_RADIUS;
+      baseScale[i] = tier.radius / (SC_GLOW_TEXTURE_RADIUS * SC_GLOW_CORE_FRACTION);
       baseAlpha[i] = tier.alpha;
       blinkGroup[i] = dot.seed % N_BLINK_GROUPS;
       particles[i] = new Particle({
         texture: dotTexture,
         anchorX: 0.5,
         anchorY: 0.5,
-        tint: tier.color,
+        tint: color,
       });
       if (hasCivilization(dot.seed)) {
         civilizationDots.push(i);
-        civilizationTints.push(tier.color);
+        civilizationTints.push(color);
       }
     }
 
