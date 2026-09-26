@@ -22,7 +22,6 @@ export interface SkyView {
   cosPitch: number;
   sinPitch: number;
   focal: number;
-  cellFocal: number;
   orbitYaw: number;
   orbitTilt: number;
 }
@@ -153,10 +152,9 @@ vec2 brightest = vec2(0.0);
 
 vec3 starLayer(vec3 d, vec3 right, vec3 down, float density, float cellPx, float chance, float sigmaPx, float floorLight, float gain, float haloPx, float spikePx)
 {
-    float k = uFrame.w / cellPx;
+    float k = uFrame.z / cellPx;
     vec3 p = d * k;
     vec3 base = floor(p - 0.5);
-    float pxPerUnit = uFrame.z / k;
     float threshold = chance * density;
     vec3 sum = vec3(0.0);
     for (int n = 0; n < 8; n++) {
@@ -166,7 +164,7 @@ vec3 starLayer(vec3 d, vec3 right, vec3 down, float density, float cellPx, float
         if (h.x > threshold) continue;
         vec3 star = normalize(cell + 0.1 + 0.8 * hash3(cell + vec3(71.0, 13.0, 37.0))) * k;
         if (floor(star) != cell) continue;
-        vec3 delta = (p - star) * pxPerUnit;
+        vec3 delta = (p - star) * cellPx;
         float ox = dot(delta, right);
         float oy = dot(delta, down);
         float r2 = ox * ox + oy * oy;
@@ -321,10 +319,9 @@ fn starColor(t: f32) -> vec3<f32> {
 var<private> brightest: vec2<f32>;
 
 fn starLayer(d: vec3<f32>, right: vec3<f32>, down: vec3<f32>, density: f32, cellPx: f32, chance: f32, sigmaPx: f32, floorLight: f32, gain: f32, haloPx: f32, spikePx: f32) -> vec3<f32> {
-    let k = skyUniforms.uFrame.w / cellPx;
+    let k = skyUniforms.uFrame.z / cellPx;
     let p = d * k;
     let base = floor(p - 0.5);
-    let pxPerUnit = skyUniforms.uFrame.z / k;
     let threshold = chance * density;
     var sum = vec3(0.0);
     for (var n = 0; n < 8; n++) {
@@ -334,7 +331,7 @@ fn starLayer(d: vec3<f32>, right: vec3<f32>, down: vec3<f32>, density: f32, cell
         if (h.x > threshold) { continue; }
         let star = normalize(cell + 0.1 + 0.8 * hash3(cell + vec3(71.0, 13.0, 37.0))) * k;
         if (any(floor(star) != cell)) { continue; }
-        let delta = (p - star) * pxPerUnit;
+        let delta = (p - star) * cellPx;
         let ox = dot(delta, right);
         let oy = dot(delta, down);
         let r2 = ox * ox + oy * oy;
@@ -535,7 +532,6 @@ class SkyFilter extends Filter {
     frame[0] = centreX;
     frame[1] = centreY;
     frame[2] = view.focal * scale;
-    frame[3] = view.cellFocal * scale;
     const orbit = uniforms.uOrbit as Float32Array;
     orbit[0] = Math.cos(view.orbitYaw);
     orbit[1] = Math.sin(view.orbitYaw);
@@ -569,7 +565,6 @@ export function flatSkyView(seed: number, focal: number): SkyView {
     cosPitch: Math.cos(pitch),
     sinPitch: Math.sin(pitch),
     focal,
-    cellFocal: focal,
     orbitYaw: 0,
     orbitTilt: 0,
   };

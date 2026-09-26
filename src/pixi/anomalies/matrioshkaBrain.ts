@@ -1,21 +1,14 @@
-import { Graphics, type Container } from 'pixi.js';
+import type { Container } from 'pixi.js';
 import { anomalyVisualRng } from '../../game/anomalies';
 import type { Point3D, ProjectionBasis } from '../projection';
-import {
-  applyIntegrity,
-  buildSphereLattice,
-  createPanelSet,
-  drawShellHalf,
-  orientShell,
-  orthonormalFrame,
-  type PanelSet,
-  type PanelShader,
-} from './shellLattice';
+import { buildShellLattice, orthonormalFrame, paintActivity, type ShellLattice } from './shellLattice';
+import { createShellGeometry, createShellSurface, type ShellSurface } from './shellSurface';
 import { makeSelectable, mixColor, randomUnitVector, scaleColor, SHELL_Z, TAU } from './shared';
 import type { AnomalyVisual, AnomalyVisualContext } from './types';
 
 const TOTAL_PANELS = 600;
 const MIN_SHELL_PANELS = 48;
+const CORE_GLOW = 0xffd9a0;
 const EMBER = 0xff8a3c;
 const DEEP_RED = 0x3c0605;
 const THOUGHT_COLOR = 0xffb877;
@@ -24,8 +17,8 @@ const THOUGHT_WIDTH = 0.14;
 const THOUGHT_TRAIL = 1.7;
 
 interface Shell {
-  set: PanelSet;
-  color: number;
+  lattice: ShellLattice;
+  surface: ShellSurface;
   spin: number;
   spinSpeed: number;
 }
@@ -52,12 +45,31 @@ export function createMatrioshkaBrain({ anomaly, sunRadius, innermostOrbit, onSe
   const radii = Array.from({ length: shellCount }, (_, i) => innerRadius * Math.pow(outerRadius / innerRadius, i / (shellCount - 1)));
   const area = radii.reduce((sum, radius) => sum + radius * radius, 0);
 
+  const geometry = createShellGeometry();
+  const colors = radii.map((_, index) => mixColor(EMBER, DEEP_RED, index / (shellCount - 1)));
   const shells: Shell[] = radii.map((radius, index) => {
     const count = Math.max(MIN_SHELL_PANELS, Math.round(TOTAL_PANELS * radius * radius / area));
     const integrity = Math.min(anomaly.living ? 1 : 0.99, Math.max(0.8, anomaly.integrity + (rng() - 0.5) * 0.06));
+    const lattice = buildShellLattice(count, integrity, rng);
+    const color = colors[index];
+    const surface = createShellSurface(geometry, lattice, {
+      hull: scaleColor(color, 0.16),
+      heat: color,
+      heatStrength: anomaly.living ? 0.35 : 0.12,
+      inner: index === 0 ? CORE_GLOW : colors[index - 1],
+      interior: index === 0 ? 2 : 2.6,
+      activity: THOUGHT_COLOR,
+      rim: 0.35,
+      lights: false,
+      subcells: 3,
+      gap: 0.06,
+    }, radius);
+    const depthStep = 1 + index / shellCount;
+    surface.back.zIndex = -SHELL_Z * depthStep;
+    surface.front.zIndex = SHELL_Z * depthStep;
     return {
-      set: createPanelSet(applyIntegrity(buildSphereLattice(count, rng), integrity, rng), radius),
-      color: mixColor(EMBER, DEEP_RED, index / (shellCount - 1)),
+      lattice,
+      surface,
       spin: rng() * TAU,
       spinSpeed: (index % 2 === 0 ? 1 : -1) * (0.008 + rng() * 0.018),
     };
@@ -92,25 +104,9 @@ export function createMatrioshkaBrain({ anomaly, sunRadius, innermostOrbit, onSe
   };
 
   const outermost = shells[shells.length - 1];
-  const shaders: PanelShader[] = shells.map((shell) => (panel, facing, out) => {
-    if (facing < 0) {
-      out.color = scaleColor(shell.color, 0.5 + 0.35 * panel.shade);
-      out.alpha = 0.95;
-      return;
-    }
-    const rim = Math.pow(1 - facing, 3);
-    const base = mixColor(scaleColor(shell.color, 0.26 + 0.18 * panel.shade), shell.color, rim * 0.45);
-    out.color = shell === outermost ? mixColor(base, THOUGHT_COLOR, thoughtGlow(panel.normal) * 0.85) : base;
-    out.alpha = 0.97;
-  });
-
-  const back = new Graphics();
-  back.zIndex = -SHELL_Z;
-  const front = new Graphics();
-  front.zIndex = SHELL_Z;
-  makeSelectable(back, outerRadius, onSelect);
-  makeSelectable(front, outerRadius, onSelect);
-  const nodes: Container[] = [back, front];
+  makeSelectable(outermost.surface.back, 1, onSelect);
+  makeSelectable(outermost.surface.front, 1, onSelect);
+  const nodes: Container[] = shells.flatMap((shell) => [shell.surface.back, shell.surface.front]);
 
   return {
     nodes,
@@ -122,15 +118,16 @@ export function createMatrioshkaBrain({ anomaly, sunRadius, innermostOrbit, onSe
       now = elapsed;
       for (const shell of shells) {
         shell.spin += shell.spinSpeed * dt;
-        orientShell(shell.set, basis, shell.spin);
+        shell.surface.orient(basis, shell.spin, elapsed);
       }
-      back.clear();
-      front.clear();
-      for (let i = shells.length - 1; i >= 0; i--) drawShellHalf(back, shells[i].set, shaders[i], 'back');
-      for (let i = 0; i < shells.length; i++) drawShellHalf(front, shells[i].set, shaders[i], 'front');
+      paintActivity(outermost.lattice, thoughtGlow);
     },
     destroy() {
-      for (const node of nodes) node.destroy();
+      for (const shell of shells) {
+        shell.surface.destroy();
+        shell.lattice.source.destroy();
+      }
+      geometry.destroy();
     },
   };
 }

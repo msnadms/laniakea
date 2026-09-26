@@ -1,5 +1,6 @@
-import type { Container } from 'pixi.js';
+import type { Container, Texture } from 'pixi.js';
 import type { Anomaly } from '../../game/anomalies';
+import type { SurfaceJob } from '../planetSurfaces';
 import type { ProjectionBasis } from '../projection';
 
 export interface AnomalyVisualContext {
@@ -18,6 +19,7 @@ export interface AnomalyVisual {
   starAlpha: number;
   coronaAlpha: number;
   nebulaColor?: number;
+  surface?: { job: SurfaceJob; textures: Texture[] };
   update(dt: number, elapsed: number, basis: ProjectionBasis): void;
   destroy(): void;
 }

@@ -1,82 +1,44 @@
-import { Container, Graphics, Polygon } from 'pixi.js';
+import { Container, type Geometry, Graphics, Mesh, Polygon, type Shader } from 'pixi.js';
 import { anomalyVisualRng } from '../../game/anomalies';
-import type { Rng } from '../../game/types';
+import { createSurfaceTexture } from '../planetBody';
+import { paintAldersonDisk } from '../planetSurfaces';
 import { projectSystemPointWithBasis, type Point3D, type ProjectedPoint, type ProjectionBasis } from '../projection';
-import { mixColor, scaleColor, smoothstep, TAU } from './shared';
+import { createDiskGeometry, createDiskSurfaceShader, type DiskLook } from './diskSurface';
+import { mixColor, smoothstep, TAU } from './shared';
 import type { AnomalyVisual, AnomalyVisualContext } from './types';
 
-type ColorStops = ReadonlyArray<readonly [number, number]>;
-
 const WEDGE_COUNT = 36;
-const BAND_COUNT = 18;
+const WEDGE_COLUMNS = 6;
+const WEDGE_ROWS = 16;
 const ARC_STEPS = 3;
-const SEAM_EVERY = 3;
-const SPOKE_EVERY = 3;
 const THICKNESS_SUN_RADII = 0.025;
 const INNER_SUN_RADII = 2.6;
 const OUTER_CLEARANCE = 0.88;
 const MIN_WIDTH_RATIO = 2;
-const CLOUDS = 150;
-const CITIES = 80;
-const DUSK_LIGHTS = 280;
+const CITY_LIGHTS_MIN = 6;
+const CITY_LIGHTS_PER_SPAN = 200;
+const CITY_LIGHT_TRIES = 4;
+const DUSK_LIGHTS = 220;
+const DUSK_MIN_T = 0.75;
+const DUSK_SPAN = 0.23;
 const LIGHT_GROUPS = 3;
 const LIGHT_COLOR = 0xffc46a;
-const CLOUD_COLOR = 0xf4f6f8;
 const OUTER_WALL_COLOR = 0x2a2e34;
 const INNER_WALL_COLOR = 0x5a5048;
-const SEAM_COLOR = 0x0e1218;
 const BROKEN_WALL_COLOR = 0x191512;
-const RUINED_TONE = 0x5a4e42;
 const RUINED_LIGHT_FRACTION = 0.08;
-const RUINED_CLOUD_FRACTION = 0.25;
 const RUINED_SCHEDULE_RATE = 0.3;
 const BREACH_RUNS_MAX = 5;
 const BREACH_RUN_LENGTH_MAX = 4;
 const BREACH_MIN_REACH = 0.38;
 const BREACH_REACH_SPREAD = 0.45;
 
+const LIVING_LOOK: DiskLook = { bump: 14, ambient: 0.05, haze: 0.14, hazeColor: 0x8fb4e0, cloudColor: 0xf2f4f6, cloudShadow: 0.012 };
+const RUINED_LOOK: DiskLook = { bump: 16, ambient: 0.04, haze: 0.12, hazeColor: 0x9a8268, cloudColor: 0xa08a70, cloudShadow: 0.008 };
+
 export function aldersonDiskOuterRadius(sunRadius: number, innermostClearance: number): number {
   const inner = sunRadius * INNER_SUN_RADII;
   return Math.min(innermostClearance, Math.max(innermostClearance * OUTER_CLEARANCE, inner * MIN_WIDTH_RATIO));
-}
-
-const LAND_T0 = 0.3;
-const LAND_T1 = 0.72;
-const LAND_COLUMNS_PER_WEDGE = 10;
-const LAND_COLUMNS = WEDGE_COUNT * LAND_COLUMNS_PER_WEDGE;
-const LAND_ROWS = 24;
-const LAND_ROW_GROUP = 4;
-const LAND_OCTAVES = 4;
-const LAND_FREQUENCY = 3.5;
-const LAND_EDGE_FALLOFF = 1.2;
-const LAND_EDGE_START = 0.3;
-const CITY_COVERAGE = 0.3;
-
-const SURFACE_STOPS: ColorStops = [
-  [0, 0x3a4458],
-  [0.1, 0x6c6a66],
-  [0.2, 0xa88f62],
-  [0.26, 0x8c7a4e],
-  [0.3, 0x2d5878],
-  [0.72, 0x2a5070],
-  [0.78, 0x6d7f74],
-  [0.88, 0xb9c3c9],
-  [1, 0xdde4ea],
-];
-
-const LAND_LEVELS: ReadonlyArray<{ coverage: number; alpha: number; stops: ColorStops }> = [
-  { coverage: 0.5, alpha: 0.55, stops: [[0, 0x3f7a94], [1, 0x3a6c80]] },
-  { coverage: 0.4, alpha: 1, stops: [[0, 0x8a7a50], [0.45, 0x5c7a3a], [1, 0x7d8a78]] },
-  { coverage: 0.2, alpha: 1, stops: [[0, 0x7a6a44], [0.45, 0x3f6030], [1, 0x6f7c6e]] },
-  { coverage: 0.06, alpha: 1, stops: [[0, 0x6e6250], [0.6, 0x74685a], [1, 0xc8d0d4]] },
-];
-
-interface Patch {
-  angle: number;
-  radius: number;
-  size: number;
-  color: number;
-  alpha: number;
 }
 
 interface Light {
@@ -86,18 +48,12 @@ interface Light {
   alpha: number;
 }
 
-interface LandLayer {
-  color: number;
-  alpha: number;
-  polygons: number[][];
-}
-
 interface Wedge {
   node: Container;
-  surface: Graphics;
+  walls: Graphics;
+  rim: Graphics;
+  geometry: Geometry;
   lights: Graphics[];
-  land: LandLayer[];
-  clouds: Patch[];
   groups: Light[][];
   phases: number[];
   rates: number[];
@@ -106,71 +62,8 @@ interface Wedge {
   reach: number;
 }
 
-function gradient(stops: ColorStops, t: number): number {
-  for (let i = 1; i < stops.length; i++) {
-    const [to, toColor] = stops[i];
-    if (t <= to) {
-      const [from, fromColor] = stops[i - 1];
-      return mixColor(fromColor, toColor, (t - from) / (to - from));
-    }
-  }
-  return stops[stops.length - 1][1];
-}
-
 function wedgeIndex(angle: number): number {
   return Math.floor((((angle % TAU) + TAU) % TAU) / TAU * WEDGE_COUNT) % WEDGE_COUNT;
-}
-
-function landVertex(column: number, row: number): number {
-  return column + row * (LAND_COLUMNS + 1);
-}
-
-function landT(row: number): number {
-  return LAND_T0 + row / LAND_ROWS * (LAND_T1 - LAND_T0);
-}
-
-function createNoise(rng: Rng, circumference: number) {
-  const octaves = Array.from({ length: LAND_OCTAVES }, (_, octave) => {
-    const frequency = LAND_FREQUENCY * 2 ** octave;
-    const columns = Math.max(3, Math.round(circumference * frequency));
-    const rows = Math.ceil((LAND_T1 - LAND_T0) * frequency) + 2;
-    return { frequency, columns, amplitude: 0.5 ** octave, values: Array.from({ length: columns * rows }, () => rng() * 2 - 1) };
-  });
-  const total = octaves.reduce((sum, octave) => sum + octave.amplitude, 0);
-  const fade = (t: number) => t * t * (3 - 2 * t);
-  return (along: number, t: number) => {
-    let sum = 0;
-    for (const { frequency, columns, amplitude, values } of octaves) {
-      const x = along * columns;
-      const y = (t - LAND_T0) * frequency;
-      const x0 = Math.floor(x);
-      const y0 = Math.floor(y);
-      const fx = fade(x - x0);
-      const fy = fade(y - y0);
-      const at = (column: number, row: number) => values[(column % columns + columns) % columns + row * columns];
-      const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * fx;
-      const bottom = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * fx;
-      sum += (top + (bottom - top) * fy) * amplitude;
-    }
-    return sum / total;
-  };
-}
-
-function traceCell(elevations: Float32Array, column: number, row: number, level: number): number[] | null {
-  const corners = [landVertex(column, row), landVertex(column + 1, row), landVertex(column + 1, row + 1), landVertex(column, row + 1)];
-  const refs: number[] = [];
-  for (let k = 0; k < 4; k++) {
-    const a = corners[k];
-    const b = corners[(k + 1) % 4];
-    const aAbove = elevations[a] >= level;
-    if (aAbove) refs.push(a, a, 0);
-    if (aAbove !== elevations[b] >= level) {
-      const low = Math.min(a, b);
-      const high = Math.max(a, b);
-      refs.push(low, high, (elevations[low] - level) / (elevations[low] - elevations[high]));
-    }
-  }
-  return refs.length >= 9 ? refs : null;
 }
 
 export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostClearance, onSelect }: AnomalyVisualContext): AnomalyVisual {
@@ -181,125 +74,92 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
   const height = sunRadius * THICKNESS_SUN_RADII;
   const radiusAt = (t: number) => inner + span * t;
   const { living, integrity } = anomaly;
-  const weather = (color: number) => (living ? color : scaleColor(mixColor(color, RUINED_TONE, 0.6), 0.8));
-  const lit = (color: number, t: number) =>
-    scaleColor(mixColor(weather(color), starColor, 0.4 * (1 - smoothstep(0, 0.25, t))), 1 - 0.55 * smoothstep(0.1, 1, t));
 
-  const wedges: Wedge[] = Array.from({ length: WEDGE_COUNT }, (_, index) => {
-    const node = new Container();
-    const surface = new Graphics();
-    surface.eventMode = 'none';
-    const lights = Array.from({ length: LIGHT_GROUPS }, () => {
-      const gfx = new Graphics();
-      gfx.blendMode = 'add';
-      gfx.eventMode = 'none';
-      return gfx;
-    });
-    node.addChild(surface, ...lights);
-    node.eventMode = 'static';
-    node.cursor = 'pointer';
-    node.on('pointertap', onSelect);
-    return {
-      node,
-      surface,
-      lights,
-      land: [],
-      clouds: [],
-      groups: lights.map(() => []),
-      phases: lights.map(() => rng() * TAU),
-      rates: lights.map(() => 0.6 + rng() * 1.4),
-      start: index / WEDGE_COUNT * TAU,
-      end: (index + 1) / WEDGE_COUNT * TAU,
-      reach: 1,
-    };
-  });
+  const job = paintAldersonDisk(Math.floor(rng() * 0x7fffffff), inner / span, living);
+  const albedo = createSurfaceTexture(job.surface.albedo);
+  const detail = createSurfaceTexture(job.surface.detail);
+  const surface = createDiskSurfaceShader(albedo, detail, living ? LIVING_LOOK : RUINED_LOOK, starColor, inner, sunRadius / inner, span / inner);
 
+  const breaches = new Float32Array(WEDGE_COUNT).fill(1);
   if (!living) {
     const runs = 1 + Math.floor((1 - integrity) * BREACH_RUNS_MAX);
     for (let run = 0; run < runs; run++) {
       const first = Math.floor(rng() * WEDGE_COUNT);
       const length = 1 + Math.floor(rng() * BREACH_RUN_LENGTH_MAX);
       for (let k = 0; k < length; k++) {
-        const wedge = wedges[(first + k) % WEDGE_COUNT];
-        wedge.reach = Math.min(wedge.reach, BREACH_MIN_REACH + rng() * BREACH_REACH_SPREAD);
+        const index = (first + k) % WEDGE_COUNT;
+        breaches[index] = Math.min(breaches[index], BREACH_MIN_REACH + rng() * BREACH_REACH_SPREAD);
       }
     }
   }
 
-  const noise = createNoise(rng, TAU * radiusAt((LAND_T0 + LAND_T1) / 2) / span);
-  const elevations = new Float32Array((LAND_COLUMNS + 1) * (LAND_ROWS + 1));
-  for (let row = 0; row <= LAND_ROWS; row++) {
-    const falloff = LAND_EDGE_FALLOFF * smoothstep(LAND_EDGE_START, 1, Math.abs(row / LAND_ROWS * 2 - 1));
-    for (let column = 0; column <= LAND_COLUMNS; column++) {
-      elevations[landVertex(column, row)] = noise(column / LAND_COLUMNS, landT(row)) - falloff;
-    }
-  }
-  const sorted = [...elevations].sort((a, b) => a - b);
-  const elevationCovering = (coverage: number) => sorted[Math.floor(sorted.length * (1 - coverage))];
-
-  wedges.forEach((wedge, index) => {
-    for (const { coverage, alpha, stops } of LAND_LEVELS) {
-      const elevation = elevationCovering(coverage);
-      for (let groupRow = 0; groupRow < LAND_ROWS; groupRow += LAND_ROW_GROUP) {
-        const t = landT(groupRow + LAND_ROW_GROUP / 2);
-        const layer: LandLayer = { color: lit(gradient(stops, (t - LAND_T0) / (LAND_T1 - LAND_T0)), t), alpha, polygons: [] };
-        for (let row = groupRow; row < groupRow + LAND_ROW_GROUP; row++) {
-          if (landT(row + 1) > wedge.reach) continue;
-          for (let column = index * LAND_COLUMNS_PER_WEDGE; column < (index + 1) * LAND_COLUMNS_PER_WEDGE; column++) {
-            const refs = traceCell(elevations, column, row, elevation);
-            if (refs) layer.polygons.push(refs);
-          }
-        }
-        if (layer.polygons.length > 0) wedge.land.push(layer);
-      }
-    }
+  const wedges: Wedge[] = Array.from({ length: WEDGE_COUNT }, (_, index) => {
+    const start = index / WEDGE_COUNT * TAU;
+    const end = (index + 1) / WEDGE_COUNT * TAU;
+    const reach = breaches[index];
+    const node = new Container();
+    const walls = new Graphics();
+    const rim = new Graphics();
+    const geometry = createDiskGeometry(WEDGE_COLUMNS, WEDGE_ROWS, (column, row) => [
+      (start + (end - start) * column / WEDGE_COLUMNS) / TAU,
+      reach * row / WEDGE_ROWS,
+    ]);
+    const mesh = new Mesh<Geometry, Shader>({ geometry, shader: surface.shader });
+    const lights = Array.from({ length: LIGHT_GROUPS }, () => {
+      const gfx = new Graphics();
+      gfx.blendMode = 'add';
+      gfx.eventMode = 'none';
+      return gfx;
+    });
+    for (const child of [walls, mesh, rim]) child.eventMode = 'none';
+    node.addChild(walls, mesh, rim, ...lights);
+    node.eventMode = 'static';
+    node.cursor = 'pointer';
+    node.on('pointertap', onSelect);
+    return {
+      node,
+      walls,
+      rim,
+      geometry,
+      lights,
+      groups: lights.map(() => []),
+      phases: lights.map(() => rng() * TAU),
+      rates: lights.map(() => 0.6 + rng() * 1.4),
+      start,
+      end,
+      reach,
+    };
   });
 
-  const clouds = living ? CLOUDS : Math.round(CLOUDS * RUINED_CLOUD_FRACTION);
-  for (let i = 0; i < clouds; i++) {
-    const t = 0.3 + rng() * 0.5;
-    const angle = rng() * TAU;
-    const wedge = wedges[wedgeIndex(angle)];
-    if (t > wedge.reach) continue;
-    wedge.clouds.push({
-      angle,
-      radius: radiusAt(t),
-      size: span * (0.015 + rng() * 0.035),
-      color: lit(CLOUD_COLOR, t),
-      alpha: 0.16,
-    });
-  }
-
-  const addLight = (angle: number, radius: number, size: number) => {
-    const t = (radius - inner) / span;
+  const addLight = (angle: number, t: number, size: number) => {
     const wedge = wedges[wedgeIndex(angle)];
     if (t > wedge.reach) return;
-    wedge.groups[Math.floor(rng() * LIGHT_GROUPS)].push({ angle, radius, size, alpha: 0.3 + 0.7 * smoothstep(0.3, 0.9, t) });
+    wedge.groups[Math.floor(rng() * LIGHT_GROUPS)].push({ angle, radius: radiusAt(t), size, alpha: 0.3 + 0.7 * smoothstep(0.3, 0.9, t) });
   };
-  const cityElevation = elevationCovering(CITY_COVERAGE);
-  const inhabited: number[] = [];
-  elevations.forEach((elevation, vertex) => {
-    if (elevation >= cityElevation) inhabited.push(vertex);
-  });
-  const cellAngle = TAU / LAND_COLUMNS;
-  const cellDepth = span * (LAND_T1 - LAND_T0) / LAND_ROWS;
-  const lightFraction = living ? 1 : RUINED_LIGHT_FRACTION;
-  for (let i = 0; i < Math.round(CITIES * lightFraction) && inhabited.length > 0; i++) {
-    const vertex = inhabited[Math.floor(rng() * inhabited.length)];
-    const angle = vertex % (LAND_COLUMNS + 1) * cellAngle;
-    const radius = radiusAt(landT(Math.floor(vertex / (LAND_COLUMNS + 1))));
-    const count = 5 + Math.floor(rng() * 8);
-    for (let j = 0; j < count; j++) {
-      addLight(angle + (rng() - 0.5) * cellAngle * 3, radius + (rng() - 0.5) * cellDepth * 3, 1.2 + rng() * 1.6);
+  for (const city of job.cities) {
+    if (!living && rng() >= RUINED_LIGHT_FRACTION) continue;
+    const count = CITY_LIGHTS_MIN + Math.round(city.radius * CITY_LIGHTS_PER_SPAN);
+    const around = inner / span + city.t;
+    for (let i = 0; i < count; i++) {
+      for (let attempt = 0; attempt < CITY_LIGHT_TRIES; attempt++) {
+        const distance = city.radius * 0.8 * Math.sqrt(rng());
+        const bearing = rng() * TAU;
+        const angle = city.angle + Math.cos(bearing) * distance / around;
+        const t = city.t + Math.sin(bearing) * distance;
+        if (!job.landAt(angle, t)) continue;
+        addLight(angle, t, 1.2 + rng() * 1.6);
+        break;
+      }
     }
   }
-  for (let i = 0; i < Math.round(DUSK_LIGHTS * lightFraction); i++) {
-    addLight(rng() * TAU, radiusAt(0.75 + rng() * 0.23), 1 + rng());
+  for (let i = 0; i < Math.round(DUSK_LIGHTS * (living ? 1 : RUINED_LIGHT_FRACTION)); i++) {
+    const angle = rng() * TAU;
+    const t = DUSK_MIN_T + rng() * DUSK_SPAN;
+    if (job.landAt(angle, t)) addLight(angle, t, 1 + rng());
   }
 
   const point: Point3D = { x: 0, y: 0, z: 0 };
   const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
-  const landScreen = new Float32Array(elevations.length * 2);
   const project = (angle: number, radius: number, pointHeight: number, basis: ProjectionBasis) => {
     point.x = Math.cos(angle) * radius;
     point.y = pointHeight;
@@ -316,58 +176,28 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
   const sector = (innerRadius: number, outerRadius: number, from: number, to: number, innerHeight: number, outerHeight: number, basis: ProjectionBasis) =>
     arc(arc([], outerRadius, from, to, outerHeight, basis), innerRadius, to, from, innerHeight, basis);
 
-  const projectLand = (basis: ProjectionBasis) => {
-    for (let row = 0; row <= LAND_ROWS; row++) {
-      const radius = radiusAt(landT(row));
-      for (let column = 0; column <= LAND_COLUMNS; column++) {
-        const p = project(column * cellAngle, radius, height, basis);
-        const vertex = landVertex(column, row);
-        landScreen[vertex * 2] = p.x;
-        landScreen[vertex * 2 + 1] = p.y;
-      }
-    }
-  };
-
-  const drawWedge = (wedge: Wedge, index: number, basis: ProjectionBasis) => {
-    const { surface, start, end, reach } = wedge;
+  const drawWedge = (wedge: Wedge, basis: ProjectionBasis) => {
+    const { walls, rim, start, end, reach } = wedge;
     const edge = radiusAt(reach);
-    surface.clear();
-    surface.poly(sector(edge, edge, start, end, -height, height, basis)).fill({ color: reach < 1 ? BROKEN_WALL_COLOR : OUTER_WALL_COLOR });
-    surface.poly(sector(inner, inner, start, end, -height, height, basis)).fill({ color: mixColor(INNER_WALL_COLOR, starColor, 0.5) });
-    for (let band = 0; band < BAND_COUNT && band / BAND_COUNT < reach; band++) {
-      const t0 = band / BAND_COUNT;
-      const t1 = Math.min(reach, (band + 1) / BAND_COUNT);
-      const t = (band + 0.5) / BAND_COUNT;
-      surface.poly(sector(radiusAt(t0), radiusAt(t1), start, end, height, height, basis)).fill({ color: lit(gradient(SURFACE_STOPS, t), t) });
-    }
-    for (const layer of wedge.land) {
-      for (const refs of layer.polygons) {
-        const points: number[] = [];
-        for (let k = 0; k < refs.length; k += 3) {
-          const a = refs[k] * 2;
-          const b = refs[k + 1] * 2;
-          const w = refs[k + 2];
-          points.push(landScreen[a] + (landScreen[b] - landScreen[a]) * w, landScreen[a + 1] + (landScreen[b + 1] - landScreen[a + 1]) * w);
-        }
-        surface.poly(points);
+    walls.clear();
+    walls.poly(sector(edge, edge, start, end, -height, height, basis)).fill({ color: reach < 1 ? BROKEN_WALL_COLOR : OUTER_WALL_COLOR });
+    walls.poly(sector(inner, inner, start, end, -height, height, basis)).fill({ color: mixColor(INNER_WALL_COLOR, starColor, 0.5) });
+
+    const buffer = wedge.geometry.getBuffer('aPosition');
+    const positions = buffer.data as Float32Array;
+    for (let row = 0; row <= WEDGE_ROWS; row++) {
+      const radius = radiusAt(reach * row / WEDGE_ROWS);
+      for (let column = 0; column <= WEDGE_COLUMNS; column++) {
+        const p = project(start + (end - start) * column / WEDGE_COLUMNS, radius, height, basis);
+        const vertex = (row * (WEDGE_COLUMNS + 1) + column) * 2;
+        positions[vertex] = p.x;
+        positions[vertex + 1] = p.y;
       }
-      surface.fill({ color: layer.color, alpha: layer.alpha });
     }
-    for (const cloud of wedge.clouds) {
-      const p = project(cloud.angle, cloud.radius, height, basis);
-      surface.ellipse(p.x, p.y, cloud.size * p.scale, cloud.size * p.scale * basis.cosTilt).fill({ color: cloud.color, alpha: cloud.alpha });
-    }
-    for (let band = SEAM_EVERY; band < BAND_COUNT && band / BAND_COUNT < reach; band += SEAM_EVERY) {
-      surface.poly(arc([], radiusAt(band / BAND_COUNT), start, end, height, basis), false);
-    }
-    if (index % SPOKE_EVERY === 0) {
-      const from = project(start, inner, height, basis);
-      surface.moveTo(from.x, from.y);
-      const to = project(start, edge, height, basis);
-      surface.lineTo(to.x, to.y);
-    }
-    surface.stroke({ color: SEAM_COLOR, width: 1, alpha: 0.3 });
-    surface.poly(arc([], inner, start, end, height, basis), false).stroke({ color: mixColor(0xffffff, starColor, 0.6), width: 1.5, alpha: 0.5 });
+    buffer.update();
+
+    rim.clear();
+    rim.poly(arc([], inner, start, end, height, basis), false).stroke({ color: mixColor(0xffffff, starColor, 0.6), width: 1.5, alpha: 0.5 });
 
     wedge.groups.forEach((group, groupIndex) => {
       const gfx = wedge.lights[groupIndex];
@@ -391,12 +221,13 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
     extent: outer,
     starAlpha: 1,
     coronaAlpha: 0.75,
+    surface: { job, textures: [albedo, detail] },
     update(_dt: number, elapsed: number, basis: ProjectionBasis) {
       if (basis.sinTilt !== drawnTilt || basis.sinYaw !== drawnYaw) {
         drawnTilt = basis.sinTilt;
         drawnYaw = basis.sinYaw;
-        projectLand(basis);
-        wedges.forEach((wedge, index) => drawWedge(wedge, index, basis));
+        surface.setView(Math.abs(basis.sinTilt));
+        for (const wedge of wedges) drawWedge(wedge, basis);
       }
       for (const wedge of wedges) {
         wedge.lights.forEach((gfx, groupIndex) => {
@@ -408,6 +239,11 @@ export function createAldersonDisk({ anomaly, sunRadius, starColor, innermostCle
     },
     destroy() {
       for (const node of nodes) node.destroy({ children: true });
+      for (const wedge of wedges) wedge.geometry.destroy();
+      job.cancel();
+      surface.destroy();
+      albedo.destroy(true);
+      detail.destroy(true);
     },
   };
 }

@@ -1,5 +1,5 @@
 import { useApplication } from '@pixi/react';
-import { Circle, Container, Graphics, Sprite, Texture, Ticker } from 'pixi.js';
+import { Circle, Container, Graphics, Particle, ParticleContainer, ParticleShader, Rectangle, Sprite, Texture, Ticker } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import { CAMERA_INITIAL_SCALE, SKY_LOOKS, SYSTEM_CAMERA_MIN_SCALE } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
@@ -15,33 +15,33 @@ import {
   createSystemCamera,
   getSystemExtent,
   orbitPoint,
+  projectOrbitPointWithBasis,
   projectSystemPointWithBasis,
   updateProjectionBasis,
   viewSpaceDirectionWithBasis,
   type Point3D,
   type ProjectedPoint,
+  type ProjectionBasis,
 } from './projection';
 import {
-  createBodyShadowTexture,
+  ASTEROID_TEXTURE_RADIUS,
+  createAsteroidTextures,
   createBrownDwarfTexture,
-  createGasGiantAlbedoTexture,
-  createMoonAlbedoTexture,
   createNebulaGlowTexture,
   createNeutronStarTexture,
-  createRockyPlanetAlbedoTexture,
-  createSunTexture,
-  drawHabitablePlanet,
 } from './textures';
+import { createBodyGeometry, createPlanetBody, createSurfaceTexture, type BodyLook, type PlanetBody } from './planetBody';
+import { paintEcumenopolis, paintGiantPlanet, paintHabitablePlanet, paintMoon, paintRockyPlanet, type SurfaceJob } from './planetSurfaces';
 import { useCamera } from './useCamera';
 import { useZoomController } from './useZoomController';
 import { createAnomalyVisual } from './anomalies';
-import { createCityLights, createEcumenopolisAlbedoTexture, createSettlementLights, type CityLights } from './ecumenopolis';
+import { createCityLights, createSettlementLights, type CityLights } from './ecumenopolis';
 import { createFoundryAlbedoTexture, createFurnaceLights } from './foundry';
+import { createSunBody, sunGlowColor } from './sunBody';
 
 type MoonState = {
   visual: Container;
-  shadow: Sprite;
-  shadowStrength: number;
+  body: PlanetBody;
   angle: number;
   speed: number;
   dist: number;
@@ -54,8 +54,7 @@ type MoonState = {
 
 type PlanetState = {
   visual: Container;
-  shadow: Sprite;
-  shadowStrength: number;
+  body: PlanetBody;
   angle: number;
   speed: number;
   orbitRadius: number;
@@ -71,19 +70,51 @@ type PlanetState = {
 };
 
 const ASTEROID_COLORS = [0x888888, 0x999999, 0xaaaaaa, 0x776655, 0x887766, 0x998877];
+const ASTEROID_SIZE_SCALE = 1.15;
 const SYSTEM_NICE_VALUES = [1, 2, 5, 10, 20, 30, 60];
+const SURFACE_BUDGET_MS = 5;
+const RING_BANDS = 28;
+const RING_INNER_FRACTION = 0.56;
 
-function createPlanetRings(rx: number, ry: number, rotation: number): { back: Graphics; front: Graphics } {
+function halfEllipse(gfx: Graphics, rx: number, ry: number, front: boolean) {
   const k = 0.5522847498;
-  const s1 = { color: 0xddcc99, width: 5, alpha: 0.65 };
-  const s2 = { color: 0xeeddbb, width: 2, alpha: 0.35 };
+  const side = front ? 1 : -1;
+  const startX = front ? -rx : rx;
+  gfx.moveTo(startX, 0)
+    .bezierCurveTo(startX, side * k * ry, startX * k, side * ry, 0, side * ry)
+    .bezierCurveTo(-startX * k, side * ry, -startX, side * k * ry, -startX, 0);
+}
+
+function mixColor(a: number, b: number, t: number) {
+  const channel = (shift: number) => Math.round(((a >> shift) & 0xff) * (1 - t) + ((b >> shift) & 0xff) * t);
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+function createPlanetRings(rx: number, ry: number, rotation: number, color: number, seed: number): { back: Graphics; front: Graphics } {
+  const rng = createRng((seed ^ 0x2f6b1d93) >>> 0);
   const back = new Graphics();
-  back.moveTo(rx, 0).bezierCurveTo(rx, -k * ry, k * rx, -ry, 0, -ry).bezierCurveTo(-k * rx, -ry, -rx, -k * ry, -rx, 0).stroke(s1);
-  back.moveTo(rx * 0.78, 0).bezierCurveTo(rx * 0.78, -k * ry * 0.78, k * rx * 0.78, -ry * 0.78, 0, -ry * 0.78).bezierCurveTo(-k * rx * 0.78, -ry * 0.78, -rx * 0.78, -k * ry * 0.78, -rx * 0.78, 0).stroke(s2);
-  back.rotation = rotation;
   const front = new Graphics();
-  front.moveTo(-rx, 0).bezierCurveTo(-rx, k * ry, -k * rx, ry, 0, ry).bezierCurveTo(k * rx, ry, rx, k * ry, rx, 0).stroke(s1);
-  front.moveTo(-rx * 0.78, 0).bezierCurveTo(-rx * 0.78, k * ry * 0.78, -k * rx * 0.78, ry * 0.78, 0, ry * 0.78).bezierCurveTo(k * rx * 0.78, ry * 0.78, rx * 0.78, k * ry * 0.78, rx * 0.78, 0).stroke(s2);
+  const bandWidth = rx * (1 - RING_INNER_FRACTION) / RING_BANDS;
+  const gapAt = 0.55 + rng() * 0.25;
+  const gapWidth = 0.03 + rng() * 0.04;
+  const tint = mixColor(0xd8c8a0, color, 0.3);
+  let density = 0.5;
+  for (let band = 0; band < RING_BANDS; band++) {
+    const along = (band + 0.5) / RING_BANDS;
+    density = Math.min(1, Math.max(0.08, density + (rng() - 0.5) * 0.35));
+    const gap = Math.abs(along - gapAt) < gapWidth ? 0.08 : 1;
+    const fade = Math.min(1, along / 0.12) * Math.min(1, (1 - along) / 0.1 + 0.2);
+    const alpha = 0.62 * density * gap * fade;
+    const shade = mixColor(tint, 0xffffff, rng() * 0.25);
+    if (alpha < 0.02) continue;
+    const bandScale = RING_INNER_FRACTION + along * (1 - RING_INNER_FRACTION);
+    const style = { color: shade, width: bandWidth * 1.15, alpha };
+    halfEllipse(back, rx * bandScale, ry * bandScale, false);
+    back.stroke(style);
+    halfEllipse(front, rx * bandScale, ry * bandScale, true);
+    front.stroke(style);
+  }
+  back.rotation = rotation;
   front.rotation = rotation;
   return { back, front };
 }
@@ -94,37 +125,94 @@ function ringOrientation(seed: number) {
   return { rotation: (first - 0.5) * 1.2, flattening: 0.34 + second * 0.34 };
 }
 
-function createAsteroidBelt(gapIdx: number, planets: PlanetLayout[], seed: number): Container {
+type AsteroidBelt = {
+  far: ParticleContainer;
+  near: ParticleContainer;
+  update: (basis: ProjectionBasis, spin: number) => void;
+  destroy: () => void;
+};
+
+function createAsteroidBelt(gapIdx: number, planets: PlanetLayout[], seed: number, clearance: number): AsteroidBelt {
   const rng = createRng(seed);
-  const beltInnerR = planets[gapIdx].orbitRadius * 1.12;
+  const beltInnerR = Math.max(planets[gapIdx].orbitRadius * 1.12, clearance * 1.25);
   const beltOuterR = beltInnerR * 1.10;
   const beltCenter = (beltInnerR + beltOuterR) / 2;
   const beltSigma = (beltOuterR - beltInnerR) / 1.5;
-  const batches = new Map<number, Array<{ x: number; y: number; r: number }>>();
   const numAsteroids = Math.floor(rng() * 1250) + 1250;
+  const { atlas, frames } = createAsteroidTextures(seed);
+  const radii: number[] = [];
+  const angles: number[] = [];
+  const sizes: number[] = [];
+  const flips: number[] = [];
+  const colors: number[] = [];
+  const farParticles: Particle[] = [];
+  const nearParticles: Particle[] = [];
 
   for (let index = 0; index < numAsteroids; index++) {
     const u1 = Math.max(rng(), 1e-10);
     const u2 = rng();
     const radius = beltCenter + beltSigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
     if (radius <= 0) continue;
-    const theta = rng() * Math.PI * 2;
-    const color = ASTEROID_COLORS[Math.floor(rng() * ASTEROID_COLORS.length)];
-    const particle = { x: Math.cos(theta) * radius, y: Math.sin(theta) * radius, r: rng() * 5 + 1 };
-    const batch = batches.get(color);
-    if (batch) batch.push(particle);
-    else batches.set(color, [particle]);
+    radii.push(radius);
+    angles.push(rng() * Math.PI * 2);
+    colors.push(ASTEROID_COLORS[Math.floor(rng() * ASTEROID_COLORS.length)]);
+    sizes.push((rng() * 5 + 1) * ASTEROID_SIZE_SCALE / ASTEROID_TEXTURE_RADIUS);
+    flips.push(rng() < 0.5 ? -1 : 1);
+    const texture = frames[Math.floor(rng() * frames.length)];
+    farParticles.push(new Particle({ texture, anchorX: 0.5, anchorY: 0.5, alpha: 0.92 }));
+    nearParticles.push(new Particle({ texture, anchorX: 0.5, anchorY: 0.5, alpha: 0 }));
   }
 
-  const belt = new Container();
-  const beltGfx = new Graphics();
-  for (const [color, particles] of batches) {
-    for (const particle of particles) beltGfx.circle(particle.x, particle.y, particle.r);
-    beltGfx.fill({ color, alpha: 0.55 });
-  }
-  belt.addChild(beltGfx);
-  belt.eventMode = 'none';
-  return belt;
+  const createHalf = (particles: Particle[]) => {
+    const node = new ParticleContainer({
+      texture: atlas,
+      shader: new ParticleShader(),
+      particles,
+      dynamicProperties: { position: true, vertex: true, rotation: true, color: true, uvs: false },
+    });
+    node.boundsArea = new Rectangle(-beltOuterR * 2, -beltOuterR * 2, beltOuterR * 4, beltOuterR * 4);
+    node.eventMode = 'none';
+    node.update();
+    return node;
+  };
+  const far = createHalf(farParticles);
+  const near = createHalf(nearParticles);
+  const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
+
+  return {
+    far,
+    near,
+    update(basis, spin) {
+      for (let index = 0; index < radii.length; index++) {
+        const radius = radii[index];
+        projectOrbitPointWithBasis(angles[index] + spin, radius, basis, projected);
+        const { depth, scale } = projected;
+        const isNear = depth > 0;
+        const shown = isNear ? nearParticles[index] : farParticles[index];
+        const hidden = isNear ? farParticles[index] : nearParticles[index];
+        hidden.alpha = 0;
+        shown.alpha = 0.92;
+        shown.x = projected.x;
+        shown.y = projected.y;
+        shown.rotation = Math.atan2(-shown.y, -shown.x);
+        shown.scaleX = sizes[index] * scale;
+        shown.scaleY = sizes[index] * scale * flips[index];
+        const litFraction = 0.5 * (1 - depth / radius);
+        shown.tint = shadeColor(colors[index], 0.5 + 0.5 * litFraction);
+      }
+    },
+    destroy() {
+      for (const frame of frames) frame.destroy(false);
+      atlas.destroy(true);
+    },
+  };
+}
+
+function shadeColor(color: number, brightness: number) {
+  const r = Math.round(((color >> 16) & 0xff) * brightness);
+  const g = Math.round(((color >> 8) & 0xff) * brightness);
+  const b = Math.round((color & 0xff) * brightness);
+  return (r << 16) | (g << 8) | b;
 }
 
 function createNebulaSprite(color: number, sunRadius: number): Sprite {
@@ -137,56 +225,27 @@ function createNebulaSprite(color: number, sunRadius: number): Sprite {
   return sprite;
 }
 
-function createCorona(seed: number, color: number, sunRadius: number): Container {
-  const rng = createRng(seed);
-  const container = new Container();
-  container.blendMode = 'screen';
-  const gfx = new Graphics();
-  for (let index = 0; index < 12; index++) {
-    const angle = index / 12 * Math.PI * 2;
-    const length = sunRadius * (2.4 + rng() * 3.0);
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle);
-    gfx.moveTo(dx * sunRadius * 0.9, dy * sunRadius * 0.9)
-      .lineTo(dx * length, dy * length)
-      .stroke({ color, width: 1 + rng() * 2.2, alpha: 0.09 + rng() * 0.18 });
-  }
-  for (let index = 0; index < 22; index++) {
-    const angle = index / 22 * Math.PI * 2 + Math.PI / 22;
-    const length = sunRadius * (1.1 + rng() * 1.3);
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle);
-    gfx.moveTo(dx * sunRadius * 0.85, dy * sunRadius * 0.85)
-      .lineTo(dx * length, dy * length)
-      .stroke({ color: 0xffffff, width: 0.6 + rng() * 0.9, alpha: 0.12 + rng() * 0.22 });
-  }
-  container.addChild(gfx);
-  return container;
-}
-
-const SHADOW_STRENGTH: Record<PlanetLayout['zone'], number> = {
-  hot: 0.87,
-  marginal: 0.86,
-  habitable: 0.82,
-  populated: 0.82,
-  ecumenopolis: 0.84,
-  foundry: 0.86,
-  gas: 0.8,
-  ice: 0.8,
+const BODY_LOOKS: Record<PlanetLayout['zone'], BodyLook> = {
+  hot: { bump: 3, specular: 0, limbDarkening: 0.15, ambient: 0.03, atmosphere: 0xffa060, atmosphereStrength: 0.18 },
+  marginal: { bump: 3, specular: 0, limbDarkening: 0.15, ambient: 0.03, atmosphere: 0xb0a898, atmosphereStrength: 0.08 },
+  habitable: { bump: 1.5, specular: 0.6, limbDarkening: 0.1, ambient: 0.03, atmosphere: 0x5a9aff, atmosphereStrength: 0.8 },
+  populated: { bump: 1.5, specular: 0.6, limbDarkening: 0.1, ambient: 0.03, atmosphere: 0x5a9aff, atmosphereStrength: 0.8 },
+  ecumenopolis: { bump: 1.6, specular: 0.45, limbDarkening: 0.15, ambient: 0.04, atmosphere: 0x8aa8ff, atmosphereStrength: 0.6 },
+  foundry: { bump: 0, specular: 0, limbDarkening: 0.15, ambient: 0.04, atmosphere: 0xff8c50, atmosphereStrength: 0.35 },
+  gas: { bump: 0, specular: 0, limbDarkening: 0.6, ambient: 0.03, atmosphere: 0xe8d8b8, atmosphereStrength: 0.45 },
+  ice: { bump: 0, specular: 0, limbDarkening: 0.6, ambient: 0.03, atmosphere: 0x88ccff, atmosphereStrength: 0.6 },
 };
 
-function createBodyShadow(texture: Texture, diameter: number): Sprite {
-  const shadow = new Sprite(texture);
-  shadow.anchor.set(0.5);
-  shadow.width = diameter;
-  shadow.height = diameter;
-  shadow.eventMode = 'none';
-  return shadow;
-}
+const MOON_LOOK: BodyLook = { bump: 3.5, specular: 0, limbDarkening: 0.1, ambient: 0.02, atmosphere: 0x000000, atmosphereStrength: 0 };
 
-function updateBodyShadow(shadow: Sprite, strength: number, direction: Point3D) {
-  shadow.rotation = Math.atan2(direction.y, direction.x);
-  shadow.alpha = strength * Math.max(0.35, Math.min(1, 1 - direction.z * 0.45));
+function createFlatDetailCanvas() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 4;
+  canvas.height = 4;
+  const context = canvas.getContext('2d')!;
+  context.fillStyle = 'rgb(128,0,0)';
+  context.fillRect(0, 0, 4, 4);
+  return canvas;
 }
 
 export function SolarSystem() {
@@ -261,49 +320,60 @@ export function SolarSystem() {
     const systemOrbitGfx = createSystemOrbitGraphics(layout.planets, orbitCamera);
     const allOrbitGfx = [...systemOrbitGfx];
     const bodyTextures: Texture[] = [];
-    const shadowTexture = createBodyShadowTexture();
+    const bodies: PlanetBody[] = [];
+    const bodyGeometry = createBodyGeometry();
+    const flatDetail = createSurfaceTexture(createFlatDetailCanvas());
+    const surfaceJobs: { job: SurfaceJob; textures: Texture[] }[] = [];
     const generatedPlanets = system.planets ?? [];
 
     for (const orbitGfx of systemOrbitGfx) depthScene.addChild(orbitGfx);
+
+    function paintedTextures(job: SurfaceJob, immediate: boolean) {
+      if (immediate) job.step(Infinity);
+      const albedo = createSurfaceTexture(job.surface.albedo);
+      const detail = createSurfaceTexture(job.surface.detail);
+      bodyTextures.push(albedo, detail);
+      if (!immediate) surfaceJobs.push({ job, textures: [albedo, detail] });
+      return { albedo, detail };
+    }
+
+    function addBody(albedo: Texture, detail: Texture, look: BodyLook, radius: number) {
+      const body = createPlanetBody(bodyGeometry, albedo, detail, look, radius);
+      bodies.push(body);
+      return body;
+    }
 
     for (let ring = 0; ring < layout.planets.length; ring++) {
       const planetLayout = layout.planets[ring];
       const planetVisual = new Container();
       const radius = planetLayout.radius;
-      const atmosphere = new Graphics();
-      atmosphere.circle(0, 0, radius * 1.8).fill({ color: planetLayout.color, alpha: 0.08 });
-      atmosphere.circle(0, 0, radius * 1.3).fill({ color: planetLayout.color, alpha: 0.14 });
-      planetVisual.addChild(atmosphere);
-
       const planetSeed = (system.seed + ring * 0x9e3779b9) >>> 0;
       const orientation = ringOrientation(planetSeed);
       const rings = planetLayout.hasRings
-        ? createPlanetRings(radius * 2.4, radius * orientation.flattening, orientation.rotation)
+        ? createPlanetRings(radius * 2.4, radius * orientation.flattening, orientation.rotation, planetLayout.color, planetSeed)
         : null;
       if (rings) planetVisual.addChild(rings.back);
 
       const isEcumenopolis = planetLayout.zone === 'ecumenopolis';
       const isFoundry = planetLayout.zone === 'foundry';
-      const landCanvas = planetLayout.zone === 'habitable' || planetLayout.zone === 'populated'
-        ? drawHabitablePlanet(planetLayout.color, planetSeed)
-        : null;
-      const planetTexture = planetLayout.zone === 'gas' || planetLayout.zone === 'ice'
-        ? createGasGiantAlbedoTexture(planetLayout.color, planetSeed, planetLayout.zone === 'ice')
-        : isEcumenopolis
-          ? createEcumenopolisAlbedoTexture(planetLayout.color, planetSeed, anomaly?.living ?? false)
-          : isFoundry
-            ? createFoundryAlbedoTexture(planetLayout.color, planetSeed)
-            : landCanvas
-              ? Texture.from(landCanvas, true)
-              : createRockyPlanetAlbedoTexture(planetLayout.color, planetSeed);
-      bodyTextures.push(planetTexture);
-      const planetSprite = new Sprite(planetTexture);
-      planetSprite.anchor.set(0.5);
-      planetSprite.width = radius * 2;
-      planetSprite.height = radius * 2;
-      const planetShadow = createBodyShadow(shadowTexture, radius * 2);
-      planetVisual.addChild(planetSprite);
-      planetVisual.addChild(planetShadow);
+      const isHabitable = planetLayout.zone === 'habitable' || planetLayout.zone === 'populated';
+      const surfaceJob = planetLayout.zone === 'gas' || planetLayout.zone === 'ice'
+        ? paintGiantPlanet(planetLayout.color, planetSeed, planetLayout.zone === 'ice')
+        : isHabitable
+          ? paintHabitablePlanet(planetLayout.color, planetSeed)
+          : isEcumenopolis
+            ? paintEcumenopolis(planetLayout.color, planetSeed, anomaly?.living ?? false)
+            : isFoundry
+              ? null
+              : paintRockyPlanet(planetLayout.color, planetSeed);
+      const landCanvas = isHabitable && surfaceJob ? surfaceJob.surface.albedo : null;
+      const builtTexture = isFoundry ? createFoundryAlbedoTexture(planetLayout.color, planetSeed) : null;
+      if (builtTexture) bodyTextures.push(builtTexture);
+      const surface = surfaceJob
+        ? paintedTextures(surfaceJob, planetLayout.zone === 'populated')
+        : { albedo: builtTexture!, detail: flatDetail };
+      const planetBody = addBody(surface.albedo, surface.detail, BODY_LOOKS[planetLayout.zone], radius);
+      planetVisual.addChild(planetBody.mesh);
       const cityLights = isEcumenopolis
         ? createCityLights(planetSeed, radius, anomaly?.living ?? false, anomaly?.integrity ?? 1)
         : isFoundry
@@ -316,8 +386,7 @@ export function SolarSystem() {
 
       const planet: PlanetState = {
         visual: planetVisual,
-        shadow: planetShadow,
-        shadowStrength: SHADOW_STRENGTH[planetLayout.zone],
+        body: planetBody,
         angle: planetLayout.angle,
         speed: ORBITAL_K / Math.pow(planetLayout.orbitRadius, 1.5),
         orbitRadius: planetLayout.orbitRadius,
@@ -343,20 +412,14 @@ export function SolarSystem() {
         for (let moonIndex = 0; moonIndex < planetLayout.moons.length; moonIndex++) {
           const moonLayout = planetLayout.moons[moonIndex];
           const moonSeed = (system.seed + ring * 0x9e3779b9 + (moonIndex + 1) * 0x7f4a9c3b) >>> 0;
-          const moonTexture = createMoonAlbedoTexture(moonLayout.color, moonSeed);
-          bodyTextures.push(moonTexture);
-          const moonSprite = new Sprite(moonTexture);
-          moonSprite.anchor.set(0.5);
-          moonSprite.width = moonLayout.radius * 2;
-          moonSprite.height = moonLayout.radius * 2;
-          const moonShadow = createBodyShadow(shadowTexture, moonLayout.radius * 2);
+          const moonSurface = paintedTextures(paintMoon(moonLayout.color, moonSeed), false);
+          const moonBody = addBody(moonSurface.albedo, moonSurface.detail, MOON_LOOK, moonLayout.radius);
           const moonVisual = new Container();
-          moonVisual.addChild(moonSprite, moonShadow);
+          moonVisual.addChild(moonBody.mesh);
           depthScene.addChild(moonVisual);
           planet.moons.push({
             visual: moonVisual,
-            shadow: moonShadow,
-            shadowStrength: 0.87,
+            body: moonBody,
             angle: moonLayout.angle,
             speed: MOON_K / Math.pow(moonLayout.dist, 1.5),
             dist: moonLayout.dist,
@@ -388,44 +451,43 @@ export function SolarSystem() {
     for (const gfx of allOrbitGfx) gfx.visible = showOrbitRingsRef.current;
     orbitGfxRef.current = allOrbitGfx;
 
-    const asteroidProjection = layout.asteroidGapIdx === null ? null : new Container();
     const asteroidBelt = layout.asteroidGapIdx === null
       ? null
-      : createAsteroidBelt(layout.asteroidGapIdx, layout.planets, layout.asteroidSeed);
-    if (asteroidProjection && asteroidBelt) {
-      asteroidProjection.scale.y = projectionBasis.cosTilt;
-      asteroidProjection.zIndex = -0.01;
-      asteroidBelt.rotation = systemCamera.yaw;
-      asteroidProjection.addChild(asteroidBelt);
-      depthScene.addChild(asteroidProjection);
+      : createAsteroidBelt(layout.asteroidGapIdx, layout.planets, layout.asteroidSeed, anomalyVisual?.extent ?? 0);
+    let asteroidSpin = 0;
+    if (asteroidBelt) {
+      asteroidBelt.far.zIndex = -1;
+      asteroidBelt.near.zIndex = 1;
+      depthScene.addChild(asteroidBelt.far, asteroidBelt.near);
     }
 
+    const coronaAlpha = anomalyVisual?.coronaAlpha ?? 1;
+    const starAlpha = anomalyVisual?.starAlpha ?? 1;
     const sunTexture = isBrownDwarf
       ? createBrownDwarfTexture(system.seed)
       : isNeutronStar
         ? createNeutronStarTexture(system.seed)
-        : createSunTexture(system.color);
-    const sunSprite = new Sprite(sunTexture);
-    sunSprite.anchor.set(0.5);
-    sunSprite.width = sunRadius * 4;
-    sunSprite.height = sunRadius * 4;
-    const sunBaseScale = sunSprite.scale.x;
+        : null;
+    const sunSprite = sunTexture ? new Sprite(sunTexture) : null;
+    const sunBaseScale = sunRadius * 4 / (sunTexture?.width ?? 1);
+    if (sunSprite) {
+      sunSprite.anchor.set(0.5);
+      sunSprite.scale.set(sunBaseScale);
+      sunSprite.alpha = starAlpha;
+    }
+    const sunBody = sunSprite ? null : createSunBody(system.starType, system.seed, sunRadius, coronaAlpha);
+    if (sunBody) sunBody.mesh.alpha = starAlpha;
     const starVisual = new Container();
-    const corona = isNeutronStar ? null : createCorona(system.seed, system.color, sunRadius);
-    if (corona) starVisual.addChild(corona);
-    starVisual.addChild(sunSprite);
+    starVisual.addChild(sunSprite ?? sunBody!.mesh);
     starVisual.zIndex = 0;
     starVisual.eventMode = 'none';
     depthScene.addChild(starVisual);
 
-    const coronaAlpha = anomalyVisual?.coronaAlpha ?? 1;
     if (anomalyVisual) {
       for (const node of anomalyVisual.nodes) depthScene.addChild(node);
-      sunSprite.alpha = anomalyVisual.starAlpha;
-      if (corona) corona.visible = coronaAlpha > 0;
     }
 
-    const nebulaSprite = createNebulaSprite(anomalyVisual?.nebulaColor ?? system.color, sunRadius);
+    const nebulaSprite = createNebulaSprite(anomalyVisual?.nebulaColor ?? (sunBody ? sunGlowColor(system.starType) : system.color), sunRadius);
     const nebulaTexture = nebulaSprite.texture;
     nebulaSprite.eventMode = 'none';
     nebulaLayer.addChild(nebulaSprite);
@@ -434,7 +496,7 @@ export function SolarSystem() {
     function updateProjectionPresentation() {
       const tiltScale = projectionBasis.cosTilt / targetTiltCos;
       for (const gfx of systemOrbitGfx) gfx.scale.y = tiltScale;
-      if (asteroidProjection) asteroidProjection.scale.y = projectionBasis.cosTilt;
+      asteroidBelt?.update(projectionBasis, asteroidSpin);
     }
 
     function updateBodies(dt: number, elapsed: number) {
@@ -450,7 +512,7 @@ export function SolarSystem() {
         planet.lightDirection.y = -planet.systemPoint.y;
         planet.lightDirection.z = -planet.systemPoint.z;
         viewSpaceDirectionWithBasis(planet.lightDirection, projectionBasis, planet.lightDirection);
-        updateBodyShadow(planet.shadow, planet.shadowStrength, planet.lightDirection);
+        planet.body.setLight(planet.lightDirection);
         planet.cityLights?.update(planet.lightDirection, elapsed);
         if (planet.moonOrbitFar && planet.moonOrbitNear) {
           planet.moonOrbitFar.position.set(planet.projected.x, planet.projected.y);
@@ -475,30 +537,36 @@ export function SolarSystem() {
           moon.lightDirection.y = -moon.systemPoint.y;
           moon.lightDirection.z = -moon.systemPoint.z;
           viewSpaceDirectionWithBasis(moon.lightDirection, projectionBasis, moon.lightDirection);
-          updateBodyShadow(moon.shadow, moon.shadowStrength, moon.lightDirection);
+          moon.body.setLight(moon.lightDirection);
         }
       }
     }
 
+    if (anomalyVisual?.surface) surfaceJobs.push(anomalyVisual.surface);
     updateProjectionPresentation();
     updateBodies(0, 0);
     anomalyVisual?.update(0, 0, projectionBasis);
+    sunBody?.update(0, projectionBasis);
     let elapsed = 0;
     const onTick = (ticker: Ticker) => {
       const dt = ticker.deltaMS / 1000;
+      const deadline = performance.now() + SURFACE_BUDGET_MS;
+      while (surfaceJobs.length > 0 && performance.now() < deadline) {
+        const next = surfaceJobs[0];
+        if (!next.job.step(deadline)) break;
+        for (const texture of next.textures) texture.source.update();
+        surfaceJobs.shift();
+      }
       elapsed += dt;
       const introProgress = Math.min(1, elapsed / 0.9);
       const easedIntro = 1 - Math.pow(1 - introProgress, 3);
       systemCamera.tilt = introTilt + (targetTilt - introTilt) * easedIntro;
       updateProjectionBasis(systemCamera, projectionBasis);
       updateProjectionPresentation();
-      sunSprite.scale.set(sunBaseScale * (1 + Math.sin(elapsed * 0.9) * 0.07));
-      if (corona) {
-        corona.rotation += 0.018 * dt;
-        corona.alpha = coronaAlpha * (0.8 + 0.2 * Math.sin(elapsed * 0.55));
-      }
+      sunSprite?.scale.set(sunBaseScale * (1 + Math.sin(elapsed * 0.9) * 0.07));
+      sunBody?.update(elapsed, projectionBasis);
       nebulaSprite.alpha = 0.65 + 0.15 * Math.sin(elapsed * 0.22);
-      if (asteroidBelt) asteroidBelt.rotation += 0.025 * dt;
+      asteroidSpin += 0.025 * dt;
       updateBodies(dt, elapsed);
       anomalyVisual?.update(dt, elapsed, projectionBasis);
     };
@@ -507,12 +575,16 @@ export function SolarSystem() {
     return () => {
       Ticker.shared.remove(onTick);
       anomalyVisual?.destroy();
+      asteroidBelt?.destroy();
       orbitGfxRef.current = [];
       world.removeChild(systemRoot);
       systemRoot.destroy({ children: true });
-      sunTexture.destroy(true);
+      sunTexture?.destroy(true);
+      sunBody?.destroy();
       nebulaTexture.destroy(true);
-      shadowTexture.destroy(true);
+      for (const body of bodies) body.destroy();
+      bodyGeometry.destroy();
+      flatDetail.destroy(true);
       for (const texture of bodyTextures) texture.destroy(true);
     };
   }, [system, isInitialised, hasDragged]);

@@ -107,6 +107,7 @@ export function encodeSuperclusterSeed(ci: number, cj: number, ck: number, trial
 
 const centres = new Float64Array(27 * 3);
 const centreCell = { i: NaN, j: NaN, k: NaN };
+const voidOffset = { x: 0, y: 0, z: 0 };
 
 function cellCentres(ci: number, cj: number, ck: number): Float64Array {
   if (centreCell.i === ci && centreCell.j === cj && centreCell.k === ck) return centres;
@@ -114,10 +115,10 @@ function cellCentres(ci: number, cj: number, ck: number): Float64Array {
   for (let i = ci - 1; i <= ci + 1; i++) {
     for (let j = cj - 1; j <= cj + 1; j++) {
       for (let k = ck - 1; k <= ck + 1; k++) {
-        const rng = createRng(cellHash(UNIVERSE_SEED, i, j, k));
-        centres[o++] = (i + 0.5 + (rng() - 0.5) * UNIVERSE_VOID_JITTER) * UNIVERSE_VOID_CELL;
-        centres[o++] = (j + 0.5 + (rng() - 0.5) * UNIVERSE_VOID_JITTER) * UNIVERSE_VOID_CELL;
-        centres[o++] = (k + 0.5 + (rng() - 0.5) * UNIVERSE_VOID_JITTER) * UNIVERSE_VOID_CELL;
+        universeVoidOffset(i, j, k, voidOffset);
+        centres[o++] = (i + 0.5 + voidOffset.x) * UNIVERSE_VOID_CELL;
+        centres[o++] = (j + 0.5 + voidOffset.y) * UNIVERSE_VOID_CELL;
+        centres[o++] = (k + 0.5 + voidOffset.z) * UNIVERSE_VOID_CELL;
       }
     }
   }
@@ -361,4 +362,18 @@ export function universeWebWeight(ux: number, uy: number, uz: number): number {
   const fy = origin.y + uy / UNIVERSE_SCALE;
   const fz = origin.z + uz / UNIVERSE_SCALE;
   return combinedWeight(foamWeight(cellCentres(cellOf(fx), cellOf(fy), cellOf(fz)), fx, fy, fz));
+}
+
+export function universeCellPosition(ux: number, uy: number, uz: number, out: { x: number; y: number; z: number }): void {
+  const origin = getAnchor();
+  out.x = (origin.x + ux / UNIVERSE_SCALE) / UNIVERSE_VOID_CELL;
+  out.y = (origin.y + uy / UNIVERSE_SCALE) / UNIVERSE_VOID_CELL;
+  out.z = (origin.z + uz / UNIVERSE_SCALE) / UNIVERSE_VOID_CELL;
+}
+
+export function universeVoidOffset(i: number, j: number, k: number, out: { x: number; y: number; z: number }): void {
+  const rng = createRng(cellHash(UNIVERSE_SEED, i, j, k));
+  out.x = (rng() - 0.5) * UNIVERSE_VOID_JITTER;
+  out.y = (rng() - 0.5) * UNIVERSE_VOID_JITTER;
+  out.z = (rng() - 0.5) * UNIVERSE_VOID_JITTER;
 }

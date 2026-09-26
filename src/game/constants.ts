@@ -206,7 +206,6 @@ export const SKY_PALETTES: readonly (readonly [number, number, number])[][] = [
 
 // How much nebula, galactic band and star density each view's sky carries.
 export const SKY_LOOKS = {
-  universe: { nebula: 0.6, band: 0, stars: 0.75 },
   supercluster: { nebula: 0.65, band: 0, stars: 0.8 },
   galaxy: { nebula: 0.5, band: 0.4, stars: 0.95 },
   system: { nebula: 1, band: 1, stars: 1 },
@@ -218,8 +217,25 @@ export const SKY_BASE_COLOR: readonly [number, number, number] = [0.02, 0.031, 0
 // Focal length in screen px of the flat views' sky; long enough that the sphere reads flat.
 export const SKY_FLAT_FOCAL = 1400;
 
-// Focal length the universe sky's star cells are laid out at, so a resize does not reshuffle them.
-export const SKY_UNIVERSE_CELL_FOCAL = 770;
+export const CMB_RESOLUTION = 0.35;
+export const CMB_FREQUENCY = 3.2;
+export const CMB_OCTAVES = 6;
+export const CMB_WARM: readonly [number, number, number] = [0.085, 0.045, 0.03];
+export const CMB_COLD: readonly [number, number, number] = [0.01, 0.03, 0.075];
+
+export const WEB_GLOW_NEAR = 600;
+export const WEB_GLOW_FADE = 2_500;
+export const WEB_GLOW_FAR = 4_500;
+export const WEB_GLOW_STEPS = 32;
+// Powers of two, so the panorama can wrap in WebGL1.
+export const WEB_GLOW_WIDTH = 256;
+export const WEB_GLOW_HEIGHT = 128;
+export const WEB_GLOW_REBAKE = 40;
+export const WEB_GLOW_CROSSFADE_SECS = 0.15;
+export const WEB_GLOW_WALL_WIDTH = 1_400;
+export const WEB_GLOW_FILAMENT_WIDTH = 2_400;
+export const WEB_GLOW_COLOR: readonly [number, number, number] = [0.5, 0.34, 0.72];
+export const WEB_GLOW_INTENSITY = 0.25;
 
 // The nebula renders at this fraction of screen resolution and is upscaled; it has no hard edges.
 export const SKY_NEBULA_RESOLUTION = 0.5;
@@ -381,6 +397,18 @@ export const UNIVERSE_CULL_MARGIN_PX = 80;
 export const UNIVERSE_DOT_SIZE = 6;
 export const UNIVERSE_DOT_MIN_PX = 0.9;
 export const UNIVERSE_DOT_MAX_PX = 60;
+
+export const UNIVERSE_CLUSTER_TEMPLATES = 128;
+export const UNIVERSE_CLUSTER_MAX_STARS = 40;
+export const UNIVERSE_CLUSTER_MIN_STARS = 12;
+export const UNIVERSE_CLUSTER_RADIUS = 30;
+export const UNIVERSE_CLUSTER_REVEAL_MIN_STARS = 1;
+export const UNIVERSE_CLUSTER_REVEAL_FULL_STARS = 4;
+export const UNIVERSE_CLUSTER_STARS_PER_PX = 1.2;
+export const UNIVERSE_CLUSTER_PICK_FRACTION = 0.9;
+export const UNIVERSE_STAR_SIZE = 1.4;
+export const UNIVERSE_STAR_MIN_PX = 1.1;
+export const UNIVERSE_STAR_MAX_PX = 5;
 
 export const UNIVERSE_LOOK_SENSITIVITY = 0.004;
 export const UNIVERSE_KEY_YAW_SPEED = 0.9;

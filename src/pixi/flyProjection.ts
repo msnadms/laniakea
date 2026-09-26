@@ -1,6 +1,8 @@
 import type { FlyCamera } from '../game/types';
 import type { ProjectedPoint } from './projection';
+import { CLUSTER_MAX_OFFSET, CLUSTER_SIZE, CLUSTER_X, CLUSTER_Y, CLUSTER_Z, clusterRadius } from './clusterStars';
 import {
+  UNIVERSE_CLUSTER_MAX_STARS,
   UNIVERSE_CULL_MARGIN_PX,
   UNIVERSE_DOT_MAX_PX,
   UNIVERSE_DOT_MIN_PX,
@@ -10,6 +12,9 @@ import {
   UNIVERSE_MAX_PITCH,
   UNIVERSE_NEAR,
   UNIVERSE_NEAR_FADE,
+  UNIVERSE_STAR_MAX_PX,
+  UNIVERSE_STAR_MIN_PX,
+  UNIVERSE_STAR_SIZE,
   UNIVERSE_START_BACKOFF,
 } from '../game/constants';
 
@@ -88,9 +93,12 @@ export function universeFog(distance: number): number {
   return t >= 1 ? 0 : (1 - t) * (1 - t);
 }
 
+export function universeNearFade(depth: number): number {
+  return Math.min(1, Math.max(0, (depth - UNIVERSE_NEAR) / UNIVERSE_NEAR_FADE));
+}
+
 export function universeDotAlpha(distance: number, depth: number, rawPx: number): number {
-  const nearFade = Math.min(1, Math.max(0, (depth - UNIVERSE_NEAR) / UNIVERSE_NEAR_FADE));
-  return universeFog(distance) * nearFade * Math.min(1, rawPx / UNIVERSE_DOT_MIN_PX);
+  return universeFog(distance) * universeNearFade(depth) * Math.min(1, rawPx / UNIVERSE_DOT_MIN_PX);
 }
 
 export function universeDotPx(rawPx: number): number {
@@ -147,51 +155,97 @@ export function universeMarkDepth(px: number, py: number, pz: number, basis: Fly
   return z1 * basis.cosPitch + ry * basis.sinPitch;
 }
 
-export function projectUniverseField(
+export function projectUniverseClusters(
   x: Float32Array,
   y: Float32Array,
   z: Float32Array,
+  brightness: Float32Array,
   basis: FlyBasis,
   outX: Float32Array,
   outY: Float32Array,
   outDepth: Float32Array,
-  outSize: Float32Array,
-  outAlpha: Float32Array,
+  outRadius: Float32Array,
+  outFog: Float32Array,
 ): void {
   const { cosYaw, sinYaw, cosPitch, sinPitch, focal } = basis;
-  const limitX = basis.halfWidth + UNIVERSE_CULL_MARGIN_PX;
-  const limitY = basis.halfHeight + UNIVERSE_CULL_MARGIN_PX;
+  const slopeX = (basis.halfWidth + UNIVERSE_CULL_MARGIN_PX) / focal;
+  const slopeY = (basis.halfHeight + UNIVERSE_CULL_MARGIN_PX) / focal;
+  const growX = Math.sqrt(1 + slopeX * slopeX);
+  const growY = Math.sqrt(1 + slopeY * slopeY);
   for (let i = 0; i < x.length; i++) {
     const rx = x[i] - basis.x;
     const ry = y[i] - basis.y;
     const rz = z[i] - basis.z;
     const x1 = rx * cosYaw - rz * sinYaw;
     const z1 = rx * sinYaw + rz * cosYaw;
+    const up = ry * cosPitch - z1 * sinPitch;
+    const depth = z1 * cosPitch + ry * sinPitch;
+    const fog = universeFog(Math.sqrt(rx * rx + ry * ry + rz * rz));
+    const radius = clusterRadius(brightness[i]);
+    const extent = radius * CLUSTER_MAX_OFFSET;
+    if (
+      fog <= 0
+      || depth < -extent
+      || Math.abs(x1) > depth * slopeX + extent * growX
+      || Math.abs(up) > depth * slopeY + extent * growY
+    ) {
+      outFog[i] = 0;
+      continue;
+    }
+    outFog[i] = fog;
+    outDepth[i] = depth;
+    if (depth < UNIVERSE_NEAR) {
+      outRadius[i] = Infinity;
+      continue;
+    }
+    const inv = focal / depth;
+    outX[i] = x1 * inv;
+    outY[i] = -up * inv;
+    outRadius[i] = radius * inv;
+  }
+}
+
+export function projectClusterStars(
+  cx: number,
+  cy: number,
+  cz: number,
+  radius: number,
+  template: number,
+  shown: number,
+  basis: FlyBasis,
+  outX: Float32Array,
+  outY: Float32Array,
+  outSize: Float32Array,
+  outAlpha: Float32Array,
+): number {
+  const { cosYaw, sinYaw, cosPitch, sinPitch, focal } = basis;
+  const limitX = basis.halfWidth + UNIVERSE_CULL_MARGIN_PX;
+  const limitY = basis.halfHeight + UNIVERSE_CULL_MARGIN_PX;
+  const count = Math.min(UNIVERSE_CLUSTER_MAX_STARS, Math.ceil(shown));
+  const base = template * UNIVERSE_CLUSTER_MAX_STARS;
+  for (let k = 0; k < count; k++) {
+    const rx = cx + CLUSTER_X[base + k] * radius - basis.x;
+    const ry = cy + CLUSTER_Y[base + k] * radius - basis.y;
+    const rz = cz + CLUSTER_Z[base + k] * radius - basis.z;
+    const x1 = rx * cosYaw - rz * sinYaw;
+    const z1 = rx * sinYaw + rz * cosYaw;
     const depth = z1 * cosPitch + ry * sinPitch;
     if (depth < UNIVERSE_NEAR) {
-      outDepth[i] = -1;
-      outAlpha[i] = 0;
+      outAlpha[k] = 0;
       continue;
     }
     const inv = focal / depth;
     const sx = x1 * inv;
     const sy = -(ry * cosPitch - z1 * sinPitch) * inv;
     if (sx > limitX || sx < -limitX || sy > limitY || sy < -limitY) {
-      outDepth[i] = -1;
-      outAlpha[i] = 0;
+      outAlpha[k] = 0;
       continue;
     }
-    const rawPx = UNIVERSE_DOT_SIZE * inv;
-    const alpha = universeDotAlpha(Math.sqrt(rx * rx + ry * ry + rz * rz), depth, rawPx);
-    if (alpha <= 0) {
-      outDepth[i] = -1;
-      outAlpha[i] = 0;
-      continue;
-    }
-    outX[i] = sx;
-    outY[i] = sy;
-    outDepth[i] = depth;
-    outSize[i] = universeDotPx(rawPx);
-    outAlpha[i] = alpha;
+    const rawPx = UNIVERSE_STAR_SIZE * CLUSTER_SIZE[base + k] * inv;
+    outX[k] = sx;
+    outY[k] = sy;
+    outSize[k] = Math.min(UNIVERSE_STAR_MAX_PX, Math.max(UNIVERSE_STAR_MIN_PX, rawPx));
+    outAlpha[k] = universeNearFade(depth) * Math.min(1, rawPx / UNIVERSE_STAR_MIN_PX, shown - k);
   }
+  return count;
 }

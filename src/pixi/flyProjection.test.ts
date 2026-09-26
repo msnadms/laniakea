@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  UNIVERSE_CLUSTER_MAX_STARS,
+  UNIVERSE_CULL_MARGIN_PX,
   UNIVERSE_DOT_MAX_PX,
   UNIVERSE_DOT_SIZE,
   UNIVERSE_FOG_FAR,
@@ -14,12 +16,15 @@ import {
   flyForward,
   flyRight,
   flyUp,
-  projectUniverseField,
+  projectClusterStars,
+  projectUniverseClusters,
+  projectUniverseMark,
   projectUniversePoint,
   universeFog,
   updateFlyBasis,
 } from './flyProjection';
 import type { ProjectedPoint } from './projection';
+import { CLUSTER_MAX_OFFSET, CLUSTER_X, CLUSTER_Y, CLUSTER_Z, clusterRadius, clusterTemplate } from './clusterStars';
 
 const WIDTH = 1600;
 const HEIGHT = 900;
@@ -130,33 +135,74 @@ describe('universe fly camera', () => {
       .toBeGreaterThan(projectUniversePoint(0, 0, UNIVERSE_FOG_FAR * 0.6, basis, point()));
   });
 
-  it('projects a whole field exactly as it projects one point', () => {
-    const points = [[0, 0, 900], [300, -200, 4000], [0, 0, -500], [-9000, 4000, 12000], [50, 60, 70], [0, 0, 40_000]];
-    const x = Float32Array.from(points.map((p) => p[0]));
-    const y = Float32Array.from(points.map((p) => p[1]));
-    const z = Float32Array.from(points.map((p) => p[2]));
+  it('culls a cluster as a sphere of its star extent, keeping one whose centre is off screen or behind', () => {
+    const basis = basisFor(origin);
+    const brightness = 0.6;
+    const extent = clusterRadius(brightness) * CLUSTER_MAX_OFFSET;
+    const slopeX = (basis.halfWidth + UNIVERSE_CULL_MARGIN_PX) / basis.focal;
+    const depth = 300;
+    const edge = depth * slopeX;
+    const reach = extent * Math.sqrt(1 + slopeX * slopeX);
+    const points = [[0, 0, depth], [edge + reach * 0.95, 0, depth], [edge + reach * 1.05, 0, depth], [0, 0, -extent * 0.5], [0, 0, -extent * 2]];
+    const out = points.map(() => 0);
     const outX = new Float32Array(points.length);
     const outY = new Float32Array(points.length);
     const outDepth = new Float32Array(points.length);
-    const outSize = new Float32Array(points.length);
-    const outAlpha = new Float32Array(points.length);
-    const camera = { x: 120, y: -40, z: -300, yaw: 0.2, pitch: -0.1 };
-    const basis = basisFor(camera);
-    projectUniverseField(x, y, z, basis, outX, outY, outDepth, outSize, outAlpha);
-    let visible = 0;
-    for (let i = 0; i < points.length; i++) {
+    const outRadius = new Float32Array(points.length);
+    const outFog = new Float32Array(points.length);
+    projectUniverseClusters(
+      Float32Array.from(points.map((p) => p[0])),
+      Float32Array.from(points.map((p) => p[1])),
+      Float32Array.from(points.map((p) => p[2])),
+      Float32Array.from(out.map(() => brightness)),
+      basis, outX, outY, outDepth, outRadius, outFog,
+    );
+    expect(outX[0]).toBeCloseTo(0);
+    expect(outY[0]).toBeCloseTo(0);
+    expect(outRadius[0]).toBeCloseTo(clusterRadius(brightness) * basis.focal / depth, 3);
+    expect(outFog[0]).toBeCloseTo(universeFog(depth), 5);
+    expect(outFog[1]).toBeGreaterThan(0);
+    expect(outFog[2]).toBe(0);
+    expect(outFog[3]).toBeGreaterThan(0);
+    expect(outRadius[3]).toBe(Infinity);
+    expect(outFog[4]).toBe(0);
+  });
+
+  it('culls a cluster past the fog', () => {
+    const outFog = new Float32Array(1);
+    const empty = () => new Float32Array(1);
+    projectUniverseClusters(
+      Float32Array.of(0), Float32Array.of(0), Float32Array.of(UNIVERSE_FOG_FAR + 10), Float32Array.of(0.5),
+      basisFor(origin), empty(), empty(), empty(), empty(), outFog,
+    );
+    expect(outFog[0]).toBe(0);
+  });
+
+  it("projects a cluster's template stars and fades in the last one shown", () => {
+    const basis = basisFor(origin);
+    const template = clusterTemplate(12345);
+    const radius = clusterRadius(0.8);
+    const centre = [20, -10, 400];
+    const outX = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const outY = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const outSize = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const outAlpha = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const count = projectClusterStars(centre[0], centre[1], centre[2], radius, template, 6.25, basis, outX, outY, outSize, outAlpha);
+    expect(count).toBe(7);
+    const base = template * UNIVERSE_CLUSTER_MAX_STARS;
+    for (let k = 0; k < count; k++) {
       const projected = point();
-      const alpha = projectUniversePoint(x[i], y[i], z[i], basis, projected);
-      expect(outAlpha[i]).toBeCloseTo(alpha, 5);
-      expect(outDepth[i]).toBeCloseTo(projected.depth, 1);
-      if (alpha === 0) continue;
-      visible++;
-      expect(outX[i]).toBeCloseTo(projected.x, 2);
-      expect(outY[i]).toBeCloseTo(projected.y, 2);
-      expect(outSize[i]).toBeCloseTo(projected.scale, 3);
+      projectUniverseMark(
+        centre[0] + CLUSTER_X[base + k] * radius,
+        centre[1] + CLUSTER_Y[base + k] * radius,
+        centre[2] + CLUSTER_Z[base + k] * radius,
+        basis, projected,
+      );
+      expect(outX[k]).toBeCloseTo(projected.x, 2);
+      expect(outY[k]).toBeCloseTo(projected.y, 2);
     }
-    expect(visible).toBeGreaterThan(1);
-    expect(visible).toBeLessThan(points.length);
+    expect(outAlpha[6]).toBeCloseTo(0.25, 5);
+    expect(outAlpha[0]).toBe(1);
   });
 
   it('turns to face a target', () => {

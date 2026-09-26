@@ -17,6 +17,14 @@ import {
 import { generateSuperclusterName } from '../game/superclusters';
 import {
   SC_DOT_TEXTURE_RADIUS,
+  UNIVERSE_CLUSTER_MAX_STARS,
+  UNIVERSE_CLUSTER_PICK_FRACTION,
+  UNIVERSE_CLUSTER_REVEAL_FULL_STARS,
+  UNIVERSE_CLUSTER_REVEAL_MIN_STARS,
+  UNIVERSE_CLUSTER_STARS_PER_PX,
+  UNIVERSE_DOT_MIN_PX,
+  UNIVERSE_DOT_SIZE,
+  UNIVERSE_NEAR,
   UNIVERSE_CHUNK_BUDGET_MS,
   UNIVERSE_CHUNK_REFRESH,
   UNIVERSE_CHUNK_TRIALS,
@@ -31,12 +39,12 @@ import {
   SCAN_SHELL_DENIED_COLOR,
   SCAN_UNIVERSE_MAX_RADIUS,
   SCAN_UNIVERSE_MAX_TARGETS,
-  SKY_LOOKS,
-  SKY_UNIVERSE_CELL_FOCAL,
   UNIVERSE_SEED,
+  WEB_GLOW_CROSSFADE_SECS,
+  WEB_GLOW_REBAKE,
 } from '../game/constants';
 import type { FlyCamera, UniverseChunk } from '../game/types';
-import { createSuperclusterDotTexture } from './textures';
+import { createUniverseStarTexture } from './textures';
 import { createPointerLabel } from './labels';
 import { animateZoomTo } from './zoomAnim';
 import { useZoomController } from './useZoomController';
@@ -44,16 +52,21 @@ import { useFlyCamera } from './useFlyCamera';
 import {
   createUniverseCamera,
   faceTarget,
-  projectUniverseField,
+  projectClusterStars,
+  projectUniverseClusters,
   projectUniverseMark,
   projectUniversePoint,
+  universeDotPx,
   universeMarkDepth,
+  universeNearFade,
   updateFlyBasis,
 } from './flyProjection';
+import { CLUSTER_TINT, clusterRadius, clusterStarCount, clusterTemplate } from './clusterStars';
 import type { ProjectedPoint } from './projection';
 import { drawCrosshair, drawVisitedRings } from './dotOverlays';
 import { createUniverseMinimap } from './universeMinimap';
-import { createSky, type SkyView } from './sky';
+import { createCmbShell } from './cmbShell';
+import { createWebGlow } from './webGlow';
 import { createUniverseAnomalyDebug } from './anomalyDebug';
 import { useScanStore } from '../store/scanStore';
 import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
@@ -81,6 +94,11 @@ const FIELD_EXTENT = 100_000;
 const MLY_PER_MPC = 3.26156;
 const READOUT_BOTTOM_PX = 40;
 const SLOT_GROWTH = 4096;
+
+function clusterReveal(shown: number): number {
+  const t = Math.min(1, Math.max(0, (shown - UNIVERSE_CLUSTER_REVEAL_MIN_STARS) / (UNIVERSE_CLUSTER_REVEAL_FULL_STARS - UNIVERSE_CLUSTER_REVEAL_MIN_STARS)));
+  return t * t * (3 - 2 * t);
+}
 
 function tierOf(brightness: number): number {
   let tier = 0;
@@ -162,7 +180,7 @@ export function UniverseWorld() {
     const world = worldRef.current;
     const stage = app.stage;
 
-    const texture = createSuperclusterDotTexture();
+    const texture = createUniverseStarTexture();
     const dotsContainer = new Container();
     dotsContainer.blendMode = 'screen';
     const particleContainer = new ParticleContainer({
@@ -188,9 +206,9 @@ export function UniverseWorld() {
     world.addChild(scanOverlay.node);
     world.addChild(hoverLayer);
 
-    const sky = createSky(app.renderer, UNIVERSE_SEED, SKY_LOOKS.universe);
-    const skyView: SkyView = { cosYaw: 1, sinYaw: 0, cosPitch: 1, sinPitch: 0, focal: 1, cellFocal: SKY_UNIVERSE_CELL_FOCAL, orbitYaw: 0, orbitTilt: 0 };
-    stage.addChildAt(sky.node, 0);
+    const webGlow = createWebGlow(app.renderer);
+    const cmb = createCmbShell(app.renderer, UNIVERSE_SEED, [webGlow.panoramas[0].source, webGlow.panoramas[1].source]);
+    stage.addChildAt(cmb.node, 0);
 
     const speedText = new Text({
       text: '',
@@ -206,8 +224,12 @@ export function UniverseWorld() {
     const projectedX = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
     const projectedY = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
     const depth = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
-    const size = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
-    const alpha = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
+    const radiusPx = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
+    const fog = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
+    const starX = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const starY = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const starSize = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
+    const starAlpha = new Float32Array(UNIVERSE_CLUSTER_MAX_STARS);
 
     const pool: Particle[] = [];
     let capacity = 0;
@@ -221,7 +243,7 @@ export function UniverseWorld() {
     let slotIndex = new Int32Array(0);
     const slotChunk: UniverseChunk[] = [];
 
-    const ensureCapacity = (needed: number) => {
+    const ensureSlots = (needed: number) => {
       if (needed <= capacity) return;
       capacity = Math.max(needed, capacity + SLOT_GROWTH);
       slotX = grow(slotX, capacity);
@@ -230,7 +252,12 @@ export function UniverseWorld() {
       slotRadius = grow(slotRadius, capacity);
       slotAlpha = grow(slotAlpha, capacity);
       slotIndex = grow(slotIndex, capacity);
-      while (pool.length < capacity) pool.push(new Particle({ texture, anchorX: 0.5, anchorY: 0.5 }));
+    };
+
+    const ensureParticles = (needed: number) => {
+      if (needed <= pool.length) return;
+      const target = Math.max(needed, pool.length + SLOT_GROWTH);
+      while (pool.length < target) pool.push(new Particle({ texture, anchorX: 0.5, anchorY: 0.5 }));
     };
 
     const active: UniverseChunk[] = [];
@@ -265,28 +292,24 @@ export function UniverseWorld() {
       const localX = (globalX - cam.x) / cam.scale;
       const localY = (globalY - cam.y) / cam.scale;
       const pickReach = UNIVERSE_PICK_SCREEN_PX / cam.scale;
-      let inside = -1;
-      let insideDepth = Infinity;
-      let nearest = -1;
-      let nearestDist = Infinity;
+      let best = -1;
+      let bestScore = Infinity;
+      let bestDepth = Infinity;
       for (let s = 0; s < slotCount; s++) {
         if (slotAlpha[s] < UNIVERSE_PICK_MIN_ALPHA) continue;
         const dx = slotX[s] - localX;
         const dy = slotY[s] - localY;
-        const radius = slotRadius[s];
-        const reach = Math.max(pickReach, radius);
+        const reach = Math.max(pickReach, slotRadius[s]);
         const distSq = dx * dx + dy * dy;
         if (distSq > reach * reach) continue;
-        if (distSq <= radius * radius && slotDepth[s] < insideDepth) {
-          inside = s;
-          insideDepth = slotDepth[s];
-        }
-        if (distSq < nearestDist) {
-          nearest = s;
-          nearestDist = distSq;
+        const score = distSq / (reach * reach);
+        if (score < bestScore || (score === bestScore && slotDepth[s] < bestDepth)) {
+          best = s;
+          bestScore = score;
+          bestDepth = slotDepth[s];
         }
       }
-      return inside >= 0 ? inside : nearest;
+      return best;
     };
 
     const basis = updateFlyBasis(flyCamera.current, app.screen.width, app.screen.height);
@@ -294,8 +317,10 @@ export function UniverseWorld() {
     const blink = new Float32Array(N_BLINK_GROUPS);
     const visitedPoints: { x: number; y: number }[] = [];
     let elapsedSecs = 0;
-    let lastYaw = NaN;
-    let lastPitch = NaN;
+    const drawnFrom = { x: NaN, y: NaN, z: NaN, yaw: NaN, pitch: NaN, glowMix: NaN };
+    const bakedAt = { x: NaN, y: NaN, z: NaN };
+    const glowFade = { from: 0, to: 0, start: -Infinity };
+    let glowMix = 0;
     let lastWidth = 0;
     let lastHeight = 0;
     let lastSpeed = -1;
@@ -423,42 +448,60 @@ export function UniverseWorld() {
       debug = null;
     };
 
-    const drawSky = (width: number, height: number) => {
-      skyView.cosYaw = basis.cosYaw;
-      skyView.sinYaw = basis.sinYaw;
-      skyView.cosPitch = basis.cosPitch;
-      skyView.sinPitch = basis.sinPitch;
-      skyView.focal = basis.focal;
-      sky.render(width, height, skyView);
-    };
-
     const drawField = () => {
       let visible = 0;
+      let slots = 0;
+      const place = (x: number, y: number, scale: number, tier: number, shade: number) => {
+        const particle = pool[visible++];
+        particle.x = x;
+        particle.y = y;
+        particle.scaleX = scale;
+        particle.scaleY = scale;
+        particle.color = TIER_BGR[tier] + ((Math.min(1, shade) * 255 | 0) << 24);
+      };
       for (const chunk of active) {
-        projectUniverseField(chunk.x, chunk.y, chunk.z, basis, projectedX, projectedY, depth, size, alpha);
-        ensureCapacity(visible + chunk.count);
+        projectUniverseClusters(chunk.x, chunk.y, chunk.z, chunk.brightness, basis, projectedX, projectedY, depth, radiusPx, fog);
         for (let i = 0; i < chunk.count; i++) {
-          if (alpha[i] === 0) continue;
-          const tier = tierOf(chunk.brightness[i]);
-          const scale = size[i] * TIER_SCALE[tier];
-          const shade = alpha[i] * TIERS[tier].alpha * blink[chunk.seeds[i] % N_BLINK_GROUPS];
-          const particle = pool[visible];
-          particle.x = projectedX[i];
-          particle.y = projectedY[i];
-          particle.scaleX = scale;
-          particle.scaleY = scale;
-          particle.color = TIER_BGR[tier] + ((shade * 255 | 0) << 24);
-          slotX[visible] = projectedX[i];
-          slotY[visible] = projectedY[i];
-          slotDepth[visible] = depth[i];
-          slotRadius[visible] = scale * SC_DOT_TEXTURE_RADIUS;
-          slotAlpha[visible] = alpha[i];
-          slotChunk[visible] = chunk;
-          slotIndex[visible] = i;
-          visible++;
+          if (fog[i] === 0) continue;
+          ensureSlots(slots + 1);
+          ensureParticles(visible + UNIVERSE_CLUSTER_MAX_STARS + 1);
+          const seed = chunk.seeds[i];
+          const brightness = chunk.brightness[i];
+          const tier = tierOf(brightness);
+          const shown = Math.min(clusterStarCount(brightness), radiusPx[i] * UNIVERSE_CLUSTER_STARS_PER_PX * fog[i]);
+          const reveal = clusterReveal(shown);
+          if (depth[i] >= UNIVERSE_NEAR) {
+            const rawPx = UNIVERSE_DOT_SIZE * basis.focal / depth[i];
+            const presence = fog[i] * universeNearFade(depth[i]) * Math.min(1, rawPx / UNIVERSE_DOT_MIN_PX);
+            const scale = universeDotPx(rawPx) * TIER_SCALE[tier];
+            if (reveal < 1) {
+              place(projectedX[i], projectedY[i], scale, tier, presence * TIERS[tier].alpha * blink[seed % N_BLINK_GROUPS] * (1 - reveal));
+            }
+            slotX[slots] = projectedX[i];
+            slotY[slots] = projectedY[i];
+            slotDepth[slots] = depth[i];
+            slotRadius[slots] = Math.max(scale * SC_DOT_TEXTURE_RADIUS, radiusPx[i] * UNIVERSE_CLUSTER_PICK_FRACTION);
+            slotAlpha[slots] = presence;
+            slotChunk[slots] = chunk;
+            slotIndex[slots] = i;
+            slots++;
+          }
+          if (reveal <= 0) continue;
+          const template = clusterTemplate(seed);
+          const count = projectClusterStars(
+            chunk.x[i], chunk.y[i], chunk.z[i], clusterRadius(brightness), template, shown, basis,
+            starX, starY, starSize, starAlpha,
+          );
+          const tintBase = template * UNIVERSE_CLUSTER_MAX_STARS;
+          for (let k = 0; k < count; k++) {
+            if (starAlpha[k] <= 0) continue;
+            const starTier = Math.min(TIERS.length - 1, Math.max(0, tier + CLUSTER_TINT[tintBase + k]));
+            const shade = starAlpha[k] * fog[i] * reveal * TIERS[starTier].alpha * blink[(seed + k) % N_BLINK_GROUPS];
+            place(starX[k], starY[k], starSize[k] / SC_DOT_TEXTURE_RADIUS, starTier, shade);
+          }
         }
       }
-      slotCount = visible;
+      slotCount = slots;
       if (visible > drawn.length) {
         for (let s = drawn.length; s < visible; s++) drawn.push(pool[s]);
       } else {
@@ -506,14 +549,37 @@ export function UniverseWorld() {
         speedText.position.set(width / 2, height - READOUT_BOTTOM_PX);
       }
 
-      if (camera.yaw !== lastYaw || camera.pitch !== lastPitch || width !== lastWidth || height !== lastHeight) {
-        lastYaw = camera.yaw;
-        lastPitch = camera.pitch;
+      const bakeX = camera.x - bakedAt.x;
+      const bakeY = camera.y - bakedAt.y;
+      const bakeZ = camera.z - bakedAt.z;
+      if (glowMix === glowFade.to && !(bakeX * bakeX + bakeY * bakeY + bakeZ * bakeZ <= WEB_GLOW_REBAKE * WEB_GLOW_REBAKE)) {
+        const first = Number.isNaN(bakedAt.x);
+        bakedAt.x = camera.x;
+        bakedAt.y = camera.y;
+        bakedAt.z = camera.z;
+        glowFade.from = glowMix;
+        glowFade.to = webGlow.bake(camera.x, camera.y, camera.z);
+        glowFade.start = first ? -Infinity : elapsedSecs;
+      }
+      const fadeT = Math.min(1, (elapsedSecs - glowFade.start) / WEB_GLOW_CROSSFADE_SECS);
+      glowMix = fadeT >= 1 ? glowFade.to : glowFade.from + (glowFade.to - glowFade.from) * fadeT;
+
+      if (
+        glowMix !== drawnFrom.glowMix
+        || camera.x !== drawnFrom.x || camera.y !== drawnFrom.y || camera.z !== drawnFrom.z
+        || camera.yaw !== drawnFrom.yaw || camera.pitch !== drawnFrom.pitch
+        || width !== lastWidth || height !== lastHeight
+      ) {
+        drawnFrom.x = camera.x;
+        drawnFrom.y = camera.y;
+        drawnFrom.z = camera.z;
+        drawnFrom.yaw = camera.yaw;
+        drawnFrom.pitch = camera.pitch;
+        drawnFrom.glowMix = glowMix;
         lastWidth = width;
         lastHeight = height;
-        drawSky(width, height);
+        cmb.render(width, height, basis, glowMix);
       }
-      sky.twinkle(elapsedSecs);
       advanceScan();
       drawShell();
       scanOverlay.update(basis, screenCamera.current.scale, elapsedSecs);
@@ -607,8 +673,9 @@ export function UniverseWorld() {
       visitedGfx.destroy();
       currentGfx.destroy();
       hoverLayer.destroy({ children: true });
-      stage.removeChild(sky.node);
-      sky.destroy();
+      stage.removeChild(cmb.node);
+      cmb.destroy();
+      webGlow.destroy();
       stage.removeChild(speedText);
       speedText.destroy();
       stage.removeChild(minimap.container);

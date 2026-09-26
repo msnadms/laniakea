@@ -2,14 +2,14 @@ import { Graphics, type Container } from 'pixi.js';
 import { anomalyVisualRng } from '../../game/anomalies';
 import { ORBITAL_K } from '../../game/planetGen';
 import { projectSystemPointWithBasis, type Point3D, type ProjectedPoint, type ProjectionBasis } from '../projection';
-import { applyIntegrity, buildSphereLattice, createPanelSet, drawShellHalf, orientShell, type PanelShader } from './shellLattice';
+import { buildShellLattice } from './shellLattice';
+import { createShellGeometry, createShellSurface } from './shellSurface';
 import { makeSelectable, mixColor, SHELL_Z, TAU } from './shared';
 import type { AnomalyVisual, AnomalyVisualContext } from './types';
 
 const PANEL_COUNT = 460;
-const BACK_COLOR = 0x0a0706;
-const FRONT_DARK = 0x16120f;
-const FRONT_LIGHT = 0x2c2621;
+const HULL_COLOR = 0x1f1a16;
+const HEAT_COLOR = 0xff4a18;
 const DEBRIS_DARK = 0x1c1814;
 const DEBRIS_LIGHT = 0x3a322b;
 
@@ -44,42 +44,51 @@ function debrisPosition(debris: Debris, out: Point3D) {
 
 export function createDysonSphere({ anomaly, sunRadius, starColor, innermostOrbit, onSelect }: AnomalyVisualContext): AnomalyVisual {
   const rng = anomalyVisualRng(anomaly);
-  const radius = Math.min(sunRadius * 1.5, innermostOrbit * 0.85);
-  const shell = createPanelSet(applyIntegrity(buildSphereLattice(PANEL_COUNT, rng), anomaly.integrity, rng), radius);
+  const radius = Math.min(sunRadius * 1.5, innermostOrbit * 0.7);
+  const lattice = buildShellLattice(PANEL_COUNT, anomaly.integrity, rng);
   const spinSpeed = (rng() < 0.5 ? -1 : 1) * (0.02 + rng() * 0.03);
   let spin = rng() * TAU;
 
-  const shade: PanelShader = (panel, facing, out) => {
-    if (facing < 0) {
-      out.color = mixColor(BACK_COLOR, starColor, 0.08 + panel.shade * 0.1);
-      out.alpha = 0.94;
-      return;
-    }
-    const rim = Math.pow(1 - facing, 3);
-    out.color = mixColor(mixColor(FRONT_DARK, FRONT_LIGHT, panel.shade), starColor, rim * 0.5);
-    out.alpha = 0.97;
-  };
-
-  const back = new Graphics();
+  const geometry = createShellGeometry();
+  const shell = createShellSurface(geometry, lattice, {
+    hull: HULL_COLOR,
+    heat: HEAT_COLOR,
+    heatStrength: anomaly.living ? 0.22 : 0.05,
+    inner: starColor,
+    interior: 1,
+    activity: 0,
+    rim: 0.5,
+    lights: anomaly.living,
+    subcells: 4,
+    gap: 0.07,
+  }, radius);
+  const { back, front } = shell;
   back.zIndex = -SHELL_Z;
-  const front = new Graphics();
   front.zIndex = SHELL_Z;
-  makeSelectable(back, radius, onSelect);
-  makeSelectable(front, radius, onSelect);
+  makeSelectable(back, 1, onSelect);
+  makeSelectable(front, 1, onSelect);
 
-  const minSemiMajor = radius * 1.3;
-  const maxSemiMajor = Math.max(minSemiMajor * 1.15, Math.min(radius * 2.3, innermostOrbit * 0.95));
+  const maxApoapsis = innermostOrbit * 0.95;
+  const minSemiMajor = radius * 1.15;
+  const maxSemiMajor = Math.max(minSemiMajor * 1.1, Math.min(radius * 2.3, maxApoapsis));
   let extent = radius;
   const debris: Debris[] = Array.from({ length: 20 + Math.floor(rng() * 21) }, () => {
     const semiMajor = minSemiMajor + (maxSemiMajor - minSemiMajor) * rng();
-    const eccentricity = rng() * Math.min(0.45, 1 - radius * 1.12 / semiMajor);
+    const eccentricity = rng() * Math.max(0, Math.min(0.45, 1 - radius * 1.12 / semiMajor, maxApoapsis / semiMajor - 1));
     const periapsis = rng() * TAU;
     const inclination = (rng() - 0.5) * 1.0;
     const ascendingNode = rng() * TAU;
     const size = 5 + rng() * 9;
     const node = new Graphics()
       .rect(-size, -size * 0.55, size * 2, size * 1.1)
-      .fill({ color: mixColor(DEBRIS_DARK, DEBRIS_LIGHT, rng()), alpha: 0.95 })
+      .fill({ color: mixColor(DEBRIS_DARK, DEBRIS_LIGHT, rng()), alpha: 0.95 });
+    for (let k = 1; k < 4; k++) {
+      node.moveTo(-size + size * k / 2, -size * 0.55).lineTo(-size + size * k / 2, size * 0.55);
+    }
+    node
+      .moveTo(-size, 0)
+      .lineTo(size, 0)
+      .stroke({ color: 0x07090d, width: 0.6, alpha: 0.7 })
       .rect(-size, -size * 0.55, size * 2, size * 1.1)
       .stroke({ color: mixColor(DEBRIS_LIGHT, starColor, 0.35), width: 1, alpha: 0.6 });
     node.eventMode = 'none';
@@ -110,13 +119,9 @@ export function createDysonSphere({ anomaly, sunRadius, starColor, innermostOrbi
     extent,
     starAlpha: 1 - 0.35 * anomaly.integrity,
     coronaAlpha: 1 - 0.5 * anomaly.integrity,
-    update(dt: number, _elapsed: number, basis: ProjectionBasis) {
+    update(dt: number, elapsed: number, basis: ProjectionBasis) {
       spin += spinSpeed * dt;
-      orientShell(shell, basis, spin);
-      back.clear();
-      front.clear();
-      drawShellHalf(back, shell, shade, 'back');
-      drawShellHalf(front, shell, shade, 'front');
+      shell.orient(basis, spin, elapsed);
 
       for (const piece of debris) {
         piece.meanAnomaly += piece.meanMotion * dt;
@@ -130,7 +135,10 @@ export function createDysonSphere({ anomaly, sunRadius, starColor, innermostOrbi
       }
     },
     destroy() {
-      for (const node of nodes) node.destroy();
+      shell.destroy();
+      for (const piece of debris) piece.node.destroy();
+      geometry.destroy();
+      lattice.source.destroy();
     },
   };
 }

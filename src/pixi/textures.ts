@@ -1,4 +1,4 @@
-import { Texture, Sprite, DisplacementFilter, Container } from 'pixi.js';
+import { CanvasSource, Container, DisplacementFilter, Rectangle, Sprite, Texture } from 'pixi.js';
 import { GALAXY_RADIUS, SC_DOT_TEXTURE_RADIUS } from '../game/constants';
 import { createRng } from '../game/galaxyGen';
 
@@ -59,31 +59,6 @@ export function createDisplacementSetup(container: Container, initialScale: numb
   };
 }
 
-export function createSunTexture(color: number): Texture {
-  const SIZE = 512;
-  const center = SIZE / 2;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = SIZE;
-  canvas.height = SIZE;
-  const ctx = canvas.getContext('2d')!;
-
-  const { r: red, g: green, b: blue } = colorToRgb(color);
-
-  const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-  gradient.addColorStop(0,    'rgba(255,255,255,1)');
-  gradient.addColorStop(0.1,  'rgba(255,255,255,0.9)');
-  gradient.addColorStop(0.25, `rgba(${red},${green},${blue},1)`);
-  gradient.addColorStop(0.5,  `rgba(${red},${green},${blue},0.35)`);
-  gradient.addColorStop(0.75, `rgba(${red},${green},${blue},0.08)`);
-  gradient.addColorStop(1,    `rgba(${red},${green},${blue},0)`);
-
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-
-  return Texture.from(canvas, true);
-}
-
 export function createNebulaGlowTexture(color: number): Texture {
   const SIZE = 512;
   const center = SIZE / 2;
@@ -110,25 +85,6 @@ export function createNebulaGlowTexture(color: number): Texture {
 
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, SIZE, SIZE);
-  return Texture.from(canvas, true);
-}
-
-export function createBodyShadowTexture(): Texture {
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-  ctx.clip();
-  const gradient = ctx.createLinearGradient(0, 0, size, 0);
-  gradient.addColorStop(0, 'rgba(0,0,0,0.96)');
-  gradient.addColorStop(0.42, 'rgba(0,0,0,0.72)');
-  gradient.addColorStop(0.68, 'rgba(0,0,0,0.18)');
-  gradient.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, size, size);
   return Texture.from(canvas, true);
 }
 
@@ -220,207 +176,6 @@ function makeCircleCanvas(size: number, baseColor: number) {
   ctx.fillStyle = `rgb(${r0},${g0},${b0})`;
   ctx.fillRect(0, 0, size, size);
   return { canvas, ctx, r0, g0, b0 };
-}
-
-export function createRockyPlanetAlbedoTexture(baseColor: number, seed: number): Texture {
-  const rng = createRng(seed);
-  const SIZE = 256;
-  const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
-
-  // Large terrain patches
-  const numPatches = Math.floor(rng() * 8) + 10;
-  for (let i = 0; i < numPatches; i++) {
-    const cx  = rng() * SIZE;
-    const cy  = rng() * SIZE;
-    const rad = 15 + rng() * 65;
-    const bri = Math.round((rng() - 0.5) * 80);
-    const cr  = Math.min(255, Math.max(0, r0 + bri));
-    const cg  = Math.min(255, Math.max(0, g0 + bri));
-    const cb  = Math.min(255, Math.max(0, b0 + Math.round((rng() - 0.5) * 30)));
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-    grad.addColorStop(0, `rgba(${cr},${cg},${cb},${0.3 + rng() * 0.45})`);
-    grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-  }
-
-  // Small craters
-  const numCraters = Math.floor(rng() * 6) + 5;
-  for (let i = 0; i < numCraters; i++) {
-    const cx  = rng() * SIZE;
-    const cy  = rng() * SIZE;
-    const rad = 2 + rng() * 9;
-    const cr  = Math.max(0, r0 - 35);
-    const cg  = Math.max(0, g0 - 35);
-    const cb  = Math.max(0, b0 - 35);
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${cr},${cg},${cb},0.55)`;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(${Math.min(255, r0 + 40)},${Math.min(255, g0 + 40)},${Math.min(255, b0 + 40)},0.4)`;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-
-  // Lava glints — desaturated warm hot spots
-  const numLava = Math.floor(rng() * 3) + 1;
-  for (let i = 0; i < numLava; i++) {
-    const cx  = rng() * SIZE;
-    const cy  = rng() * SIZE;
-    const rad = 3 + rng() * 14;
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-    grad.addColorStop(0,    `rgba(200,160,80,0.38)`);
-    grad.addColorStop(0.45, `rgba(175,100,45,0.2)`);
-    grad.addColorStop(1,    `rgba(140,60,20,0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-  }
-
-  return Texture.from(canvas, true);
-}
-
-export function drawHabitablePlanet(baseColor: number, seed: number): HTMLCanvasElement {
-  const rng = createRng(seed);
-  const SIZE = 256;
-  const { canvas, ctx } = makeCircleCanvas(SIZE, baseColor);
-
-  // Ocean patches — dark blue seas
-  const OCEAN_PALETTES = [
-    [28, 60, 110], [35, 72, 130], [22, 55, 100],
-    [40, 80, 140], [30, 65, 120],
-  ];
-  const numOceans = Math.floor(rng() * 3) + 2;
-  for (let i = 0; i < numOceans; i++) {
-    const cx    = rng() * SIZE;
-    const cy    = SIZE * 0.1 + rng() * SIZE * 0.8;
-    const rx    = 22 + rng() * 55;
-    const ry    = 15 + rng() * 38;
-    const angle = rng() * Math.PI * 2;
-    const [cr, cg, cb] = OCEAN_PALETTES[Math.floor(rng() * OCEAN_PALETTES.length)];
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    const numBlobs = Math.floor(rng() * 3) + 2;
-    ctx.beginPath();
-    for (let b = 0; b < numBlobs; b++) {
-      const bx = (rng() - 0.5) * rx * 0.8;
-      const by = (rng() - 0.5) * ry * 0.8;
-      const br = rx * (0.3 + rng() * 0.6);
-      ctx.moveTo(bx + br, by);
-      ctx.arc(bx, by, br, 0, Math.PI * 2);
-    }
-    ctx.fillStyle = `rgba(${cr},${cg},${cb},0.72)`;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Continents — overlapping irregular blobs (darker greens)
-  const CONTINENT_PALETTES = [
-    [52, 78, 30],  [65, 90, 22],  [45, 72, 28],
-    [40, 62, 32],  [58, 85, 25],  [55, 75, 40],
-  ];
-  const numContinents = Math.floor(rng() * 4) + 3;
-  for (let i = 0; i < numContinents; i++) {
-    const cx    = rng() * SIZE;
-    const cy    = SIZE * 0.1 + rng() * SIZE * 0.8;
-    const rx    = 28 + rng() * 58;
-    const ry    = 18 + rng() * 40;
-    const angle = rng() * Math.PI * 2;
-    const [cr, cg, cb] = CONTINENT_PALETTES[Math.floor(rng() * CONTINENT_PALETTES.length)];
-    const alpha = 0.72 + rng() * 0.26;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    const numBlobs = Math.floor(rng() * 4) + 3;
-    ctx.beginPath();
-    for (let b = 0; b < numBlobs; b++) {
-      const bx = (rng() - 0.5) * rx * 0.9;
-      const by = (rng() - 0.5) * ry * 0.9;
-      const br = rx * (0.35 + rng() * 0.65);
-      ctx.moveTo(bx + br, by);
-      ctx.arc(bx, by, br, 0, Math.PI * 2);
-    }
-    ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Polar ice caps
-  const capR = 22 + rng() * 20;
-  const northGrad = ctx.createRadialGradient(SIZE/2, 0, 0, SIZE/2, 0, capR);
-  northGrad.addColorStop(0,   'rgba(235,248,255,0.95)');
-  northGrad.addColorStop(0.6, 'rgba(215,235,250,0.55)');
-  northGrad.addColorStop(1,   'rgba(200,225,245,0)');
-  ctx.fillStyle = northGrad;
-  ctx.fillRect(0, 0, SIZE, capR * 1.6);
-
-  const southGrad = ctx.createRadialGradient(SIZE/2, SIZE, 0, SIZE/2, SIZE, capR);
-  southGrad.addColorStop(0,   'rgba(235,248,255,0.9)');
-  southGrad.addColorStop(0.6, 'rgba(215,235,250,0.5)');
-  southGrad.addColorStop(1,   'rgba(200,225,245,0)');
-  ctx.fillStyle = southGrad;
-  ctx.fillRect(0, SIZE - capR * 1.6, SIZE, capR * 1.6);
-
-  // Atmospheric edge glow
-  const atmo = ctx.createRadialGradient(SIZE/2, SIZE/2, SIZE*0.42, SIZE/2, SIZE/2, SIZE/2);
-  atmo.addColorStop(0,   'rgba(100,165,255,0)');
-  atmo.addColorStop(0.8, 'rgba(100,165,255,0.06)');
-  atmo.addColorStop(1,   'rgba(100,165,255,0.22)');
-  ctx.fillStyle = atmo;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-
-  return canvas;
-}
-
-export function createMoonAlbedoTexture(baseColor: number, seed: number): Texture {
-  const rng = createRng(seed);
-  const SIZE = 128;
-  const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
-
-  // Maria — large dark irregular regions
-  const numMaria = Math.floor(rng() * 3) + 2;
-  for (let i = 0; i < numMaria; i++) {
-    const cx  = rng() * SIZE;
-    const cy  = rng() * SIZE;
-    const rad = 8 + rng() * 32;
-    const dk  = Math.round(25 + rng() * 45);
-    const cr  = Math.max(0, r0 - dk);
-    const cg  = Math.max(0, g0 - dk);
-    const cb  = Math.max(0, b0 - dk);
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-    grad.addColorStop(0,   `rgba(${cr},${cg},${cb},0.72)`);
-    grad.addColorStop(0.7, `rgba(${cr},${cg},${cb},0.38)`);
-    grad.addColorStop(1,   `rgba(${cr},${cg},${cb},0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-  }
-
-  // Craters
-  const numCraters = Math.floor(rng() * 5) + 5;
-  for (let i = 0; i < numCraters; i++) {
-    const cx  = rng() * SIZE;
-    const cy  = rng() * SIZE;
-    const rad = 2 + rng() * 10;
-    const dk  = Math.round(20 + rng() * 35);
-    const cr  = Math.max(0, r0 - dk);
-    const cg  = Math.max(0, g0 - dk);
-    const cb  = Math.max(0, b0 - dk);
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${cr},${cg},${cb},0.55)`;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(${Math.min(255, r0 + 35)},${Math.min(255, g0 + 35)},${Math.min(255, b0 + 35)},0.38)`;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-
-  return Texture.from(canvas, true);
 }
 
 export function createNeutronStarTexture(seed: number): Texture {
@@ -551,31 +306,23 @@ export function createBrownDwarfTexture(seed: number): Texture {
   return Texture.from(canvas, true);
 }
 
-export function createGasGiantAlbedoTexture(baseColor: number, seed: number, isIce = false): Texture {
-  const rng = createRng(seed);
-  const SIZE = 256;
-  const { canvas, ctx, r0, g0, b0 } = makeCircleCanvas(SIZE, baseColor);
-
-  const numBands = isIce ? Math.floor(rng() * 3) + 4 : Math.floor(rng() * 4) + 6;
-  const spread = isIce ? 35 : 55;
-  let y = 0;
-  let prevR = r0, prevG = g0, prevB = b0;
-  for (let i = 0; i < numBands; i++) {
-    const bandH = Math.ceil(SIZE * (0.6 + rng() * 0.8) / numBands);
-    const brightness = Math.round((rng() - 0.5) * spread);
-    const cr = Math.min(255, Math.max(0, r0 + brightness));
-    const cg = Math.min(255, Math.max(0, g0 + brightness));
-    const cb = Math.min(255, Math.max(0, b0 + Math.round((rng() - 0.5) * spread * (isIce ? 0.8 : 0.5))));
-    const grad = ctx.createLinearGradient(0, y, 0, y + bandH);
-    grad.addColorStop(0,    `rgb(${prevR},${prevG},${prevB})`);
-    grad.addColorStop(0.25, `rgb(${cr},${cg},${cb})`);
-    grad.addColorStop(1,    `rgb(${cr},${cg},${cb})`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, y, SIZE, bandH);
-    prevR = cr; prevG = cg; prevB = cb;
-    y += bandH;
-  }
-
+export function createUniverseStarTexture(): Texture {
+  const radius = SC_DOT_TEXTURE_RADIUS;
+  const size = radius * 2 + 4;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const center = size / 2;
+  const gradient = ctx.createRadialGradient(center, center, 0, center, center, radius);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.3, 'rgba(255,255,255,0.95)');
+  gradient.addColorStop(0.6, 'rgba(255,255,255,0.35)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(center, center, radius, 0, Math.PI * 2);
+  ctx.fill();
   return Texture.from(canvas, true);
 }
 
@@ -596,4 +343,117 @@ export function createSuperclusterDotTexture(): Texture {
   ctx.arc(center, center, radius, 0, Math.PI * 2);
   ctx.fill();
   return Texture.from(canvas, true);
+}
+
+export const ASTEROID_TEXTURE_RADIUS = 21;
+const ASTEROID_TEXTURE_CELL = 64;
+const ASTEROID_TEXTURE_COUNT = 8;
+const ASTEROID_NOISE_GRID = 9;
+const ASTEROID_LIGHT = (() => {
+  const length = Math.hypot(0.8, -0.25, 0.55);
+  return { x: 0.8 / length, y: -0.25 / length, z: 0.55 / length };
+})();
+
+function valueNoise(grid: Float32Array, u: number, v: number) {
+  const x = u * (ASTEROID_NOISE_GRID - 1);
+  const y = v * (ASTEROID_NOISE_GRID - 1);
+  const x0 = Math.min(ASTEROID_NOISE_GRID - 2, Math.floor(x));
+  const y0 = Math.min(ASTEROID_NOISE_GRID - 2, Math.floor(y));
+  const fx = x - x0;
+  const fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const row = y0 * ASTEROID_NOISE_GRID;
+  const top = grid[row + x0] + (grid[row + x0 + 1] - grid[row + x0]) * sx;
+  const bottom = grid[row + ASTEROID_NOISE_GRID + x0] + (grid[row + ASTEROID_NOISE_GRID + x0 + 1] - grid[row + ASTEROID_NOISE_GRID + x0]) * sx;
+  return top + (bottom - top) * sy;
+}
+
+function drawAsteroid(data: Uint8ClampedArray, stride: number, offsetX: number, seed: number) {
+  const rng = createRng(seed);
+  const elongation = 0.6 + rng() * 0.4;
+  const harmonics = [2, 3, 4, 5, 7].map((order) => ({
+    order,
+    amplitude: (rng() * 0.36) / order,
+    phase: rng() * Math.PI * 2,
+  }));
+  const craters = Array.from({ length: 4 + Math.floor(rng() * 6) }, () => {
+    const angle = rng() * Math.PI * 2;
+    const reach = Math.sqrt(rng()) * 0.85;
+    return { x: Math.cos(angle) * reach, y: Math.sin(angle) * reach, radius: 0.1 + rng() * 0.22 };
+  });
+  const bumpX = Float32Array.from({ length: ASTEROID_NOISE_GRID * ASTEROID_NOISE_GRID }, () => rng() * 2 - 1);
+  const bumpY = Float32Array.from({ length: ASTEROID_NOISE_GRID * ASTEROID_NOISE_GRID }, () => rng() * 2 - 1);
+  const albedo = Float32Array.from({ length: ASTEROID_NOISE_GRID * ASTEROID_NOISE_GRID }, () => rng());
+  const center = ASTEROID_TEXTURE_CELL / 2;
+
+  for (let py = 0; py < ASTEROID_TEXTURE_CELL; py++) {
+    for (let px = 0; px < ASTEROID_TEXTURE_CELL; px++) {
+      const dx = (px + 0.5 - center) / ASTEROID_TEXTURE_RADIUS;
+      const dy = (py + 0.5 - center) / ASTEROID_TEXTURE_RADIUS / elongation;
+      const rho = Math.sqrt(dx * dx + dy * dy);
+      const phi = Math.atan2(dy, dx);
+      let edge = 1;
+      for (const harmonic of harmonics) edge += harmonic.amplitude * Math.cos(harmonic.order * phi + harmonic.phase);
+      const normalized = rho / edge;
+      const coverage = Math.min(1, Math.max(0, (1 - normalized) * edge * ASTEROID_TEXTURE_RADIUS * elongation + 0.5));
+      if (coverage <= 0) continue;
+
+      const inner = Math.min(normalized, 0.999);
+      const u = rho > 0 ? dx / rho * inner : 0;
+      const v = rho > 0 ? dy / rho * inner : 0;
+      let nx = u;
+      let ny = v;
+      let nz = Math.sqrt(1 - inner * inner);
+      let crater = 0;
+      for (const hole of craters) {
+        const cx = u - hole.x;
+        const cy = v - hole.y;
+        const distance = Math.sqrt(cx * cx + cy * cy) / hole.radius;
+        if (distance < 1) {
+          nx -= cx / hole.radius * 0.55;
+          ny -= cy / hole.radius * 0.55;
+          crater = Math.max(crater, 1 - distance);
+        } else if (distance < 1.35) {
+          const rim = (1.35 - distance) / 0.35;
+          nx += cx / (distance * hole.radius) * rim * 0.3;
+          ny += cy / (distance * hole.radius) * rim * 0.3;
+        }
+      }
+      const nu = (dx + 1.4) / 2.8;
+      const nv = (dy * elongation + 1.4) / 2.8;
+      nx += valueNoise(bumpX, nu, nv) * 0.45;
+      ny += valueNoise(bumpY, nu, nv) * 0.45;
+      const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx /= length;
+      ny /= length;
+      nz /= length;
+      const diffuse = Math.max(0, nx * ASTEROID_LIGHT.x + ny * ASTEROID_LIGHT.y + nz * ASTEROID_LIGHT.z);
+      const tone = (0.7 + valueNoise(albedo, nu, nv) * 0.4) * (1 - crater * 0.15);
+      const shade = Math.min(1, tone * (0.07 + diffuse * 1.05));
+      const index = (py * stride + offsetX + px) * 4;
+      data[index] = shade * 255;
+      data[index + 1] = shade * 250;
+      data[index + 2] = shade * 242;
+      data[index + 3] = coverage * 255;
+    }
+  }
+}
+
+export function createAsteroidTextures(seed: number): { atlas: Texture; frames: Texture[] } {
+  const canvas = document.createElement('canvas');
+  canvas.width = ASTEROID_TEXTURE_CELL * ASTEROID_TEXTURE_COUNT;
+  canvas.height = ASTEROID_TEXTURE_CELL;
+  const ctx = canvas.getContext('2d')!;
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  for (let index = 0; index < ASTEROID_TEXTURE_COUNT; index++) {
+    drawAsteroid(image.data, canvas.width, index * ASTEROID_TEXTURE_CELL, (seed + Math.imul(index + 1, 0x9e3779b9)) >>> 0);
+  }
+  ctx.putImageData(image, 0, 0);
+  const atlas = new Texture({ source: new CanvasSource({ resource: canvas, autoGenerateMipmaps: true }) });
+  const frames = Array.from({ length: ASTEROID_TEXTURE_COUNT }, (_, index) => new Texture({
+    source: atlas.source,
+    frame: new Rectangle(index * ASTEROID_TEXTURE_CELL, 0, ASTEROID_TEXTURE_CELL, ASTEROID_TEXTURE_CELL),
+  }));
+  return { atlas, frames };
 }

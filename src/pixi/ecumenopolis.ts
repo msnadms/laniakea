@@ -1,4 +1,4 @@
-import { Graphics, Texture } from 'pixi.js';
+import { Graphics } from 'pixi.js';
 import { createRng } from '../game/galaxyGen';
 import type { Rng } from '../game/types';
 import { smoothstep } from './anomalies/shared';
@@ -29,8 +29,6 @@ export interface CityLights {
   update(lightDirection: Point3D, elapsed: number): void;
 }
 
-const TEXTURE_SIZE = 256;
-const BLOCK_SIZE = 6;
 const LIGHT_LEVELS = 8;
 const LIT_DISC = 0.88;
 const LIVING_LIGHT_COUNT = 520;
@@ -48,7 +46,7 @@ const SETTLEMENT_RURAL_LIGHTS = 50;
 const SETTLEMENT_GLOW_ALPHA = 0.3;
 const SETTLEMENT_GLOW_SPREAD = 1.8;
 
-function cityDistricts(seed: number): District[] {
+export function cityDistricts(seed: number): District[] {
   const rng = createRng((seed ^ 0x2f6b4c1d) >>> 0);
   return Array.from({ length: 7 + Math.floor(rng() * 6) }, () => {
     const angle = rng() * Math.PI * 2;
@@ -57,100 +55,12 @@ function cityDistricts(seed: number): District[] {
   });
 }
 
-function districtDensity(districts: readonly District[], x: number, y: number): number {
+export function districtDensity(districts: readonly District[], x: number, y: number): number {
   let density = 0;
   for (const district of districts) {
     density = Math.max(density, 1 - Math.hypot(x - district.x, y - district.y) / district.radius);
   }
   return density;
-}
-
-function rgb(r: number, g: number, b: number): string {
-  const clamp = (value: number) => Math.min(255, Math.max(0, Math.round(value)));
-  return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
-}
-
-export function createEcumenopolisAlbedoTexture(baseColor: number, seed: number, living: boolean): Texture {
-  const rng = createRng(seed);
-  const districts = cityDistricts(seed);
-  const center = TEXTURE_SIZE / 2;
-  const canvas = document.createElement('canvas');
-  canvas.width = TEXTURE_SIZE;
-  canvas.height = TEXTURE_SIZE;
-  const ctx = canvas.getContext('2d')!;
-  ctx.beginPath();
-  ctx.arc(center, center, center, 0, Math.PI * 2);
-  ctx.clip();
-
-  const tone = living ? 1 : 0.62;
-  const r0 = ((baseColor >> 16) & 0xff) * tone;
-  const g0 = ((baseColor >> 8) & 0xff) * tone;
-  const b0 = (baseColor & 0xff) * tone;
-  ctx.fillStyle = rgb(r0 * 0.45, g0 * 0.45, b0 * 0.45);
-  ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-
-  for (let y = 0; y < TEXTURE_SIZE; y += BLOCK_SIZE) {
-    for (let x = 0; x < TEXTURE_SIZE; x += BLOCK_SIZE) {
-      const u = (x + BLOCK_SIZE / 2) / TEXTURE_SIZE * 2 - 1;
-      const v = (y + BLOCK_SIZE / 2) / TEXTURE_SIZE * 2 - 1;
-      const shade = 0.78 + rng() * 0.3 + districtDensity(districts, u, v) * 0.3;
-      ctx.fillStyle = rgb(r0 * shade, g0 * shade, b0 * shade);
-      ctx.fillRect(x + 1, y + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
-    }
-  }
-
-  const numSeas = Math.floor(rng() * 2) + 2;
-  for (let i = 0; i < numSeas; i++) {
-    const cx = rng() * TEXTURE_SIZE;
-    const cy = TEXTURE_SIZE * 0.15 + rng() * TEXTURE_SIZE * 0.7;
-    const rad = 26 + rng() * 40;
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-    grad.addColorStop(0, living ? 'rgba(22,28,36,0.5)' : 'rgba(12,10,8,0.55)');
-    grad.addColorStop(0.7, living ? 'rgba(22,28,36,0.3)' : 'rgba(12,10,8,0.3)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-  }
-
-  const numArteries = Math.floor(rng() * 3) + 3;
-  ctx.strokeStyle = living ? 'rgba(236,214,170,0.35)' : 'rgba(20,16,12,0.5)';
-  for (let i = 0; i < numArteries; i++) {
-    const from = rng() * Math.PI * 2;
-    const to = from + Math.PI + (rng() - 0.5) * 1.6;
-    ctx.beginPath();
-    ctx.moveTo(center + Math.cos(from) * center, center + Math.sin(from) * center);
-    ctx.quadraticCurveTo(
-      center + (rng() - 0.5) * center, center + (rng() - 0.5) * center,
-      center + Math.cos(to) * center, center + Math.sin(to) * center,
-    );
-    ctx.lineWidth = 1.5 + rng() * 1.5;
-    ctx.stroke();
-  }
-
-  if (!living) {
-    const numScars = Math.floor(rng() * 4) + 4;
-    for (let i = 0; i < numScars; i++) {
-      const cx = rng() * TEXTURE_SIZE;
-      const cy = rng() * TEXTURE_SIZE;
-      const rad = 8 + rng() * 26;
-      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-      grad.addColorStop(0, 'rgba(26,20,15,0.7)');
-      grad.addColorStop(0.5, 'rgba(48,38,30,0.35)');
-      grad.addColorStop(1, 'rgba(48,38,30,0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-    }
-  }
-
-  const haze = ctx.createRadialGradient(center, center, TEXTURE_SIZE * 0.42, center, center, center);
-  const hazeColor = living ? '214,190,150' : '140,120,100';
-  haze.addColorStop(0, `rgba(${hazeColor},0)`);
-  haze.addColorStop(0.8, `rgba(${hazeColor},0.06)`);
-  haze.addColorStop(1, `rgba(${hazeColor},0.24)`);
-  ctx.fillStyle = haze;
-  ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-
-  return Texture.from(canvas, true);
 }
 
 export function lightCity(

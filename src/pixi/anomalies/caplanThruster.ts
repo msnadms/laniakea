@@ -4,6 +4,7 @@ import { projectSystemPointWithBasis, type Point3D, type ProjectedPoint, type Pr
 import { createCollectorSwarm, type CollectorSwarmStyle } from './collectorSwarm';
 import { orthonormalFrame } from './shellLattice';
 import { drawTaper, makeSelectable, mixColor, TAU, toSystemDirection } from './shared';
+import { SUN_PHOTOSPHERE_FRACTION } from '../sunBody';
 import type { AnomalyVisual, AnomalyVisualContext } from './types';
 
 const LIVING_COLLECTORS: CollectorSwarmStyle = {
@@ -81,7 +82,7 @@ export function createCaplanThruster({ anomaly, sunRadius, starColor, innermostO
   const engineDistance = Math.min(Math.max(sunRadius * 2.6, swarmOuter + engineLength), innermostOrbit * 0.9 - engineLength / 2);
   const intakeDistance = engineDistance - engineLength / 2;
   const nozzleDistance = engineDistance + engineLength / 2;
-  const hotspotDistance = sunRadius * 1.02;
+  const hotspotDistance = sunRadius * SUN_PHOTOSPHERE_FRACTION * 1.02;
   const jetLength = planetExtent * 2.5;
   const timeOffset = rng() * 100;
   const hullColor = living ? mixColor(HULL_LIVING, starColor, 0.2) : HULL_RUINED;
