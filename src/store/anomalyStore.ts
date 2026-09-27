@@ -1,10 +1,13 @@
 import { create } from 'zustand';
-import { anomalyRecordKey, type AnomalyRecord } from '../firebase/anomalies';
+import { anomalyRecordKey, type AnomalyRecord, type WorldAnomaly } from '../game/anomalyRecord';
 
 interface AnomalyState {
   records: Record<string, AnomalyRecord>;
   latest: AnomalyRecord | null;
-  add: (record: AnomalyRecord) => void;
+  latestAwarded: number;
+  worlds: Record<string, WorldAnomaly>;
+  add: (record: AnomalyRecord, awarded?: number) => void;
+  setWorld: (key: string, world: WorldAnomaly) => void;
   setAll: (records: AnomalyRecord[]) => void;
   dismissLatest: () => void;
   removeSystem: (galaxySeed: number, systemId: number) => string[];
@@ -26,10 +29,14 @@ export const useAnomalyStore = create<AnomalyState>((set, get) => {
   return {
     records: {},
     latest: null,
-    add: (record) => set((state) => ({
+    latestAwarded: 0,
+    worlds: {},
+    add: (record, awarded = 0) => set((state) => ({
       records: { ...state.records, [anomalyRecordKey(record.galaxySeed, record.systemId)]: record },
       latest: record,
+      latestAwarded: awarded,
     })),
+    setWorld: (key, world) => set((state) => ({ worlds: { ...state.worlds, [key]: world } })),
     setAll: (records) => set({
       records: Object.fromEntries(records.map((record) => [anomalyRecordKey(record.galaxySeed, record.systemId), record])),
       latest: null,

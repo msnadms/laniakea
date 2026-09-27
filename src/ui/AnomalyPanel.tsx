@@ -1,6 +1,10 @@
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { Anomaly } from '../game/anomalies';
 import { getAnomalyLore } from '../game/anomalyLore';
+import { anomalyRecordKey } from '../game/anomalyRecord';
+import { loadWorldAnomaly } from '../firebase/anomalies';
+import { useAnomalyStore } from '../store/anomalyStore';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import './PlanetPanel.css';
@@ -44,10 +48,32 @@ function AnomalyStats({ anomaly }: { anomaly: Anomaly }) {
   );
 }
 
+function FirstCatalogued({ recordKey }: { recordKey: string }) {
+  const world = useAnomalyStore((s) => s.worlds[recordKey]);
+
+  useEffect(() => {
+    loadWorldAnomaly(recordKey)
+      .then((loaded) => {
+        if (loaded) useAnomalyStore.getState().setWorld(recordKey, loaded);
+      })
+      .catch((err) => console.error('loadWorldAnomaly failed:', err));
+  }, [recordKey]);
+
+  if (!world) return null;
+  const since = world.count - 1;
+  return (
+    <p className="anomaly-panel-first">
+      First catalogued by {world.firstBy}
+      {since > 0 && `, ${since} ${since === 1 ? 'explorer' : 'explorers'} since`}
+    </p>
+  );
+}
+
 export function AnomalyPanel() {
   const open = useUIStore((s) => s.anomalyPanelOpen);
   const setOpen = useUIStore((s) => s.setAnomalyPanelOpen);
   const anomaly = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id) : undefined) ?? null);
+  const galaxySeed = useGameStore((s) => s.galaxy.seed);
 
   if (!open || !anomaly) return null;
   const lore = getAnomalyLore(anomaly);
@@ -66,6 +92,7 @@ export function AnomalyPanel() {
         </div>
 
         <AnomalyStats anomaly={anomaly} />
+        <FirstCatalogued recordKey={anomalyRecordKey(galaxySeed, anomaly.hostId)} />
 
         <p className="anomaly-panel-lore">{lore.lore}</p>
 

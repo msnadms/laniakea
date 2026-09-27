@@ -6,7 +6,6 @@ import {
   CIVILIZATION_STAGE_PLANS,
   CIVILIZATION_STAGES,
   generateAnomalies,
-  hasCivilization,
   highStarThreshold,
   isInCivilization,
   isRelicClass,
@@ -34,16 +33,18 @@ import {
   ANOMALY_STAGE_POPULATED,
 } from './constants';
 import { MILKY_WAY_NUM_ARMS, MILKY_WAY_SEED } from './hardcoded';
-import { expectedStageShare, findCivilizationSeeds } from './civilizationSeeds.testutil';
+import { expectedStageShare, sampleGalaxySeeds, testAnomalySeeds } from './civilizationSeeds.testutil';
 import { generatePlanets, generateSystemLayout } from './planetGen';
 import type { Galaxy, StarSystem } from './types';
 
-const PLAIN_SEEDS = Array.from({ length: 300 }, (_, i) => 1000 + i * 7919);
-const CIVILIZATION_SEEDS = findCivilizationSeeds(200, 1000);
-const SAMPLE_SEEDS = [...PLAIN_SEEDS, ...CIVILIZATION_SEEDS];
-const SAMPLE = SAMPLE_SEEDS.map((seed) => {
-  const galaxy = generateGalaxy(seed);
-  return { galaxy, anomalies: generateAnomalies(galaxy) };
+const PLAIN_SEEDS = sampleGalaxySeeds(300, 1000);
+const CIVILIZATION_SEEDS = sampleGalaxySeeds(200, 0x51f15e);
+const SAMPLE = [
+  ...PLAIN_SEEDS.map((seed) => testAnomalySeeds(seed, false)),
+  ...CIVILIZATION_SEEDS.map((seed) => testAnomalySeeds(seed, true)),
+].map((seeds, i) => {
+  const galaxy = generateGalaxy([...PLAIN_SEEDS, ...CIVILIZATION_SEEDS][i]);
+  return { galaxy, seeds, anomalies: generateAnomalies(galaxy, seeds) };
 });
 const CIVILIZATIONS = SAMPLE.filter(({ anomalies }) => anomalies.civilization !== null);
 
@@ -115,20 +116,20 @@ function expectCannonRule(galaxy: Galaxy, anomalies: GalaxyAnomalies, anomaly: A
 
 describe('anomaly generation', () => {
   it('gives the same result for the same seed and never mutates the galaxy', () => {
-    for (const seed of [...PLAIN_SEEDS.slice(0, 30), ...CIVILIZATION_SEEDS.slice(0, 30)]) {
-      const galaxy = generateGalaxy(seed);
+    for (const { galaxy: sampled, seeds } of [...SAMPLE.slice(0, 30), ...SAMPLE.slice(-30)]) {
+      const galaxy = generateGalaxy(sampled.seed);
       const before = galaxyDigest(galaxy);
-      const first = anomaliesDigest(generateAnomalies(galaxy));
-      const second = anomaliesDigest(generateAnomalies(galaxy));
+      const first = anomaliesDigest(generateAnomalies(galaxy, seeds));
+      const second = anomaliesDigest(generateAnomalies(galaxy, seeds));
       expect(second).toBe(first);
       expect(galaxyDigest(galaxy)).toBe(before);
-      expect(anomaliesDigest(generateAnomalies(generateGalaxy(seed)))).toBe(first);
+      expect(anomaliesDigest(generateAnomalies(generateGalaxy(sampled.seed), seeds))).toBe(first);
     }
   });
 
-  it('answers hasCivilization from the seed alone', () => {
-    for (const { galaxy, anomalies } of SAMPLE) {
-      expect(hasCivilization(galaxy.seed)).toBe(anomalies.civilization !== null);
+  it('places a civilisation exactly when handed a civilisation seed', () => {
+    for (const { seeds, anomalies } of SAMPLE) {
+      expect(anomalies.civilization !== null).toBe(seeds.civilization !== null);
     }
   });
 
@@ -359,13 +360,13 @@ describe('anomaly generation', () => {
   it('populates worlds inside living civilisations by stage, and none elsewhere', () => {
     let checked = 0;
     let firstStageHomes = 0;
-    for (const { galaxy, anomalies } of SAMPLE) {
+    for (const { galaxy, seeds, anomalies } of SAMPLE) {
       const { civilization, populated } = anomalies;
       if (!civilization?.living) {
         expect(populated.size).toBe(0);
         continue;
       }
-      expect([...populatedWorldIds(galaxy.seed)]).toEqual([...populated]);
+      expect([...populatedWorldIds(galaxy.seed, seeds)]).toEqual([...populated]);
       const plan = CIVILIZATION_STAGE_PLANS[civilization.stage];
       const home = plan.home ? null : nearest(homeTier(galaxy, anomalies), civilization);
       if (home) {
@@ -398,8 +399,7 @@ describe('anomaly generation', () => {
 
   it('hosts nothing in the Milky Way', () => {
     const milkyWay = generateGalaxy(MILKY_WAY_SEED, { numArms: MILKY_WAY_NUM_ARMS, type: 'barred' });
-    const anomalies = generateAnomalies(milkyWay);
-    expect(hasCivilization(MILKY_WAY_SEED)).toBe(false);
+    const anomalies = generateAnomalies(milkyWay, testAnomalySeeds(MILKY_WAY_SEED, true));
     expect(anomalies.civilization).toBeNull();
     expect(anomalies.byHost.size).toBe(0);
   });

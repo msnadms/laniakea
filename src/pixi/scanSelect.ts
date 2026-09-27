@@ -3,6 +3,7 @@ import type { Application, FederatedPointerEvent } from 'pixi.js';
 import type { ScanSphere } from '../game/scan';
 import { SCAN_MIN_DRAG_PX } from '../game/constants';
 import { useScanStore } from '../store/scanStore';
+import { sweepRunning } from './scanRun';
 
 export interface ScanAnchor {
   x: number;
@@ -110,7 +111,7 @@ export function createScanSelect(app: Application, handlers: ScanSelectHandlers)
   };
 
   const onDown = (event: FederatedPointerEvent) => {
-    if (event.button > 0 || useScanStore.getState().progress) return;
+    if (event.button > 0 || sweepRunning()) return;
     pointer.x = event.globalX;
     pointer.y = event.globalY;
     anchor = handlers.anchorAt(pointer.x, pointer.y);
@@ -140,8 +141,8 @@ export function createScanSelect(app: Application, handlers: ScanSelectHandlers)
     }
     const resolved = aim;
     clear();
-    if (!resolved) return;
-    if (!useScanStore.getState().spendCondensate(resolved.cost)) {
+    if (!resolved || sweepRunning()) return;
+    if (useScanStore.getState().condensate < resolved.cost) {
       useScanStore.getState().setOutcome('Not enough negative-energy condensate', null);
       return;
     }

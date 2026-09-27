@@ -1,29 +1,11 @@
-import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import type { AnomalyKind } from '../game/anomalies';
+import { anomalyRecordKey, type AnomalyRecord, type WorldAnomaly } from '../game/anomalyRecord';
 
-export interface AnomalyRecord {
-  kind: AnomalyKind;
-  living: boolean;
-  superclusterSeed: number;
-  superclusterName: string;
-  galaxySeed: number;
-  galaxyName: string;
-  systemId: number;
-  systemName: string;
-  discoveredAt: number;
-}
+export { anomalyRecordKey, type AnomalyRecord };
 
 type FirestoreTimestamp = { toMillis?: () => number };
-
-export function anomalyRecordKey(galaxySeed: number, systemId: number | string): string {
-  return `${galaxySeed}-${systemId}`;
-}
-
-export async function saveAnomalyDiscovery(uid: string, record: AnomalyRecord): Promise<void> {
-  const ref = doc(db, 'users', uid, 'anomalies', anomalyRecordKey(record.galaxySeed, record.systemId));
-  await setDoc(ref, { ...record, discoveredAt: serverTimestamp() });
-}
 
 export async function loadAnomalies(uid: string): Promise<AnomalyRecord[]> {
   const snap = await getDocs(collection(db, 'users', uid, 'anomalies'));
@@ -49,4 +31,15 @@ export async function deleteAnomalyDiscoveries(uid: string, keys: string[]): Pro
   } catch (err) {
     console.error('deleteAnomalyDiscoveries failed:', err);
   }
+}
+
+export async function loadWorldAnomaly(key: string): Promise<WorldAnomaly | null> {
+  const snap = await getDoc(doc(db, 'world', 'anomalies', 'records', key));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  return {
+    firstBy: data.firstBy as string,
+    firstAt: (data.firstAt as FirestoreTimestamp)?.toMillis?.() ?? Date.now(),
+    count: (data.count as number) ?? 1,
+  };
 }

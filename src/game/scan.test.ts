@@ -1,32 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { civilizationProfile, generateAnomalies, hasCivilization, superclusterMayHoldCivilization } from './anomalies';
-import { createRng, firstRandom, generateGalaxy } from './galaxyGen';
-import { findCivilizationSeeds } from './civilizationSeeds.testutil';
-import { generateSupercluster, superclusterGalaxySeeds } from './superclusters';
+import { civilizationProfile, generateAnomalies } from './anomalies';
+import { generateGalaxy } from './galaxyGen';
+import { sampleGalaxySeeds, testAnomalySeeds } from './civilizationSeeds.testutil';
+import { generateSupercluster, superclusterDotAt, superclusterDotCount, superclusterGalaxyIndex, superclusterGalaxySeeds } from './superclusters';
+import { surveySupercluster, surveyUniverse, sweepFinding } from './scanSurvey';
 import { getUniverseChunk, universeChunksNear } from './universe';
-import { LANIAKEA_SEED } from './hardcoded';
+import { LANIAKEA_SEED, MILKY_WAY_SEED } from './hardcoded';
 import { mergeSignals, scanCost, scanPrecisionRadius, scanVolumeFraction, signalStrength, SCAN_STRENGTH_TIERS } from './scan';
 import { SCAN_COST_MIN, SCAN_SUPERCLUSTER_FULL_RADIUS, SCAN_UNIVERSE_FULL_RADIUS, SCAN_UNIVERSE_MIN_RADIUS, SC_MAX_GALAXY_DOTS } from './constants';
 
 describe('civilizationProfile', () => {
   it('matches the generated civilisation without building the galaxy', () => {
-    for (const seed of findCivilizationSeeds(24, 1)) {
-      const profile = civilizationProfile(seed);
-      const civilization = generateAnomalies(generateGalaxy(seed)).civilization;
-      expect(profile).not.toBeNull();
-      expect(profile!.stage).toBe(civilization!.stage);
-      expect(profile!.living).toBe(civilization!.living);
+    for (const galaxySeed of sampleGalaxySeeds(24, 1)) {
+      const seeds = testAnomalySeeds(galaxySeed, true);
+      const profile = civilizationProfile(seeds.civilization!);
+      const civilization = generateAnomalies(generateGalaxy(galaxySeed), seeds).civilization!;
+      expect(profile.stage).toBe(civilization.stage);
+      expect(profile.living).toBe(civilization.living);
     }
-  });
-
-  it('is null wherever hasCivilization is false', () => {
-    let checked = 0;
-    for (let seed = 1; seed < 4000 && checked < 200; seed++) {
-      if (hasCivilization(seed)) continue;
-      expect(civilizationProfile(seed)).toBeNull();
-      checked++;
-    }
-    expect(checked).toBe(200);
   });
 });
 
@@ -108,38 +99,52 @@ describe('surveying a supercluster', () => {
     if (seeds.length >= 60) break;
   }
 
-  it('hashes the same roll the rng draws first', () => {
-    for (let seed = -4000; seed < 4000; seed += 7) expect(firstRandom(seed)).toBe(createRng(seed)());
-  });
-
-  function holdsCivilization(seed: number): boolean {
-    for (const galaxySeed of superclusterGalaxySeeds(seed)) if (civilizationProfile(galaxySeed)) return true;
-    return false;
-  }
-
-  it('stays inside the dot bound every sweep hashes against', () => {
-    for (const seed of [LANIAKEA_SEED, ...seeds]) {
-      let dots = 0;
-      for (const _ of superclusterGalaxySeeds(seed)) dots++;
-      expect(dots).toBeLessThanOrEqual(SC_MAX_GALAXY_DOTS);
-    }
+  it('stays inside the dot bound a civilisation roll draws its index from', () => {
+    for (const seed of [LANIAKEA_SEED, ...seeds]) expect(superclusterDotCount(seed)).toBeLessThanOrEqual(SC_MAX_GALAXY_DOTS);
   }, 120000);
-
-  it('never rules out a supercluster that holds a civilisation', () => {
-    let held = 0;
-    for (let seed = 1; seed < 4000 && held < 3; seed++) {
-      if (!superclusterMayHoldCivilization(seed)) {
-        expect(holdsCivilization(seed)).toBe(false);
-        continue;
-      }
-      if (holdsCivilization(seed)) held++;
-    }
-    expect(held).toBe(3);
-  }, 300000);
 
   it('reads the seeds the full dot stream yields', () => {
     for (const seed of [LANIAKEA_SEED, ...seeds.slice(0, 4)]) {
       expect([...superclusterGalaxySeeds(seed)]).toEqual(generateSupercluster(seed).dots.map((dot) => dot.seed));
     }
   }, 120000);
+
+  it('finds each dot by its index, and each index by its seed', () => {
+    for (const seed of [LANIAKEA_SEED, ...seeds.slice(0, 3)]) {
+      const dots = generateSupercluster(seed).dots.filter((dot) => dot.seed !== MILKY_WAY_SEED);
+      expect(superclusterDotCount(seed)).toBe(dots.length);
+      for (const index of [0, 1, Math.floor(dots.length / 2), dots.length - 1]) {
+        const dot = superclusterDotAt(seed, index)!;
+        expect([dot.x, dot.y, dot.z, dot.seed]).toEqual([dots[index].x, dots[index].y, dots[index].z, dots[index].seed]);
+        expect(superclusterGalaxyIndex(seed, dots[index].seed)).toBe(index);
+      }
+      expect(superclusterDotAt(seed, dots.length)).toBeNull();
+    }
+  }, 120000);
+
+  it('hears a civilisation only when the sweep covers its galaxy', () => {
+    const seed = seeds[0];
+    const dot = superclusterDotAt(seed, 5)!;
+    const profileOf = () => ({ index: 5, profile: { stage: 3, living: true } as const });
+    const covering = surveySupercluster(seed, { x: dot.x + 10, y: dot.y, z: dot.z, radius: 20 }, profileOf);
+    const missing = surveySupercluster(seed, { x: dot.x + 30, y: dot.y, z: dot.z, radius: 20 }, profileOf);
+    expect(covering.signals).toHaveLength(1);
+    expect(missing.signals).toHaveLength(0);
+    expect(sweepFinding('supercluster', seed, missing, 'a', 0)).toBeNull();
+    expect(sweepFinding('supercluster', seed, covering, 'b', 0)!.sources).toBe(1);
+  }, 120000);
+
+  it('surveys every supercluster the universe sphere holds', () => {
+    const sphere = { x: 0, y: 0, z: 0, radius: 400 };
+    const heard: number[] = [];
+    const survey = surveyUniverse(sphere, (seed) => {
+      heard.push(seed);
+      return null;
+    });
+    expect(heard.length).toBeGreaterThan(0);
+    expect(new Set(heard).size).toBe(heard.length);
+    expect(survey.confidence).toBe(1);
+    expect(survey.graph.nodes.length / 3).toBeGreaterThan(1);
+    expect(sweepFinding('universe', null, survey, 'c', 0)!.sources).toBe(0);
+  });
 });

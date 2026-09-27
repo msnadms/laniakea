@@ -2,8 +2,40 @@ rules_version='2'
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'photoURL', 'createdAt', 'settings']);
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['settings']);
+    }
+
+    match /users/{userId}/discoveries/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /users/{userId}/scans/{scanId} {
+      allow read, delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/anomalies/{key} {
+      allow read, delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/ledger/{document=**} {
+      allow read: if isOwner(userId);
+    }
+
+    match /users/{userId}/position/{document=**} {
+      allow read: if isOwner(userId);
+    }
+
+    match /world/{document=**} {
+      allow read: if request.auth != null;
     }
   }
 }

@@ -25,4 +25,21 @@ export default defineConfig([
       ],
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{ regex: '^(\\.\\./)+server(/|$)', message: 'The client never imports the server: it holds the anomaly key.' }],
+      }],
+    },
+  },
+  {
+    files: ['server/**/*.{ts,mjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

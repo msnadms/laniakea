@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { getAnomalyLore } from '../game/anomalyLore';
-import { anomalyRecordKey } from '../firebase/anomalies';
+import { anomalyRecordKey } from '../game/anomalyRecord';
 import { useAnomalyStore } from '../store/anomalyStore';
-import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
 import './AnomalyToast.css';
 
 const TOAST_DURATION_MS = 5000;
 
 export function AnomalyToast() {
   const latest = useAnomalyStore((s) => s.latest);
+  const awarded = useAnomalyStore((s) => s.latestAwarded);
   const dismissLatest = useAnomalyStore((s) => s.dismissLatest);
 
   useEffect(() => {
@@ -31,10 +31,10 @@ export function AnomalyToast() {
       <span className="anomaly-toast-label">{latest.living ? 'Signal Detected' : 'Anomaly Catalogued'}</span>
       <span className="anomaly-toast-sep">▸</span>
       <span className={`anomaly-toast-name anomaly-tier-${lore.tier.toLowerCase()}`}>{lore.name}</span>
-      {latest.kind === 'homeworld' && (
+      {awarded > 0 && (
         <>
           <span className="anomaly-toast-sep">▸</span>
-          <span className="anomaly-toast-gain">+{CONDENSATE_PER_HOMEWORLD} negative-energy condensate</span>
+          <span className="anomaly-toast-gain">+{awarded} negative-energy condensate</span>
         </>
       )}
       <span className="anomaly-toast-rule" />

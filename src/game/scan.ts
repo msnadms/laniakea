@@ -36,6 +36,27 @@ export interface ScanContact {
   sources: number;
 }
 
+export interface ScanFinding {
+  id: string;
+  scope: ScanScope;
+  superclusterSeed: number | null;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  markX: number;
+  markY: number;
+  markZ: number;
+  bloom: number;
+  confidence: number;
+  signals: number[];
+  strength: number;
+  sources: number;
+  nodes: number[];
+  edges: number[];
+  foundAt: number;
+}
+
 export const SCAN_STRENGTH_TIERS = 4;
 
 export function signalStrength(profile: CivilizationProfile): number {

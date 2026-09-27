@@ -504,7 +504,7 @@ export const GALAXY_PICK_MAX_WORLD = 25;
 // drag rather than a click.
 export const DRAG_THRESHOLD_PX = 4;
 
-export const ANOMALY_CIVILIZATION_CHANCE = 1 / 1500000;
+export const ANOMALY_SUPERCLUSTER_CIVILIZATION_CHANCE = 1 / 36.7;
 export const ANOMALY_HOME_RADIUS = 0.25 * GALAXY_RADIUS;
 export const ANOMALY_HOME_OUTER_ARM_FRACTION = 0.45;
 
@@ -594,9 +594,7 @@ export const SCAN_PRECISION_FRACTION = 0.35;
 
 export const SCAN_MIN_DRAG_PX = 24;
 export const SCAN_SUPERCLUSTER_ANCHOR_PX = 15;
-export const SCAN_BUDGET_MS = 10;
 export const SCAN_UNIVERSE_MAX_TARGETS = 8000;
-export const SCAN_SEEDS_PER_STEP = 4000;
 export const SCAN_SHELL_COLOR = 0x00e8ff;
 export const SCAN_SHELL_DENIED_COLOR = 0xff5a3c;
 export const SCAN_AIM_BACK_ALPHA = 0.38;

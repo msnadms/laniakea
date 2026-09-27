@@ -1,36 +1,47 @@
 import { useEffect } from 'react';
-import { auth } from '../firebase/firebase';
-import { anomalyRecordKey, saveAnomalyDiscovery, type AnomalyRecord } from '../firebase/anomalies';
-import { generateGalaxyName } from '../game/superclusters';
+import { anomalyRecordKey, type AnomalyRecord, type WorldAnomaly } from '../game/anomalyRecord';
 import type { StarSystem } from '../game/types';
+import { api, ApiError } from '../net/api';
+import { enterGalaxy, galaxyEntered } from '../net/anomalySeeds';
 import { useAnomalyStore } from '../store/anomalyStore';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
-import { useScanStore } from '../store/scanStore';
-import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
+
+interface CatalogueResponse {
+  record: AnomalyRecord;
+  awarded: number;
+  world: WorldAnomaly;
+}
+
+const cataloguing = new Set<string>();
 
 function catalogue(system: StarSystem | null) {
   if (!system) return;
   const game = useGameStore.getState();
-  const anomaly = game.galaxyAnomalies.byHost.get(system.id);
-  if (!anomaly) return;
-  const anomalies = useAnomalyStore.getState();
-  if (anomalies.records[anomalyRecordKey(game.galaxy.seed, system.id)]) return;
-  const record: AnomalyRecord = {
-    kind: anomaly.kind,
-    living: anomaly.living,
-    superclusterSeed: game.supercluster.seed,
-    superclusterName: game.supercluster.name,
-    galaxySeed: game.galaxy.seed,
-    galaxyName: generateGalaxyName(game.galaxy.seed),
-    systemId: system.id,
-    systemName: system.name,
-    discoveredAt: Date.now(),
+  if (!game.galaxyAnomalies.byHost.has(system.id)) return;
+  const key = anomalyRecordKey(game.galaxy.seed, system.id);
+  if (useAnomalyStore.getState().records[key] || cataloguing.has(key)) return;
+  cataloguing.add(key);
+  const superclusterSeed = game.supercluster.seed;
+  const galaxySeed = game.galaxy.seed;
+  const post = () => api<CatalogueResponse>('/catalogue', { superclusterSeed, galaxySeed, systemId: system.id });
+  const stillHere = () => {
+    const now = useGameStore.getState();
+    return now.supercluster.seed === superclusterSeed && now.galaxy.seed === galaxySeed && now.system?.id === system.id;
   };
-  anomalies.add(record);
-  if (anomaly.kind === 'homeworld') useScanStore.getState().gainCondensate(CONDENSATE_PER_HOMEWORLD);
-  const uid = auth.currentUser?.uid;
-  if (uid) saveAnomalyDiscovery(uid, record).catch((err) => console.error('saveAnomalyDiscovery failed:', err));
+  galaxyEntered()
+    .then(post)
+    .catch(async (err) => {
+      if (!(err instanceof ApiError) || err.status !== 409 || !stillHere()) throw err;
+      await enterGalaxy(superclusterSeed, galaxySeed);
+      return post();
+    })
+    .then(({ record, awarded, world }) => {
+      useAnomalyStore.getState().add(record, awarded);
+      useAnomalyStore.getState().setWorld(key, world);
+    })
+    .catch((err) => console.error('catalogue failed:', err))
+    .finally(() => cataloguing.delete(key));
 }
 
 export function useAnomalyWatcher() {

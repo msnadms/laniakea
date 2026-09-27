@@ -1,4 +1,5 @@
-import { CIVILIZATION_STAGE_PLANS, CIVILIZATION_STAGES, hasCivilization, MEGASTRUCTURE_KINDS, type CivilizationStage, type StagePlan } from './anomalies';
+import { CIVILIZATION_STAGE_PLANS, CIVILIZATION_STAGES, MEGASTRUCTURE_KINDS, type AnomalySeeds, type CivilizationStage, type StagePlan } from './anomalies';
+import { createRng } from './galaxyGen';
 import {
   ANOMALY_LIVING_CHANCE,
   ANOMALY_MEGASTRUCTURES_SOME_MAX,
@@ -7,12 +8,15 @@ import {
   ANOMALY_STAGE_WEIGHTS,
 } from './constants';
 
-export function findCivilizationSeeds(count: number, start: number) {
-  const seeds: number[] = [];
-  for (let seed = start; seeds.length < count; seed = (seed + 7919) >>> 0) {
-    if (hasCivilization(seed)) seeds.push(seed);
-  }
-  return seeds;
+export function testAnomalySeeds(galaxySeed: number, civilization: boolean): AnomalySeeds {
+  const rng = createRng((galaxySeed ^ 0x7e57c0de) >>> 0);
+  const draw = () => Math.floor(rng() * 4294967296);
+  const civilizationSeed = draw();
+  return { civilization: civilization ? civilizationSeed : null, blackHoles: draw(), populated: draw() };
+}
+
+export function sampleGalaxySeeds(count: number, start: number): number[] {
+  return Array.from({ length: count }, (_, i) => (start + i * 7919) >>> 0);
 }
 
 function totalWeight(stages: readonly CivilizationStage[]) {

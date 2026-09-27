@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
@@ -10,7 +10,9 @@ import { anomalyRecordKey, deleteAnomalyDiscoveries, type AnomalyRecord } from '
 import { deleteScanFindings } from '../firebase/scans';
 import { superclusterFindings, useScanStore } from '../store/scanStore';
 import { getAnomalyLore } from '../game/anomalyLore';
-import { populatedWorldIds, type AnomalyKind } from '../game/anomalies';
+import { NO_ANOMALIES, populatedWorldIds, type AnomalyKind } from '../game/anomalies';
+import { anomalySeedsKey, useAnomalySeedsStore } from '../store/anomalySeedsStore';
+import { peekAnomalySeeds } from '../net/anomalySeeds';
 import { useAnomalyStore } from '../store/anomalyStore';
 import './Codex.css';
 import './AnomalyToast.css';
@@ -303,7 +305,14 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
   const anomalyRecords = useAnomalyStore((s) => s.records);
-  const populated = useMemo(() => populatedWorldIds(galaxy.galaxySeed), [galaxy.galaxySeed]);
+  const seeds = useAnomalySeedsStore((s) => s.seeds[anomalySeedsKey(superclusterSeed, galaxy.galaxySeed)]);
+  useEffect(() => {
+    if (isOpen) peekAnomalySeeds(superclusterSeed, galaxy.galaxySeed);
+  }, [isOpen, superclusterSeed, galaxy.galaxySeed]);
+  const populated = useMemo(
+    () => (seeds ? populatedWorldIds(galaxy.galaxySeed, seeds) : NO_ANOMALIES.populated),
+    [galaxy.galaxySeed, seeds],
+  );
   const hasHabitable = useMemo(
     () => galaxy.enrichedSystems.some((s) => systemHasHabitable(
       s.seed,

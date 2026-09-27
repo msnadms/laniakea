@@ -162,3 +162,29 @@
   background: rgba(34, 72, 116, 0.9);
   color: #cfe6ff;
 }
+
+.config-row--stacked {
+  flex-wrap: wrap;
+}
+
+.config-name-input {
+  width: 110px;
+  padding: 2px 6px;
+  background: rgba(8, 20, 38, 0.8);
+  border: 1px solid rgba(60, 110, 160, 0.7);
+  border-radius: 3px;
+  color: #cfe6ff;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.config-name-input:focus {
+  outline: none;
+  border-color: rgba(120, 180, 240, 0.9);
+}
+
+.config-row-error {
+  flex-basis: 100%;
+  color: #ff8a70;
+  font-size: 11px;
+}

@@ -81,7 +81,7 @@ export const useUIStore = create<UIState>((set) => ({
 }));
 
 export function applyUserSettings(settings: UserSettings): void {
-  useScanStore.setState({ condensate: settings.condensate, active: false, progress: null, outcome: null });
+  useScanStore.setState({ active: false, outcome: null });
   useUIStore.setState({
     showOrbitRings: settings.showOrbitRings,
     showAttractorLabels: settings.showAttractorLabels,

@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { generateGalaxy } from './galaxyGen';
-import { CIVILIZATION_STAGES, generateAnomalies, hasCivilization, type AnomalyKind, type GalaxyAnomalies, type StagePlan } from './anomalies';
-import { expectedShareWhere, expectedStageShare, findCivilizationSeeds, megastructureChance } from './civilizationSeeds.testutil';
+import { CIVILIZATION_STAGES, generateAnomalies, type AnomalyKind, type GalaxyAnomalies, type StagePlan } from './anomalies';
+import { expectedShareWhere, expectedStageShare, megastructureChance, sampleGalaxySeeds, testAnomalySeeds } from './civilizationSeeds.testutil';
 import { ANOMALY_LIVING_CHANCE } from './constants';
-import { generateSuperclusterGalaxySeeds } from './superclusters';
 
 const GALAXY_SAMPLES = 3000;
 const CIVILIZATION_SAMPLES = 400;
-const SUPERCLUSTER_SAMPLES = 400;
-const SUPERCLUSTER_TARGET = 1 / 50;
 
 type Measure = (anomalies: GalaxyAnomalies) => boolean;
 
@@ -42,31 +39,20 @@ function oneIn(rate: number) {
 }
 
 describe.skipIf(!import.meta.env.ANOMALY_ODDS)('anomaly odds', () => {
-  it('reports how many civilisations each supercluster holds', { timeout: 600_000 }, () => {
-    const perSupercluster: number[] = [];
-    for (let i = 0; i < SUPERCLUSTER_SAMPLES; i++) {
-      perSupercluster.push(generateSuperclusterGalaxySeeds(0x5c1a + i * 104729).filter(hasCivilization).length);
-    }
-    const total = perSupercluster.reduce((sum, n) => sum + n, 0);
-    const mean = total / SUPERCLUSTER_SAMPLES;
-    const share = (test: (n: number) => boolean) => `${((perSupercluster.filter(test).length / SUPERCLUSTER_SAMPLES) * 100).toFixed(0)}%`;
-    console.table([{ samples: SUPERCLUSTER_SAMPLES, total, mean: mean.toFixed(3), target: SUPERCLUSTER_TARGET, none: share((n) => n === 0), one: share((n) => n === 1), twoOrMore: share((n) => n >= 2) }]);
-    expect(perSupercluster).toHaveLength(SUPERCLUSTER_SAMPLES);
-  });
-
   it('reports how often each stage and anomaly turns up against its target', { timeout: 600_000 }, () => {
     let blackHoleGalaxies = 0;
     let blackHoles = 0;
     for (let i = 0; i < GALAXY_SAMPLES; i++) {
-      const count = [...generateAnomalies(generateGalaxy(0x51f15e + i * 104729)).byHost.values()].filter((anomaly) => anomaly.kind === 'blackHole').length;
+      const seed = 0x51f15e + i * 104729;
+      const count = [...generateAnomalies(generateGalaxy(seed), testAnomalySeeds(seed, false)).byHost.values()].filter((anomaly) => anomaly.kind === 'blackHole').length;
       if (count > 0) blackHoleGalaxies++;
       blackHoles += count;
     }
 
     const hits = CIVILIZATION_TARGETS.map(() => 0);
     let dysonStructures = 0;
-    for (const seed of findCivilizationSeeds(CIVILIZATION_SAMPLES, 0x51f15e)) {
-      const anomalies = generateAnomalies(generateGalaxy(seed));
+    for (const seed of sampleGalaxySeeds(CIVILIZATION_SAMPLES, 0x51f15e)) {
+      const anomalies = generateAnomalies(generateGalaxy(seed), testAnomalySeeds(seed, true));
       CIVILIZATION_TARGETS.forEach((row, index) => {
         if (row.measure(anomalies)) hits[index]++;
       });

@@ -20,7 +20,8 @@ import {
   SC_CIVILIZATION_TINT_STRENGTH,
   SKY_LOOKS,
 } from '../game/constants';
-import { hasCivilization } from '../game/anomalies';
+import type { AnomalyRecord } from '../game/anomalyRecord';
+import { useAnomalyStore } from '../store/anomalyStore';
 import { mixColor, smoothstep } from './anomalies/shared';
 import { createSuperclusterAnomalyDebug } from './anomalyDebug';
 import { animateZoomTo } from './zoomAnim';
@@ -36,6 +37,7 @@ import {
 } from './projection';
 import { ScaleBar } from './ScaleBar';
 import { createPointerLabel } from './labels';
+import { useFirstDiscoverer } from '../hooks/useFirstDiscoverer';
 import { createSuperclusterDotTexture } from './textures';
 import { galaxyNebulaColors } from '../game/galaxyGen';
 import { SkyBackdrop } from './SkyBackdrop';
@@ -47,12 +49,11 @@ import { useScanStore } from '../store/scanStore';
 import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
 import { createScanShell } from './scanShell';
 import { createSuperclusterScanOverlay } from './scanOverlay';
-import { createSuperclusterScanRun, recordSweep, type ScanRun, type ScanTarget } from './scanRun';
-import { scanCost, scanPrecisionRadius, type ScanSphere } from '../game/scan';
+import { startSweep, type PendingSweep } from './scanRun';
+import { scanCost, type ScanSphere } from '../game/scan';
 import {
   SCAN_AIM_BACK_ALPHA,
   SCAN_AIM_FRONT_ALPHA,
-  SCAN_BUDGET_MS,
   SCAN_SHELL_COLOR,
   SCAN_SHELL_LINE_PX,
   SCAN_SUPERCLUSTER_ANCHOR_PX,
@@ -108,6 +109,7 @@ export function SuperclusterWorld() {
   const removeAddressType = useUIStore((s) => s.removeAddressType);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
   const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
+  const firstBy = useFirstDiscoverer(scSeed, null);
 
   const worldRef = useRef<Container>(null);
   const { orbitCamera, didOrbit } = useOrbit();
@@ -165,8 +167,8 @@ export function SuperclusterWorld() {
     const depthAlpha = new Float32Array(count);
     const depthScale = new Float32Array(count);
     const particles: Particle[] = new Array(count);
-    const civilizationDots: number[] = [];
-    const civilizationTints: number[] = [];
+    const baseTint = new Uint32Array(count);
+    const dotIndex = new Map<number, number>();
 
     const dotTexture = createSuperclusterDotTexture();
     for (let i = 0; i < count; i++) {
@@ -186,10 +188,8 @@ export function SuperclusterWorld() {
         anchorY: 0.5,
         tint: color,
       });
-      if (hasCivilization(dot.seed)) {
-        civilizationDots.push(i);
-        civilizationTints.push(color);
-      }
+      baseTint[i] = color;
+      dotIndex.set(dot.seed, i);
     }
 
     const scContainer = new Container();
@@ -224,6 +224,8 @@ export function SuperclusterWorld() {
     const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
     const blink = new Float32Array(N_BLINK_GROUPS);
     let civilizationBlend = 0;
+    let civilizationDots: number[] = [];
+    let civilizationRecords: Record<string, AnomalyRecord> | null = null;
 
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
@@ -248,11 +250,16 @@ export function SuperclusterWorld() {
 
       const blend = SC_CIVILIZATION_TINT_STRENGTH
         * smoothstep(SC_CIVILIZATION_TINT_MIN_SCALE, SC_CIVILIZATION_TINT_FULL_SCALE, camera.current.scale);
+      const records = useAnomalyStore.getState().records;
+      if (records !== civilizationRecords) {
+        for (const k of civilizationDots) particles[k].tint = baseTint[k];
+        civilizationDots = cataloguedCivilizationDots(records, scSeed, dotIndex);
+        civilizationRecords = records;
+        civilizationBlend = -1;
+      }
       if (blend !== civilizationBlend) {
         civilizationBlend = blend;
-        for (let k = 0; k < civilizationDots.length; k++) {
-          particles[civilizationDots[k]].tint = mixColor(civilizationTints[k], SC_CIVILIZATION_TINT, blend);
-        }
+        for (const k of civilizationDots) particles[k].tint = mixColor(baseTint[k], SC_CIVILIZATION_TINT, blend);
       }
 
       drawVisited(visitedGfx, visitedDotsRef.current, basis, projected);
@@ -272,7 +279,7 @@ export function SuperclusterWorld() {
   useEffect(() => {
     if (!showAnomalyDebug || !isInitialised || !worldRef.current) return;
     const world = worldRef.current;
-    const debug = createSuperclusterAnomalyDebug(useGameStore.getState().supercluster.dots);
+    const debug = createSuperclusterAnomalyDebug(scSeed, useGameStore.getState().supercluster.dots);
     world.addChild(debug.node);
     const basis = updateProjectionBasis(orbitCamera.current);
     const tick = () => debug.draw(updateProjectionBasis(orbitCamera.current, basis), camera.current.scale);
@@ -287,14 +294,22 @@ export function SuperclusterWorld() {
   useEffect(() => {
     if (!isInitialised || !worldRef.current) return;
     const world = worldRef.current;
-
     const titleGroup = createPointerLabel(scName, 90, {
       lineLength: 1600,
       dotRadius: 8,
       alpha: 0.8,
+      subtitle: firstBy ? `First discovered by ${firstBy}` : undefined,
     });
-    titleGroup.position.set(0, 0);
     world.addChild(titleGroup);
+    return () => {
+      world.removeChild(titleGroup);
+      titleGroup.destroy({ children: true });
+    };
+  }, [scName, firstBy, isInitialised]);
+
+  useEffect(() => {
+    if (!isInitialised || !worldRef.current) return;
+    const world = worldRef.current;
 
     const labelContainer = new Container();
     const labelGroups: Container[] = [];
@@ -324,12 +339,10 @@ export function SuperclusterWorld() {
 
     return () => {
       Ticker.shared.remove(tick);
-      world.removeChild(titleGroup);
       world.removeChild(labelContainer);
-      titleGroup.destroy({ children: true });
       labelContainer.destroy({ children: true });
     };
-  }, [scSeed, scName, scAttractors, isInitialised, camera, orbitCamera]);
+  }, [scAttractors, isInitialised, camera, orbitCamera]);
 
 
   useEffect(() => {
@@ -342,7 +355,7 @@ export function SuperclusterWorld() {
     world.addChild(overlay.node);
     const basis = updateProjectionBasis(orbitCamera.current);
     const projected: ProjectedPoint = { x: 0, y: 0, depth: 0, scale: 1 };
-    let run: ScanRun | null = null;
+    let sweep: PendingSweep | null = null;
     let shellSphere: ScanSphere | null = null;
     let shellColor = SCAN_SHELL_COLOR;
 
@@ -416,23 +429,9 @@ export function SuperclusterWorld() {
     };
 
     const beginScan = ({ sphere }: ScanAim) => {
-      const targets: ScanTarget[] = [];
-      const radiusSq = sphere.radius * sphere.radius;
-      for (const dot of useGameStore.getState().supercluster.dots) {
-        const dx = dot.x - sphere.x;
-        const dy = dot.y - sphere.y;
-        const dz = dot.z - sphere.z;
-        if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
-        targets.push({ seed: dot.seed, x: dot.x, y: dot.y, z: dot.z });
-      }
-      if (targets.length === 0) {
-        useScanStore.getState().setOutcome('No contact', null);
-        return;
-      }
-      run = createSuperclusterScanRun(targets, sphere, scanPrecisionRadius('supercluster', sphere.radius));
+      sweep = startSweep('supercluster', sphere, scSeed);
       shellSphere = sphere;
       shellColor = SCAN_SHELL_COLOR;
-      useScanStore.getState().setProgress({ scope: 'supercluster', done: 0, total: targets.length });
     };
 
     let scanSelect: ReturnType<typeof createScanSelect> | null = null;
@@ -443,7 +442,7 @@ export function SuperclusterWorld() {
           anchorAt,
           aimAt,
           onAim: (aim) => {
-            if (run) return;
+            if (sweep) return;
             shellSphere = aim?.sphere ?? null;
             shellColor = aim && useScanStore.getState().condensate < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
           },
@@ -452,7 +451,7 @@ export function SuperclusterWorld() {
       } else if (!active && scanSelect) {
         scanSelect.destroy();
         scanSelect = null;
-        if (!run) shellSphere = null;
+        if (!sweep) shellSphere = null;
       }
     };
     syncScanMode(useScanStore.getState().active);
@@ -463,19 +462,9 @@ export function SuperclusterWorld() {
     let elapsedSecs = 0;
     const tick = (ticker: Ticker) => {
       elapsedSecs += ticker.deltaMS / 1000;
-      if (run) {
-        const deadline = performance.now() + SCAN_BUDGET_MS;
-        let working = true;
-        while (working && performance.now() < deadline) working = run.step();
-        const store = useScanStore.getState();
-        if (working) {
-          store.setProgress({ scope: 'supercluster', done: run.done, total: run.total });
-        } else {
-          recordSweep('supercluster', scSeed, run);
-          run = null;
-          shellSphere = null;
-          store.setProgress(null);
-        }
+      if (sweep?.settled) {
+        sweep = null;
+        shellSphere = null;
       }
       updateProjectionBasis(orbitCamera.current, basis);
       drawShell();
@@ -487,7 +476,6 @@ export function SuperclusterWorld() {
       Ticker.shared.remove(tick);
       unsubScan();
       scanSelect?.destroy();
-      useScanStore.getState().setProgress(null);
       world.removeChild(overlay.node);
       overlay.destroy();
       world.removeChild(shell.back);
@@ -579,6 +567,20 @@ export function SuperclusterWorld() {
       />
     </>
   );
+}
+
+function cataloguedCivilizationDots(
+  records: Record<string, AnomalyRecord>,
+  superclusterSeed: number,
+  dotIndex: ReadonlyMap<number, number>,
+): number[] {
+  const dots = new Set<number>();
+  for (const record of Object.values(records)) {
+    if (record.superclusterSeed !== superclusterSeed || record.kind === 'blackHole') continue;
+    const index = dotIndex.get(record.galaxySeed);
+    if (index !== undefined) dots.add(index);
+  }
+  return [...dots];
 }
 
 const visitedPoints: { x: number; y: number }[] = [];

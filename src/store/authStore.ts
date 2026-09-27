@@ -4,7 +4,7 @@ import { auth, googleProvider } from '../firebase/firebase';
 import { initUserDoc } from '../firebase/userDoc';
 import { loadAllDiscoveries } from '../firebase/discoveries';
 import { loadAnomalies } from '../firebase/anomalies';
-import { loadScanFindings } from '../firebase/scans';
+import { subscribeScanFindings } from '../firebase/scans';
 import { useScanStore } from './scanStore';
 import { useAnomalyStore } from './anomalyStore';
 import { applyUserSettings, useUIStore } from './uiStore';
@@ -12,9 +12,12 @@ import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { loadNav } from '../lib/navLocalStorage';
 import { getSuperclusterCoords } from '../game/universe';
+import { subscribeLedger } from '../firebase/ledger';
+import { api } from '../net/api';
 
 interface AuthState {
   user: User | null;
+  explorerName: string | null;
   loading: boolean;
   settingsLoaded: boolean;
   signIn: () => Promise<void>;
@@ -23,6 +26,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(() => ({
   user: null,
+  explorerName: null,
   loading: true,
   settingsLoaded: false,
   signIn: async () => {
@@ -33,25 +37,39 @@ export const useAuthStore = create<AuthState>()(() => ({
   },
 }));
 
+function watchServerState(uid: string): () => void {
+  api<{ condensate: number }>('/ledger')
+    .then(({ condensate }) => useScanStore.getState().setCondensate(condensate))
+    .catch((err) => console.error('ledger failed:', err));
+  const unsubscribeLedger = subscribeLedger(uid, (condensate) => useScanStore.getState().setCondensate(condensate));
+  const unsubscribeScans = subscribeScanFindings(uid, (findings) => useScanStore.getState().setAllFindings(findings));
+  return () => {
+    unsubscribeLedger();
+    unsubscribeScans();
+  };
+}
+
 // Call once from App on mount. Returns the Firebase unsubscribe function.
 export function initAuth(): () => void {
-  return onAuthStateChanged(auth, async (user) => {
+  let unsubscribeServerState: (() => void) | null = null;
+  const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    unsubscribeServerState?.();
+    unsubscribeServerState = null;
     if (user) {
+      unsubscribeServerState = watchServerState(user.uid);
       try {
-        const [baseSettings, discoveries, anomalies, scans] = await Promise.all([
+        const [userDoc, discoveries, anomalies] = await Promise.all([
           initUserDoc(user),
           loadAllDiscoveries(user.uid),
           loadAnomalies(user.uid),
-          loadScanFindings(user.uid),
         ]);
         // localStorage nav is more recent than Firebase's debounced write — prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
         const localNav = loadNav(user.uid);
-        const settings = localNav ? { ...baseSettings, ...localNav } : baseSettings;
+        const settings = localNav ? { ...userDoc.settings, ...localNav } : userDoc.settings;
         applyUserSettings(settings);
         useCodexStore.getState().setAll(discoveries);
         useAnomalyStore.getState().setAll(anomalies);
-        useScanStore.getState().setAllFindings(scans);
 
         const visitedSystems: Record<number, number[]> = {};
         const visitedGalaxies: Record<number, number[]> = {};
@@ -90,13 +108,17 @@ export function initAuth(): () => void {
         );
         useUIStore.setState({ view: restoredView, address });
 
-        useAuthStore.setState({ user, loading: false, settingsLoaded: true });
+        useAuthStore.setState({ user, explorerName: userDoc.explorerName, loading: false, settingsLoaded: true });
       } catch (err) {
         console.error('Auth init failed:', err);
         useAuthStore.setState({ user, loading: false, settingsLoaded: false });
       }
     } else {
-      useAuthStore.setState({ user: null, loading: false, settingsLoaded: false });
+      useAuthStore.setState({ user: null, explorerName: null, loading: false, settingsLoaded: false });
     }
   });
+  return () => {
+    unsubscribeAuth();
+    unsubscribeServerState?.();
+  };
 }

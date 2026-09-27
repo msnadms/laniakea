@@ -84,11 +84,11 @@ export function ProbePanel() {
         {progress ? (
           <div className="probe-panel-row">
             <span className="probe-panel-label">Probes away</span>
-            <span className="probe-panel-value">{progress.done} / {progress.total} surveyed</span>
+            <span className="probe-panel-value">Surveying · {Math.round(progress.fraction * 100)}%</span>
             <div className="probe-panel-bar">
               <div
                 className="probe-panel-bar-fill"
-                style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }}
+                style={{ width: `${progress.fraction * 100}%` }}
               />
             </div>
           </div>

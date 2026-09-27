@@ -60,6 +60,8 @@ import { useCodexStore } from '../store/codexStore';
 import { useAuthStore } from '../store/authStore';
 import { saveSystemDiscovery } from '../firebase/discoveries';
 import { generateGalaxyName } from '../game/superclusters';
+import { createPointerLabel } from './labels';
+import { useFirstDiscoverer } from '../hooks/useFirstDiscoverer';
 
 const GALAXY_NICE_VALUES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000];
 
@@ -71,6 +73,10 @@ const DYSON_LIVING_SIZE = 0.85;
 const BRAIN_LIVING_SIZE = 2.0;
 const SWARM_SIGN_SIZE = 0.8;
 const SWARM_LIVING_SIZE = 0.92;
+
+const TITLE_FONT_SIZE = 60;
+const TITLE_LINE_LENGTH = 560;
+const TITLE_Z = 98000;
 
 const GALAXY_ORBIT: OrbitConfig = {
   createCamera: createGalaxyCamera,
@@ -164,6 +170,7 @@ export function GalaxyWorld() {
   const galaxyAnomalies = useGameStore((s) => s.galaxyAnomalies);
   const showAnomalyDebug = useUIStore((s) => s.showAnomalyDebug);
   const supercluster = useGameStore((s) => s.supercluster);
+  const firstBy = useFirstDiscoverer(supercluster.seed, galaxySeed);
   const scanFindings = useScanStore((s) => s.findings);
   const setSystem = useGameStore((s) => s.setSystem);
   const pushAddress = useUIStore((s) => s.pushAddress);
@@ -431,7 +438,6 @@ export function GalaxyWorld() {
     galaxyRoot.addChild(nebulaLayer.container);
     galaxyRoot.addChild(coreLayer.container);
 
-    const signs = createAnomalySigns(galaxyRoot, useGameStore.getState().galaxy.systems, galaxyAnomalies);
     // World distance from the galactic centre to where the depth fade clamps, which
     // is where the disk's own depth reaches GALAXY_DEPTH_HALF.
     let fadeHalfSpan = GALAXY_DEPTH_HALF;
@@ -448,7 +454,6 @@ export function GalaxyWorld() {
         const view = starViews.get(system.id);
         if (view) applyStarProjection(view, projected);
       }
-      signs.project(basis);
     };
 
     orient();
@@ -468,14 +473,12 @@ export function GalaxyWorld() {
       }
 
       depthFade.setRamp(camera.current.y, fadeHalfSpan * camera.current.scale);
-      signs.tick(elapsedSecs, camera.current.scale);
     };
 
     Ticker.shared.add(tick);
 
     return () => {
       Ticker.shared.remove(tick);
-      signs.destroy();
       galaxyRoot.removeChild(nebulaLayer.container);
       galaxyRoot.removeChild(coreLayer.container);
       nebulaLayer.container.destroy({ children: true });
@@ -485,7 +488,32 @@ export function GalaxyWorld() {
       depthFade.destroy();
       disp.destroy();
     };
-  }, [galaxySeed, config, isInitialised, camera, orbitCamera, galaxyProjection, starViews, galaxyAnomalies]);
+  }, [galaxySeed, config, isInitialised, camera, orbitCamera, galaxyProjection, starViews]);
+
+  useEffect(() => {
+    if (!isInitialised || !galaxyRootRef.current) return;
+    const signs = createAnomalySigns(galaxyRootRef.current, useGameStore.getState().galaxy.systems, galaxyAnomalies);
+    const basis = updateProjectionBasis(orbitCamera.current);
+    signs.project(basis);
+    let lastYaw = orbitCamera.current.yaw;
+    let lastTilt = orbitCamera.current.tilt;
+    let elapsedSecs = 0;
+    const tick = (ticker: Ticker) => {
+      elapsedSecs += ticker.deltaMS / 1000;
+      const { yaw, tilt } = orbitCamera.current;
+      if (yaw !== lastYaw || tilt !== lastTilt) {
+        lastYaw = yaw;
+        lastTilt = tilt;
+        signs.project(updateProjectionBasis(orbitCamera.current, basis));
+      }
+      signs.tick(elapsedSecs, camera.current.scale);
+    };
+    Ticker.shared.add(tick);
+    return () => {
+      Ticker.shared.remove(tick);
+      signs.destroy();
+    };
+  }, [galaxyAnomalies, isInitialised, camera, orbitCamera]);
 
   useEffect(() => {
     if (!showAnomalyDebug || !isInitialised || !galaxyRootRef.current) return;
@@ -508,6 +536,23 @@ export function GalaxyWorld() {
       debug.destroy();
     };
   }, [showAnomalyDebug, galaxyAnomalies, isInitialised, camera, orbitCamera]);
+
+  useEffect(() => {
+    if (!isInitialised || !galaxyRootRef.current) return;
+    const root = galaxyRootRef.current;
+    const title = createPointerLabel(generateGalaxyName(galaxySeed), TITLE_FONT_SIZE, {
+      lineLength: TITLE_LINE_LENGTH,
+      dotRadius: 6,
+      subtitle: firstBy ? `First discovered by ${firstBy}` : undefined,
+    });
+    title.zIndex = TITLE_Z;
+    title.eventMode = 'none';
+    root.addChild(title);
+    return () => {
+      root.removeChild(title);
+      title.destroy({ children: true });
+    };
+  }, [galaxySeed, firstBy, isInitialised]);
 
   useEffect(() => {
     if (!scannedAnomalyLabels || scannedAnomalyLabels.length === 0 || !isInitialised || !galaxyRootRef.current) return;

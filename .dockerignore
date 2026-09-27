@@ -1,0 +1,8 @@
+**/node_modules
+dist
+.git
+.firebase
+.claude
+.env
+**/.env.local
+server/secrets

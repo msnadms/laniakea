@@ -1,12 +1,10 @@
 import { create } from 'zustand';
-import type { ScanFinding } from '../firebase/scans';
-import type { ScanScope } from '../game/scan';
+import type { ScanFinding, ScanScope } from '../game/scan';
 import { CONDENSATE_START } from '../game/constants';
 
 export interface ScanProgress {
   scope: ScanScope;
-  done: number;
-  total: number;
+  fraction: number;
 }
 
 export interface ScanOutcome {
@@ -24,8 +22,6 @@ interface ScanState {
   setActive: (active: boolean) => void;
   toggleActive: () => void;
   setCondensate: (condensate: number) => void;
-  gainCondensate: (amount: number) => void;
-  spendCondensate: (amount: number) => boolean;
   setProgress: (progress: ScanProgress | null) => void;
   setOutcome: (text: string, strength: number | null) => void;
   clearOutcome: () => void;
@@ -35,21 +31,15 @@ interface ScanState {
   clearFindings: () => void;
 }
 
-export const useScanStore = create<ScanState>((set, get) => ({
+export const useScanStore = create<ScanState>((set) => ({
   condensate: CONDENSATE_START,
   active: false,
   progress: null,
   outcome: null,
   findings: {},
-  setActive: (active) => set({ active, progress: active ? get().progress : null }),
-  toggleActive: () => set((state) => ({ active: !state.active, progress: null })),
+  setActive: (active) => set({ active }),
+  toggleActive: () => set((state) => ({ active: !state.active })),
   setCondensate: (condensate) => set({ condensate }),
-  gainCondensate: (amount) => set((state) => ({ condensate: state.condensate + amount })),
-  spendCondensate: (amount) => {
-    if (get().condensate < amount) return false;
-    set((state) => ({ condensate: state.condensate - amount }));
-    return true;
-  },
   setProgress: (progress) => set({ progress }),
   setOutcome: (text, strength) => set({ outcome: { text, strength, at: Date.now() } }),
   clearOutcome: () => set({ outcome: null }),

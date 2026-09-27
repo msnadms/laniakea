@@ -4,11 +4,14 @@ import { generateGalaxy } from '../game/galaxyGen';
 import { generateSupercluster } from '../game/superclusters';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
 import { MILKY_WAY_SEED, MILKY_WAY_NUM_ARMS, LANIAKEA_SEED } from '../game/hardcoded';
-import { generateAnomalies, type GalaxyAnomalies } from '../game/anomalies';
+import { generateAnomalies, NO_ANOMALIES, type AnomalySeeds, type GalaxyAnomalies } from '../game/anomalies';
+import { cachedAnomalySeeds } from './anomalySeedsStore';
+import { enterGalaxy } from '../net/anomalySeeds';
 
 interface GameState {
   galaxy: Galaxy;
   galaxyAnomalies: GalaxyAnomalies;
+  anomalySeeds: AnomalySeeds | null;
   supercluster: SuperclusterData;
   system: StarSystem | null;
   visitedSystemsByGalaxySeed: Record<number, Set<number>>;
@@ -16,6 +19,7 @@ interface GameState {
   regenerateGalaxy: (seed?: number) => void;
   regenerateSupercluster: (seed: number) => void;
   setSystem: (system: StarSystem | null) => void;
+  applyAnomalySeeds: (galaxySeed: number, seeds: AnomalySeeds) => void;
   restoreGalaxyAndSystem: (galaxySeed: number, systemId: number | null) => void;
   markDotVisited: (seed: number) => void;
   markSystemVisited: (id: number) => void;
@@ -34,6 +38,29 @@ function withPlanets(system: StarSystem, anomalies: GalaxyAnomalies): StarSystem
   const anomaly = anomalies.byHost.get(system.id);
   const layout = generateSystemLayout(system.seed, system.starType, anomaly?.kind, anomalies.populated.has(system.id), anomaly?.living);
   return { ...system, planets: generatePlanets(layout) };
+}
+
+function anomaliesFor(galaxy: Galaxy, superclusterSeed: number) {
+  const anomalySeeds = cachedAnomalySeeds(superclusterSeed, galaxy.seed) ?? null;
+  return { anomalySeeds, galaxyAnomalies: anomalySeeds ? generateAnomalies(galaxy, anomalySeeds) : NO_ANOMALIES };
+}
+
+function sameSeeds(a: AnomalySeeds | null, b: AnomalySeeds): boolean {
+  return a !== null && a.civilization === b.civilization && a.blackHoles === b.blackHoles && a.populated === b.populated;
+}
+
+function sameHostStatus(system: StarSystem, a: GalaxyAnomalies, b: GalaxyAnomalies): boolean {
+  const before = a.byHost.get(system.id);
+  const after = b.byHost.get(system.id);
+  return before?.kind === after?.kind
+    && before?.living === after?.living
+    && a.populated.has(system.id) === b.populated.has(system.id);
+}
+
+function fetchAnomalies(superclusterSeed: number, galaxySeed: number) {
+  enterGalaxy(superclusterSeed, galaxySeed)
+    ?.then((seeds) => useGameStore.getState().applyAnomalySeeds(galaxySeed, seeds))
+    .catch((err) => console.error('enterGalaxy failed:', err));
 }
 
 function applyVisited(galaxy: Galaxy, visited: Set<number> | undefined): Galaxy {
@@ -62,50 +89,68 @@ const _initialSupercluster = (() => {
   return { ...sc, dots: sc.dots.map((d) => d.seed === MILKY_WAY_SEED ? { ...d, visited: true, current: true } : d) };
 })();
 
-const _initialAnomalies = generateAnomalies(_initialGalaxy);
-
-export const useGameStore = create<GameState>((set) => ({
+export const useGameStore = create<GameState>((set, get) => ({
   galaxy: _initialGalaxy,
-  galaxyAnomalies: _initialAnomalies,
+  galaxyAnomalies: NO_ANOMALIES,
+  anomalySeeds: null,
   supercluster: _initialSupercluster,
-  system: withPlanets(_initialGalaxy.systems[0], _initialAnomalies),
+  system: withPlanets(_initialGalaxy.systems[0], NO_ANOMALIES),
   visitedSystemsByGalaxySeed: { [MILKY_WAY_SEED]: new Set([0]) },
   visitedGalaxyBySuperclusterSeed: { [LANIAKEA_SEED]: new Set([MILKY_WAY_SEED]) },
-  regenerateGalaxy: (seed) => set((state) => {
-    const galaxy = makeGalaxy(seed);
-    return {
-      galaxy: applyVisited(galaxy, state.visitedSystemsByGalaxySeed[galaxy.seed]),
-      galaxyAnomalies: generateAnomalies(galaxy),
-      system: null,
-    };
-  }),
+  regenerateGalaxy: (seed) => {
+    set((state) => {
+      const galaxy = makeGalaxy(seed);
+      return {
+        galaxy: applyVisited(galaxy, state.visitedSystemsByGalaxySeed[galaxy.seed]),
+        ...anomaliesFor(galaxy, state.supercluster.seed),
+        system: null,
+      };
+    });
+    fetchAnomalies(get().supercluster.seed, get().galaxy.seed);
+  },
   regenerateSupercluster: (seed) => set((state) => {
     const sc = seed === state.supercluster.seed ? state.supercluster : generateSupercluster(seed);
     return { supercluster: applyVisitedDots(sc, state.visitedGalaxyBySuperclusterSeed[sc.seed]) };
   }),
   setSystem: (system) => set((state) => ({ system: system ? withPlanets(system, state.galaxyAnomalies) : null })),
-  restoreGalaxyAndSystem: (galaxySeed, systemId) => set((state) => {
-    const isSameGalaxy = state.galaxy.seed === galaxySeed;
-    const baseGalaxy = isSameGalaxy ? state.galaxy : makeGalaxy(galaxySeed);
-    const visitedIds = state.visitedSystemsByGalaxySeed[baseGalaxy.seed];
-    const galaxy = {
-      ...baseGalaxy,
-      systems: baseGalaxy.systems.map((s) => {
-        const isVisited = visitedIds?.has(s.id) ?? s.visited;
-        const isCurrent = systemId !== null ? s.id === systemId : false;
-        const wasCurrent = s.current && !isCurrent;
-        if (isVisited === s.visited && isCurrent === s.current && !wasCurrent) return s;
-        return { ...s, visited: isVisited, current: isCurrent };
-      }),
-    };
-    const found = systemId !== null ? galaxy.systems.find((s) => s.id === systemId) : undefined;
-    const galaxyAnomalies = isSameGalaxy ? state.galaxyAnomalies : generateAnomalies(baseGalaxy);
+  applyAnomalySeeds: (galaxySeed, seeds) => set((state) => {
+    if (state.galaxy.seed !== galaxySeed || sameSeeds(state.anomalySeeds, seeds)) return {};
+    const galaxyAnomalies = generateAnomalies(state.galaxy, seeds);
     return {
-      galaxy,
+      anomalySeeds: seeds,
       galaxyAnomalies,
-      system: found ? withPlanets(found, galaxyAnomalies) : null,
+      system: state.system && !sameHostStatus(state.system, state.galaxyAnomalies, galaxyAnomalies)
+        ? withPlanets(state.system, galaxyAnomalies)
+        : state.system,
     };
   }),
+  restoreGalaxyAndSystem: (galaxySeed, systemId) => {
+    set((state) => {
+      const isSameGalaxy = state.galaxy.seed === galaxySeed;
+      const baseGalaxy = isSameGalaxy ? state.galaxy : makeGalaxy(galaxySeed);
+      const visitedIds = state.visitedSystemsByGalaxySeed[baseGalaxy.seed];
+      const galaxy = {
+        ...baseGalaxy,
+        systems: baseGalaxy.systems.map((s) => {
+          const isVisited = visitedIds?.has(s.id) ?? s.visited;
+          const isCurrent = systemId !== null ? s.id === systemId : false;
+          const wasCurrent = s.current && !isCurrent;
+          if (isVisited === s.visited && isCurrent === s.current && !wasCurrent) return s;
+          return { ...s, visited: isVisited, current: isCurrent };
+        }),
+      };
+      const found = systemId !== null ? galaxy.systems.find((s) => s.id === systemId) : undefined;
+      const anomalies = isSameGalaxy
+        ? { anomalySeeds: state.anomalySeeds, galaxyAnomalies: state.galaxyAnomalies }
+        : anomaliesFor(baseGalaxy, state.supercluster.seed);
+      return {
+        galaxy,
+        ...anomalies,
+        system: found ? withPlanets(found, anomalies.galaxyAnomalies) : null,
+      };
+    });
+    fetchAnomalies(get().supercluster.seed, galaxySeed);
+  },
   markDotVisited: (seed) => {
     set((state) => {
       const scSeed = state.supercluster.seed;

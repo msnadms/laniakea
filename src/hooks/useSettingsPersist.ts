@@ -4,7 +4,6 @@ import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
 import { saveUserSettings } from '../firebase/userDoc';
 import { saveNav } from '../lib/navLocalStorage';
-import { useScanStore } from '../store/scanStore';
 
 export function useSettingsPersist() {
   useEffect(() => {
@@ -23,7 +22,6 @@ export function useSettingsPersist() {
           lastGalaxySeed: g.galaxy.seed,
           lastSystemId: g.system?.id ?? null,
           address: s.address,
-          condensate: useScanStore.getState().condensate,
         });
       }
 
@@ -42,21 +40,16 @@ export function useSettingsPersist() {
           lastGalaxySeed: g.galaxy.seed,
           lastSystemId: g.system?.id ?? null,
           address: s.address,
-          condensate: useScanStore.getState().condensate,
         });
       }, 2000);
     };
 
     const unsubUI = useUIStore.subscribe(save);
     const unsubGame = useGameStore.subscribe(save);
-    const unsubScan = useScanStore.subscribe((state, prev) => {
-      if (state.condensate !== prev.condensate || state.findings !== prev.findings) save();
-    });
 
     return () => {
       unsubUI();
       unsubGame();
-      unsubScan();
       clearTimeout(timer);
     };
   }, []);

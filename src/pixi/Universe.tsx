@@ -33,12 +33,10 @@ import {
   UNIVERSE_PICK_SCREEN_PX,
   SCAN_AIM_BACK_ALPHA,
   SCAN_AIM_FRONT_ALPHA,
-  SCAN_BUDGET_MS,
   SCAN_SHELL_COLOR,
   SCAN_SHELL_LINE_PX,
   SCAN_SHELL_DENIED_COLOR,
   SCAN_UNIVERSE_MAX_RADIUS,
-  SCAN_UNIVERSE_MAX_TARGETS,
   UNIVERSE_SEED,
   WEB_GLOW_CROSSFADE_SECS,
   WEB_GLOW_REBAKE,
@@ -72,8 +70,8 @@ import { useScanStore } from '../store/scanStore';
 import { createScanSelect, type ScanAim, type ScanAnchor } from './scanSelect';
 import { createScanShell } from './scanShell';
 import { createUniverseScanOverlay } from './scanOverlay';
-import { createUniverseScanRun, recordSweep, type ScanRun } from './scanRun';
-import { scanCost, scanPrecisionRadius, type ScanSphere } from '../game/scan';
+import { startSweep, type PendingSweep } from './scanRun';
+import { scanCost, type ScanSphere } from '../game/scan';
 
 const N_BLINK_GROUPS = 10;
 const BLINK_FREQ = 0.22;
@@ -326,7 +324,7 @@ export function UniverseWorld() {
     let lastSpeed = -1;
     let hoveredSeed = -1;
     let debug: ReturnType<typeof createUniverseAnomalyDebug> | null = null;
-    let scanRun: ScanRun | null = null;
+    let sweep: PendingSweep | null = null;
     let shellSphere: ScanSphere | null = null;
     let shellColor = SCAN_SHELL_COLOR;
 
@@ -389,14 +387,9 @@ export function UniverseWorld() {
     };
 
     const beginScan = ({ sphere }: ScanAim) => {
-      const refs = universeChunksNear(sphere.x, sphere.y, sphere.z, sphere.radius);
-      scanRun = createUniverseScanRun(
-        { sphere, refs, maxTargets: SCAN_UNIVERSE_MAX_TARGETS },
-        scanPrecisionRadius('universe', sphere.radius),
-      );
+      sweep = startSweep('universe', sphere, null);
       shellSphere = sphere;
       shellColor = SCAN_SHELL_COLOR;
-      useScanStore.getState().setProgress({ scope: 'universe', done: 0, total: scanRun.total });
     };
 
     let scanSelect: ReturnType<typeof createScanSelect> | null = null;
@@ -407,7 +400,7 @@ export function UniverseWorld() {
           anchorAt,
           aimAt,
           onAim: (aim) => {
-            if (scanRun) return;
+            if (sweep) return;
             shellSphere = aim?.sphere ?? null;
             shellColor = aim && useScanStore.getState().condensate < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
           },
@@ -417,7 +410,7 @@ export function UniverseWorld() {
       else if (!active && scanSelect) {
         scanSelect.destroy();
         scanSelect = null;
-        if (!scanRun) shellSphere = null;
+        if (!sweep) shellSphere = null;
       }
     };
     syncScanMode(useScanStore.getState().active);
@@ -426,19 +419,9 @@ export function UniverseWorld() {
     });
 
     const advanceScan = () => {
-      if (!scanRun) return;
-      const deadline = performance.now() + SCAN_BUDGET_MS;
-      let working = true;
-      while (working && performance.now() < deadline) working = scanRun.step();
-      const store = useScanStore.getState();
-      if (working) {
-        store.setProgress({ scope: 'universe', done: scanRun.done, total: scanRun.total });
-        return;
-      }
-      recordSweep('universe', null, scanRun);
-      scanRun = null;
+      if (!sweep?.settled) return;
+      sweep = null;
       shellSphere = null;
-      store.setProgress(null);
     };
 
     const removeDebug = () => {
@@ -658,7 +641,6 @@ export function UniverseWorld() {
       removeDebug();
       unsubScan();
       scanSelect?.destroy();
-      useScanStore.getState().setProgress(null);
       world.removeChild(scanOverlay.node);
       world.removeChild(scanOverlay.backNode);
       scanOverlay.destroy();

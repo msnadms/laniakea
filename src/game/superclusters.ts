@@ -134,8 +134,34 @@ export function superclusterGalaxySeedAt(seed: number, index: number): number {
   return (seed ^ Math.imul(index, SC_DOT_SEED_MIX)) >>> 0;
 }
 
+function inverseOdd(value: number): number {
+  let inverse = value;
+  for (let i = 0; i < 5; i++) inverse = Math.imul(inverse, 2 - Math.imul(value, inverse));
+  return inverse;
+}
+
+const SC_DOT_SEED_UNMIX = inverseOdd(SC_DOT_SEED_MIX);
+
+export function superclusterGalaxyIndex(seed: number, galaxySeed: number): number {
+  return Math.imul(galaxySeed ^ seed, SC_DOT_SEED_UNMIX) >>> 0;
+}
+
 export function* superclusterGalaxySeeds(seed: number): Generator<number> {
   for (const dot of streamDots(seed, buildSkeleton(seed), false, true)) yield dot.seed;
+}
+
+export function superclusterDotCount(seed: number): number {
+  let count = 0;
+  for (const _ of superclusterGalaxySeeds(seed)) count++;
+  return seed === LANIAKEA_SEED ? count - 1 : count;
+}
+
+export function superclusterDotAt(seed: number, index: number): SuperclusterDot | null {
+  let i = 0;
+  for (const dot of streamDots(seed, buildSkeleton(seed), false)) {
+    if (i++ === index) return dot.seed === superclusterGalaxySeedAt(seed, index) ? dot : null;
+  }
+  return null;
 }
 
 interface SuperclusterSkeleton {

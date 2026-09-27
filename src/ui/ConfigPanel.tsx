@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useScanStore } from '../store/scanStore';
 import { useAuthStore } from '../store/authStore';
 import { deleteScanFindings } from '../firebase/scans';
+import { api, ApiError } from '../net/api';
 import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
 import { TutorialPanel } from './TutorialPanel';
 import './ConfigPanel.css';
@@ -24,17 +25,58 @@ function ConfigToggle({ label, checked, onChange }: { label: string; checked: bo
   );
 }
 
-function CondensateGrant() {
+function CondensateBalance() {
   const condensate = useScanStore((s) => s.condensate);
-  const gainCondensate = useScanStore((s) => s.gainCondensate);
+  const grant = () => {
+    api<{ condensate: number }>('/debug/grant', {})
+      .then((result) => useScanStore.getState().setCondensate(result.condensate))
+      .catch((err) => console.error('grant failed:', err));
+  };
   return (
     <div className="config-row config-row--action">
       <span className="config-row-label">Negative-Energy Condensate</span>
       <span className="config-row-value">{condensate}</span>
-      <button className="config-action" onClick={() => gainCondensate(CONDENSATE_PER_HOMEWORLD)}>
-        +{CONDENSATE_PER_HOMEWORLD}
-      </button>
+      {import.meta.env.DEV && (
+        <button className="config-action" onClick={grant}>
+          +{CONDENSATE_PER_HOMEWORLD}
+        </button>
+      )}
     </div>
+  );
+}
+
+function ExplorerName() {
+  const saved = useAuthStore((s) => s.explorerName);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const value = draft ?? saved ?? '';
+
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    api<{ explorerName: string }>('/profile', { explorerName: value })
+      .then(({ explorerName }) => {
+        useAuthStore.setState({ explorerName });
+        setDraft(null);
+        setError(null);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not save the name'));
+  };
+
+  return (
+    <form className="config-row config-row--action config-row--stacked" onSubmit={save}>
+      <span className="config-row-label">Explorer Name</span>
+      <input
+        className="config-name-input"
+        value={value}
+        maxLength={24}
+        placeholder="Shown on first finds"
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button className="config-action" type="submit" disabled={draft === null || draft.trim() === (saved ?? '')}>
+        Save
+      </button>
+      {error && <span className="config-row-error">{error}</span>}
+    </form>
   );
 }
 
@@ -98,10 +140,11 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           {view === 'system' && (
             <ConfigToggle label="Orbit Rings" checked={showOrbitRings} onChange={toggleOrbitRings} />
           )}
-          {view !== 'system' && (
+          {import.meta.env.DEV && view !== 'system' && (
             <ConfigToggle label="Anomaly Debug" checked={showAnomalyDebug} onChange={toggleAnomalyDebug} />
           )}
-          <CondensateGrant />
+          <ExplorerName />
+          <CondensateBalance />
           <ProbeFindings />
         </div>
       )}

@@ -1,7 +1,6 @@
 import { Container, Graphics, Text } from 'pixi.js';
-import { generateAnomalies, hasCivilization, type AnomalyKind, type GalaxyAnomalies } from '../game/anomalies';
-import { generateGalaxy } from '../game/galaxyGen';
-import { generateSuperclusterGalaxySeeds } from '../game/superclusters';
+import type { AnomalyKind, GalaxyAnomalies } from '../game/anomalies';
+import { api } from '../net/api';
 import { UNIVERSE_PICK_MIN_ALPHA } from '../game/constants';
 import type { FlyCamera, StarSystem, SuperclusterDot, UniverseChunk } from '../game/types';
 import { projectPlanePointWithBasis, type ProjectedPoint, type ProjectionBasis } from './projection';
@@ -29,8 +28,6 @@ const KIND_LABELS: Record<AnomalyKind, string> = {
   alcubierreCannon: 'CANNON',
 };
 
-const KIND_RANK: AnomalyKind[] = ['alcubierreCannon', 'aldersonDisk','matrioshkaBrain','nicollDysonBeam', 'caplanThruster', 'dysonSphere', 'homeworld', 'blackHole'];
-
 const LIVING_COLOR = 0xffe080;
 
 const POPULATED_COLOR = 0x9affc8;
@@ -39,32 +36,30 @@ const REGION_COLOR = 0xff8a30;
 
 const REGION_STEPS = 64;
 
-const SCAN_BUDGET_MS = 6;
+const MARKS_PER_REQUEST = 20;
+
+interface SuperclusterMark {
+  galaxySeed: number;
+  kind: AnomalyKind | null;
+  living: boolean;
+}
+
+async function fetchMarks(seeds: readonly number[]): Promise<(SuperclusterMark | null)[]> {
+  return (await api<{ marks: (SuperclusterMark | null)[] }>('/debug/marks', { seeds })).marks;
+}
 
 function emptyPoint(): ProjectedPoint {
   return { x: 0, y: 0, depth: 0, scale: 1 };
 }
 
-export function createSuperclusterAnomalyDebug(dots: readonly SuperclusterDot[]) {
-  const groups = new Map<number, SuperclusterDot[]>();
-  const living: SuperclusterDot[] = [];
-  let cursor = 0;
-  const scan = () => {
-    const deadline = performance.now() + SCAN_BUDGET_MS;
-    while (cursor < dots.length) {
-      const dot = dots[cursor++];
-      if (!hasCivilization(dot.seed)) continue;
-      const anomalies = generateAnomalies(generateGalaxy(dot.seed));
-      const kinds = new Set([...anomalies.byHost.values()].map((anomaly) => anomaly.kind));
-      const topKind = KIND_RANK.find((kind) => kinds.has(kind));
-      const color = topKind ? KIND_COLORS[topKind] : POPULATED_COLOR;
-      const group = groups.get(color);
-      if (group) group.push(dot);
-      else groups.set(color, [dot]);
-      if (anomalies.civilization?.living) living.push(dot);
-      if (performance.now() > deadline) return;
-    }
-  };
+export function createSuperclusterAnomalyDebug(superclusterSeed: number, dots: readonly SuperclusterDot[]) {
+  let marked: { dot: SuperclusterDot; color: number; living: boolean } | null = null;
+  fetchMarks([superclusterSeed])
+    .then(([mark]) => {
+      const dot = mark ? dots.find((candidate) => candidate.seed === mark.galaxySeed) : undefined;
+      if (mark && dot) marked = { dot, color: mark.kind ? KIND_COLORS[mark.kind] : POPULATED_COLOR, living: mark.living };
+    })
+    .catch((err) => console.warn('anomaly debug marks unavailable:', err));
 
   const gfx = new Graphics();
   gfx.eventMode = 'none';
@@ -73,23 +68,11 @@ export function createSuperclusterAnomalyDebug(dots: readonly SuperclusterDot[])
   return {
     node: gfx,
     draw(basis: ProjectionBasis, cameraScale: number) {
-      if (cursor < dots.length) scan();
       gfx.clear();
-      const radius = 10 / cameraScale;
-      for (const [color, group] of groups) {
-        for (const dot of group) {
-          projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
-          gfx.circle(projected.x, projected.y, radius);
-        }
-        gfx.stroke({ color, width: 1.5 / cameraScale, alpha: 0.9 });
-      }
-      // Drawn last, in front of every kind-color ring, so living civilisations are never lost among them.
-      const livingRadius = 16 / cameraScale;
-      for (const dot of living) {
-        projectPlanePointWithBasis(dot.x, dot.y, dot.z, basis, projected);
-        gfx.circle(projected.x, projected.y, livingRadius);
-      }
-      if (living.length > 0) gfx.stroke({ color: LIVING_COLOR, width: 3 / cameraScale, alpha: 1 });
+      if (!marked) return;
+      projectPlanePointWithBasis(marked.dot.x, marked.dot.y, marked.dot.z, basis, projected);
+      gfx.circle(projected.x, projected.y, 10 / cameraScale).stroke({ color: marked.color, width: 1.5 / cameraScale, alpha: 0.9 });
+      if (marked.living) gfx.circle(projected.x, projected.y, 16 / cameraScale).stroke({ color: LIVING_COLOR, width: 3 / cameraScale, alpha: 1 });
     },
   };
 }
@@ -109,10 +92,6 @@ interface UniverseScan {
   y: number;
   z: number;
   distSq: number;
-  civilizationSeeds: number[] | null;
-  next: number;
-  best: UniverseMark | null;
-  bestRank: number;
 }
 
 interface UniverseEntry {
@@ -125,23 +104,6 @@ interface UniverseEntry {
 
 const universeMarks = new Map<number, UniverseMark | null>();
 
-function markRank(mark: UniverseMark): number {
-  return mark.kind ? KIND_RANK.indexOf(mark.kind) : KIND_RANK.length;
-}
-
-function considerGalaxy(scan: UniverseScan, galaxySeed: number) {
-  const anomalies = generateAnomalies(generateGalaxy(galaxySeed));
-  const candidates: UniverseMark[] = [...anomalies.byHost.values()].map((anomaly) => ({ kind: anomaly.kind, living: anomaly.living }));
-  if (anomalies.civilization) candidates.push({ kind: null, living: anomalies.civilization.living });
-  for (const candidate of candidates) {
-    const rank = markRank(candidate);
-    if (rank < scan.bestRank || (rank === scan.bestRank && candidate.living && !scan.best?.living)) {
-      scan.best = candidate;
-      scan.bestRank = rank;
-    }
-  }
-}
-
 export function createUniverseAnomalyDebug() {
   const container = new Container();
   container.eventMode = 'none';
@@ -151,7 +113,8 @@ export function createUniverseAnomalyDebug() {
   const queue: UniverseScan[] = [];
   const entries = new Map<number, UniverseEntry>();
   let queueIndex = 0;
-  let scan: UniverseScan | null = null;
+  let requesting = false;
+  let unavailable = false;
   const scannedAt = { x: NaN, y: NaN, z: NaN, chunks: -1 };
   const projected = emptyPoint();
 
@@ -184,7 +147,7 @@ export function createUniverseAnomalyDebug() {
         inRange.add(seed);
         const mark = universeMarks.get(seed);
         if (mark === undefined) {
-          if (seed !== scan?.seed) queue.push({ seed, x: chunk.x[i], y: chunk.y[i], z: chunk.z[i], distSq, civilizationSeeds: null, next: 0, best: null, bestRank: Infinity });
+          queue.push({ seed, x: chunk.x[i], y: chunk.y[i], z: chunk.z[i], distSq });
         } else if (mark && !entries.has(seed)) {
           addEntry(seed, chunk.x[i], chunk.y[i], chunk.z[i], mark);
         }
@@ -198,25 +161,31 @@ export function createUniverseAnomalyDebug() {
     }
   };
 
-  const step = () => {
-    if (!scan) {
-      while (queueIndex < queue.length && universeMarks.has(queue[queueIndex].seed)) queueIndex++;
-      if (queueIndex >= queue.length) return false;
-      scan = queue[queueIndex++];
-      return true;
+  const request = () => {
+    if (requesting || unavailable) return;
+    const batch: UniverseScan[] = [];
+    while (queueIndex < queue.length && batch.length < MARKS_PER_REQUEST) {
+      const next = queue[queueIndex++];
+      if (!universeMarks.has(next.seed)) batch.push(next);
     }
-    if (!scan.civilizationSeeds) {
-      scan.civilizationSeeds = generateSuperclusterGalaxySeeds(scan.seed).filter(hasCivilization);
-      return true;
-    }
-    if (scan.next < scan.civilizationSeeds.length) {
-      considerGalaxy(scan, scan.civilizationSeeds[scan.next++]);
-      return true;
-    }
-    universeMarks.set(scan.seed, scan.best);
-    if (scan.best) addEntry(scan.seed, scan.x, scan.y, scan.z, scan.best);
-    scan = null;
-    return true;
+    if (batch.length === 0) return;
+    requesting = true;
+    fetchMarks(batch.map((scan) => scan.seed))
+      .then((marks) => {
+        marks.forEach((found, i) => {
+          const scan = batch[i];
+          const mark = found ? { kind: found.kind, living: found.living } : null;
+          universeMarks.set(scan.seed, mark);
+          if (mark && !container.destroyed && !entries.has(scan.seed)) addEntry(scan.seed, scan.x, scan.y, scan.z, mark);
+        });
+      })
+      .catch((err) => {
+        unavailable = true;
+        console.warn('anomaly debug marks unavailable:', err);
+      })
+      .finally(() => {
+        requesting = false;
+      });
   };
 
   return {
@@ -228,8 +197,7 @@ export function createUniverseAnomalyDebug() {
       if (chunks.length !== scannedAt.chunks || !(moveX * moveX + moveY * moveY + moveZ * moveZ <= UNIVERSE_RESCAN_MOVE * UNIVERSE_RESCAN_MOVE)) {
         rebuild(chunks, camera);
       }
-      const deadline = performance.now() + SCAN_BUDGET_MS;
-      while (step() && performance.now() < deadline);
+      request();
 
       rings.clear();
       for (const entry of entries.values()) {

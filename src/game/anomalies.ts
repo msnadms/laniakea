@@ -1,4 +1,4 @@
-import { createRng, firstRandom, generateGalaxy } from './galaxyGen';
+import { createRng, generateGalaxy } from './galaxyGen';
 import { MILKY_WAY_SEED } from './hardcoded';
 import {
   ANOMALY_BEAM_RIM_MAX,
@@ -7,9 +7,6 @@ import {
   ANOMALY_BLACK_HOLE_CHANCE,
   ANOMALY_BLACK_HOLE_REACH,
   ANOMALY_BRAIN_MIN_DYSON_SPHERES,
-  ANOMALY_CIVILIZATION_CHANCE,
-  SC_DOT_SEED_MIX,
-  SC_MAX_GALAXY_DOTS,
   ANOMALY_DYSON_EDGE_WEIGHT,
   ANOMALY_DYSON_MAX,
   ANOMALY_DYSON_MIN,
@@ -108,14 +105,17 @@ export interface GalaxyAnomalies {
   populated: ReadonlySet<number>;
 }
 
+export interface AnomalySeeds {
+  civilization: number | null;
+  blackHoles: number;
+  populated: number;
+}
+
 interface PlanePoint {
   x: number;
   y: number;
 }
 
-const CIVILIZATION_SALT = 0x6c8e9cf5;
-const BLACK_HOLE_SALT = 0x3c6ef372;
-const POPULATED_SALT = 0x51ed270b;
 const HOST_SEED_MIX = 0x165667b1;
 
 const RELIC_CLASSES: ReadonlySet<StarType> = new Set(['F', 'G', 'K']);
@@ -162,38 +162,13 @@ export function anomalyVisualRng(anomaly: Anomaly): Rng {
   return createRng((anomaly.seed + 1) >>> 0);
 }
 
-function civilizationRng(galaxySeed: number): Rng {
-  return createRng((galaxySeed ^ CIVILIZATION_SALT) >>> 0);
-}
-
-export function hasCivilization(galaxySeed: number): boolean {
-  return galaxySeed !== MILKY_WAY_SEED && firstRandom((galaxySeed ^ CIVILIZATION_SALT) >>> 0) < ANOMALY_CIVILIZATION_CHANCE;
-}
-
-// A sweep rules a supercluster out by hashing every dot index it could hold, so the roll is
-// inlined here rather than called tens of thousands of times; an index past its real dot count
-// can only add a false pass, which the walk that follows rejects.
-export function superclusterMayHoldCivilization(superclusterSeed: number): boolean {
-  for (let i = 0; i < SC_MAX_GALAXY_DOTS; i++) {
-    const galaxySeed = (superclusterSeed ^ Math.imul(i, SC_DOT_SEED_MIX)) >>> 0;
-    if (galaxySeed === MILKY_WAY_SEED) continue;
-    const state = (((galaxySeed ^ CIVILIZATION_SALT) | 0) + 0x6D2B79F5) | 0;
-    let hash = Math.imul(state ^ (state >>> 15), 1 | state);
-    hash = (hash + Math.imul(hash ^ (hash >>> 7), 61 | hash)) ^ hash;
-    if (((hash ^ (hash >>> 14)) >>> 0) / 4294967296 < ANOMALY_CIVILIZATION_CHANCE) return true;
-  }
-  return false;
-}
-
 export interface CivilizationProfile {
   living: boolean;
   stage: CivilizationStage;
 }
 
-export function civilizationProfile(galaxySeed: number): CivilizationProfile | null {
-  if (galaxySeed === MILKY_WAY_SEED) return null;
-  const rng = civilizationRng(galaxySeed);
-  if (rng() >= ANOMALY_CIVILIZATION_CHANCE) return null;
+export function civilizationProfile(civilizationSeed: number): CivilizationProfile {
+  const rng = createRng(civilizationSeed);
   const living = rng() < ANOMALY_LIVING_CHANCE;
   return { living, stage: rollStage(rng, living) };
 }
@@ -289,10 +264,9 @@ function rollMegastructures(rng: Rng, plan: StagePlan): ReadonlySet<Megastructur
   return new Set(pickManyWeighted(rng, MEGASTRUCTURE_KINDS, count, () => 1));
 }
 
-function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>): Civilization | null {
-  const rng = civilizationRng(galaxy.seed);
-  // The civilisation roll must stay the first draw so hasCivilization can answer from the seed alone.
-  if (rng() >= ANOMALY_CIVILIZATION_CHANCE) return null;
+function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>, civilizationSeed: number): Civilization {
+  const rng = createRng(civilizationSeed);
+  // Living and the stage must stay the first two draws so civilizationProfile can answer from the seed alone.
   const living = rng() < ANOMALY_LIVING_CHANCE;
   const stage = rollStage(rng, living);
   const plan = CIVILIZATION_STAGE_PLANS[stage];
@@ -356,10 +330,10 @@ function placeCivilization(galaxy: Galaxy, hosts: readonly StarSystem[], byHost:
   return { x: home.x, y: home.y, radius: ANOMALY_HOME_RADIUS, living, stage };
 }
 
-function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>) {
+function placeBlackHoles(galaxy: Galaxy, hosts: readonly StarSystem[], byHost: Map<number, Anomaly>, seed: number) {
   const neutronStars = galaxy.systems.filter((system) => system.starType === 'N');
   if (neutronStars.length === 0) return;
-  const rng = createRng((galaxy.seed ^ BLACK_HOLE_SALT) >>> 0);
+  const rng = createRng(seed);
   for (const system of hosts) {
     if (!neutronStars.some((neutronStar) => planeDistance(system, neutronStar) <= ANOMALY_BLACK_HOLE_REACH)) continue;
     if (rng() < ANOMALY_BLACK_HOLE_CHANCE && !byHost.has(system.id)) {
@@ -388,11 +362,12 @@ function placePopulatedWorlds(
   civilization: Civilization,
   byHost: ReadonlyMap<number, Anomaly>,
   home: StarSystem | null,
+  seed: number,
 ): ReadonlySet<number> {
   if (!civilization.living) return NO_ANOMALIES.populated;
   const populated = new Set<number>();
   if (home && !CIVILIZATION_STAGE_PLANS[civilization.stage].home) populated.add(home.id);
-  const rng = createRng((galaxy.seed ^ POPULATED_SALT) >>> 0);
+  const rng = createRng(seed);
   const count = rollRange(rng, ANOMALY_STAGE_POPULATED[civilization.stage]);
   const candidates = hosts.filter((system) =>
     !byHost.has(system.id) && !populated.has(system.id) && isRelicClass(system) && isSettledPopulation(system) && isInCivilization(system, civilization));
@@ -428,19 +403,19 @@ function placeCannon(
 
 export const NO_ANOMALIES: GalaxyAnomalies = { civilization: null, byHost: new Map(), populated: new Set() };
 
-export function generateAnomalies(galaxy: Galaxy): GalaxyAnomalies {
+export function generateAnomalies(galaxy: Galaxy, seeds: AnomalySeeds): GalaxyAnomalies {
   if (galaxy.seed === MILKY_WAY_SEED) return NO_ANOMALIES;
   const hosts = galaxy.systems.filter(canHostAnomaly);
   const byHost = new Map<number, Anomaly>();
-  const civilization = placeCivilization(galaxy, hosts, byHost);
-  placeBlackHoles(galaxy, hosts, byHost);
+  const civilization = seeds.civilization === null ? null : placeCivilization(galaxy, hosts, byHost, seeds.civilization);
+  placeBlackHoles(galaxy, hosts, byHost, seeds.blackHoles);
   if (!civilization) return { civilization, byHost, populated: NO_ANOMALIES.populated };
   const home = placeHome(galaxy, hosts, civilization, byHost);
-  const populated = placePopulatedWorlds(galaxy, hosts, civilization, byHost, home);
+  const populated = placePopulatedWorlds(galaxy, hosts, civilization, byHost, home, seeds.populated);
   placeCannon(galaxy, hosts, civilization, byHost, populated);
   return { civilization, byHost, populated };
 }
 
-export function populatedWorldIds(galaxySeed: number): ReadonlySet<number> {
-  return hasCivilization(galaxySeed) ? generateAnomalies(generateGalaxy(galaxySeed)).populated : NO_ANOMALIES.populated;
+export function populatedWorldIds(galaxySeed: number, seeds: AnomalySeeds): ReadonlySet<number> {
+  return seeds.civilization === null ? NO_ANOMALIES.populated : generateAnomalies(generateGalaxy(galaxySeed), seeds).populated;
 }

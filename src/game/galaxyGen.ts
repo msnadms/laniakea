@@ -15,13 +15,6 @@ import { drawGalaxyLook, GalaxyConfig, type GalaxyOverrides } from './galaxyConf
 import { sampleStar, edgeStar } from './galaxyShapes';
 
 // Fast seedable PRNG (mulberry32). Returns a function that produces [0, 1) floats.
-export function firstRandom(seed: number): number {
-  seed = ((seed | 0) + 0x6D2B79F5) | 0;
-  let hash = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-  hash = (hash + Math.imul(hash ^ (hash >>> 7), 61 | hash)) ^ hash;
-  return ((hash ^ (hash >>> 14)) >>> 0) / 4294967296;
-}
-
 export function createRng(seed: number): Rng {
   return function () {
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;

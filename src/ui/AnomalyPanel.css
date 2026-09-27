@@ -45,3 +45,10 @@
 .anomaly-panel-note {
   line-height: 1.6;
 }
+
+.anomaly-panel-first {
+  margin: 0 0 14px;
+  color: #7fa6c8;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
