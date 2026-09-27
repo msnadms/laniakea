@@ -12,7 +12,7 @@ export interface Discovery {
   firstAt: number;
 }
 
-export async function discover(uid: string, superclusterSeed: number, galaxySeed: number | null): Promise<Discovery | null> {
+export async function discover(uid: string, googleName: string | null, superclusterSeed: number, galaxySeed: number | null): Promise<Discovery | null> {
   if (locateSupercluster(superclusterSeed) === null) throw new HttpError(404, 'No such supercluster');
   if (galaxySeed !== null && !galaxyInSupercluster(superclusterSeed, galaxySeed)) throw new HttpError(404, 'No such galaxy in that supercluster');
   if (galaxySeed === null ? superclusterSeed === LANIAKEA_SEED : galaxySeed === MILKY_WAY_SEED) return null;
@@ -25,7 +25,7 @@ export async function discover(uid: string, superclusterSeed: number, galaxySeed
         firstAt: (snap.get('firstAt') as Timestamp | undefined)?.toMillis() ?? Date.now(),
       };
     }
-    const firstBy = explorerNameOf(await tx.get(paths.user(uid)));
+    const firstBy = explorerNameOf(await tx.get(paths.user(uid)), googleName);
     tx.create(ref, { firstBy, firstAt: FieldValue.serverTimestamp() });
     return { firstBy, firstAt: Date.now() };
   });

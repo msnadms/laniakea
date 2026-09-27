@@ -119,7 +119,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     const systemId = body.systemId;
     if (!Number.isInteger(systemId) || systemId < 0) throw new HttpError(400, 'systemId must be a non-negative integer');
     throttle(catalogueBuckets, res, 'Too many catalogue requests');
-    res.json(await catalogue(key, res.locals.uid, {
+    res.json(await catalogue(key, res.locals.uid, res.locals.googleName, {
       superclusterSeed: seedParam(body.superclusterSeed, 'superclusterSeed'),
       galaxySeed: seedParam(body.galaxySeed, 'galaxySeed'),
       systemId,
@@ -131,7 +131,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     const superclusterSeed = seedParam(body.superclusterSeed, 'superclusterSeed');
     const galaxySeed = body.galaxySeed === undefined || body.galaxySeed === null ? null : seedParam(body.galaxySeed, 'galaxySeed');
     throttle(discoverBuckets, res, 'Too many discovery requests');
-    res.json({ discovery: await discover(res.locals.uid, superclusterSeed, galaxySeed) });
+    res.json({ discovery: await discover(res.locals.uid, res.locals.googleName, superclusterSeed, galaxySeed) });
   });
 
   api.post('/profile', async (req, res: Authed) => {

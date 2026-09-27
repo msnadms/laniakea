@@ -52,7 +52,7 @@ function timestampMillis(value: unknown): number {
   return (value as { toMillis?: () => number } | undefined)?.toMillis?.() ?? Date.now();
 }
 
-export async function catalogue(key: AnomalyKey, uid: string, request: CatalogueRequest): Promise<CatalogueResult> {
+export async function catalogue(key: AnomalyKey, uid: string, googleName: string | null, request: CatalogueRequest): Promise<CatalogueResult> {
   const { superclusterSeed, galaxySeed, systemId } = request;
   const position = await readPosition(uid);
   if (position?.superclusterSeed !== superclusterSeed || position.galaxySeed !== galaxySeed) {
@@ -93,7 +93,7 @@ export async function catalogue(key: AnomalyKey, uid: string, request: Catalogue
         firstAt: timestampMillis(worldSnap.get('firstAt')),
         count: (worldSnap.get('count') as number) + (firstForPlayer ? 1 : 0),
       }
-      : { firstBy: explorerNameOf(userSnap), firstAt: Date.now(), count: 1 };
+      : { firstBy: explorerNameOf(userSnap, googleName), firstAt: Date.now(), count: 1 };
 
     if (!recordSnap.exists) tx.set(paths.anomaly(uid, recordKey), { ...record, discoveredAt: FieldValue.serverTimestamp() });
     if (firstForPlayer) {

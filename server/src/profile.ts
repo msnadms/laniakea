@@ -12,8 +12,12 @@ export function normalizeExplorerName(value: unknown): string {
   return name;
 }
 
-export function explorerNameOf(user: DocumentSnapshot): string {
-  return (user.get('explorerName') as string | undefined) ?? UNNAMED_EXPLORER;
+const MAX_NAME_LENGTH = 24;
+
+export function explorerNameOf(user: DocumentSnapshot, googleName: string | null): string {
+  const explorerName = user.get('explorerName') as string | undefined;
+  if (explorerName) return explorerName;
+  return googleName?.trim().replace(/\s+/g, ' ').slice(0, MAX_NAME_LENGTH) || UNNAMED_EXPLORER;
 }
 
 export async function setExplorerName(uid: string, value: unknown): Promise<string> {

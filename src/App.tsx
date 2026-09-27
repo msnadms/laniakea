@@ -17,6 +17,15 @@ import { AnomalyPanel } from './ui/AnomalyPanel';
 import { AnomalyToast } from './ui/AnomalyToast';
 import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
 import { ProbePanel } from './ui/Probes';
+import { useFirstDiscoverer } from './hooks/useFirstDiscoverer';
+
+function GalaxyDiscoverer() {
+  const superclusterSeed = useGameStore((s) => s.supercluster.seed);
+  const galaxySeed = useGameStore((s) => s.galaxy.seed);
+  const firstBy = useFirstDiscoverer(superclusterSeed, galaxySeed);
+  if (!firstBy) return null;
+  return <div className="galaxy-title-discoverer">First discovered by {firstBy}</div>;
+}
 
 const ViewTitle = memo(function ViewTitle() {
   const view = useUIStore((s) => s.view);
@@ -34,6 +43,7 @@ const ViewTitle = memo(function ViewTitle() {
   return (
     <div className="galaxy-title">
       {title}
+      {view === 'galaxy' && <GalaxyDiscoverer />}
     </div>
   );
 });

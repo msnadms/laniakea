@@ -47,6 +47,16 @@
   text-align: center;
 }
 
+.galaxy-title-discoverer {
+  margin-top: 4px;
+  color: #7fa6c4;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  text-shadow: none;
+}
+
 .hud-wrap {
   position: absolute;
   bottom: 80px;
