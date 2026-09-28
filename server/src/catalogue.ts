@@ -2,6 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { generateAnomalies, type GalaxyAnomalies } from '../../src/game/anomalies';
 import { anomalyRecordKey, type AnomalyRecord, type WorldAnomaly } from '../../src/game/anomalyRecord';
 import { CONDENSATE_PER_HOMEWORLD } from '../../src/game/constants';
+import { creditable } from '../../src/game/fuel';
 import { generateGalaxy } from '../../src/game/galaxyGen';
 import { generateGalaxyName, generateSuperclusterName } from '../../src/game/superclusters';
 import type { Galaxy } from '../../src/game/types';
@@ -103,9 +104,10 @@ export async function catalogue(key: AnomalyKey, uid: string, request: Catalogue
       if (worldSnap.exists) tx.update(paths.world(recordKey), { count: FieldValue.increment(1) });
       else tx.set(paths.world(recordKey), { kind: anomaly.kind, firstBy: world.firstBy, firstAt: FieldValue.serverTimestamp(), count: 1 });
     }
-    if (award > 0) writeBalance(tx, uid, balance, award, { type: 'award', key: recordKey, kind: anomaly.kind });
+    const awarded = award > 0 ? creditable(balance, award) : 0;
+    if (awarded > 0) writeBalance(tx, uid, balance, awarded, { type: 'award', key: recordKey, kind: anomaly.kind });
 
     const stored = recordSnap.exists ? { ...record, discoveredAt: timestampMillis(recordSnap.get('discoveredAt')) } : record;
-    return { record: stored, awarded: award, world };
+    return { record: stored, awarded, world };
   });
 }

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import type { AppView } from '../store/uiStore';
 import { useUIStore } from '../store/uiStore';
 import './TutorialPanel.css';
@@ -89,10 +89,9 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
   },
 };
 
-export function TutorialPanel() {
+export function TutorialPanel({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const view = useUIStore((state) => state.view);
   const tutorial = TUTORIAL_CONTENT[view];
-  const [expanded, setExpanded] = useState(false);
   const panelId = useId();
 
   return (
@@ -100,7 +99,7 @@ export function TutorialPanel() {
       <button
         type="button"
         className={`tutorial-trigger${expanded ? ' tutorial-trigger--open' : ''}`}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={panelId}
       >

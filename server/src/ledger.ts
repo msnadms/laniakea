@@ -1,5 +1,6 @@
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { CONDENSATE_START } from '../../src/game/constants';
+import { creditable } from '../../src/game/fuel';
 import { db } from './firebase';
 import { paths } from './paths';
 
@@ -15,7 +16,8 @@ export async function readBalance(tx: Transaction, uid: string): Promise<number>
   return snap.exists ? (snap.get('condensate') as number) : CONDENSATE_START;
 }
 
-export function writeBalance(tx: Transaction, uid: string, balance: number, amount: number, entry: LedgerEntry): number {
+export function writeBalance(tx: Transaction, uid: string, balance: number, requested: number, entry: LedgerEntry): number {
+  const amount = creditable(balance, requested);
   const next = balance + amount;
   tx.set(paths.ledger(uid), { condensate: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   tx.create(paths.entries(uid).doc(), { ...entry, amount, balance: next, at: FieldValue.serverTimestamp() });

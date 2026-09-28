@@ -4,6 +4,7 @@ import {
   FUEL_HARVEST_FLOOR,
   FUEL_HARVEST_PER_HOUR,
   FUEL_PER_MLY,
+  FUEL_TANK_CAPACITY,
   UNIVERSE_RADIUS,
   UNIVERSE_START_BACKOFF,
 } from './constants';
@@ -32,6 +33,11 @@ export function travelCost(mly: number): number {
 
 export function travelReach(condensate: number): number {
   return Math.max(0, condensate) / FUEL_PER_MLY;
+}
+
+export function creditable(balance: number, amount: number): number {
+  if (amount <= 0) return amount;
+  return Math.max(0, Math.min(amount, FUEL_TANK_CAPACITY - balance));
 }
 
 export function harvestPerHour(point: Point3): number {

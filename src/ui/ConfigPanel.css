@@ -1,18 +1,23 @@
 .config-panel {
   display: flex;
-  flex-direction: column;
-  min-width: 160px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  width: 160px;
   font-size: 12px;
   user-select: none;
-  gap: 10px;
+  gap: 6px;
 }
 
 .config-header {
   display: flex;
   align-items: center;
-  width: 160px;
-  gap: 6px;
-  padding: 6px 10px;
+  width: 77px;
+  min-height: 31px;
+  box-sizing: border-box;
+  gap: 5px;
+  padding: 6px 7px;
+  font: inherit;
+  font-size: 11px;
   background: rgba(6, 12, 28, 0.88);
   border: 1px solid rgba(40, 80, 120, 0.5);
   border-radius: 4px;
@@ -51,12 +56,12 @@
 }
 
 .config-chevron {
-  font-size: 8px;
-  opacity: 0.6;
+  display: none;
 }
 
 .config-body {
-  margin-top: 2px;
+  order: 2;
+  flex-basis: 100%;
   padding: 8px 10px;
   width: 160px;
   box-sizing: border-box;

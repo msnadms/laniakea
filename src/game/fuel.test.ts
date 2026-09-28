@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FUEL_DOCK_RADIUS, FUEL_HARVEST_CAP, FUEL_HARVEST_FLOOR, FUEL_HARVEST_PER_HOUR, UNIVERSE_START_BACKOFF } from './constants';
-import { approachPoint, distance, harvestPerHour, harvested, isDocked, startingBerth, towards, travelCost, travelReach } from './fuel';
+import { FUEL_DOCK_RADIUS, FUEL_HARVEST_CAP, FUEL_TANK_CAPACITY, FUEL_HARVEST_FLOOR, FUEL_HARVEST_PER_HOUR, UNIVERSE_START_BACKOFF } from './constants';
+import { approachPoint, creditable, distance, harvestPerHour, harvested, isDocked, startingBerth, towards, travelCost, travelReach } from './fuel';
 import { getUniverseChunk, universeVoidDepth } from './universe';
 
 const HOUR = 3_600_000;
@@ -16,6 +16,14 @@ describe('fuel', () => {
     const to = { x: 1000, y: 0, z: 0 };
     expect(distance(from, towards(from, to, 250))).toBeCloseTo(250);
     expect(towards(from, to, 5000)).toEqual(to);
+  });
+
+  it('never fills the tank past its capacity', () => {
+    expect(creditable(10, 5)).toBe(5);
+    expect(creditable(FUEL_TANK_CAPACITY - 3, 10)).toBe(3);
+    expect(creditable(FUEL_TANK_CAPACITY, 10)).toBe(0);
+    expect(creditable(FUEL_TANK_CAPACITY + 5, 10)).toBe(0);
+    expect(creditable(FUEL_TANK_CAPACITY, -4)).toBe(-4);
   });
 
   it('harvests only up to the cap', () => {

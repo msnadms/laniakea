@@ -1,0 +1,109 @@
+.fuel-gauge {
+  position: absolute;
+  top: 58px;
+  left: 26px;
+  z-index: 99;
+  width: 116px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.fuel-gauge-dial {
+  display: block;
+  overflow: visible;
+}
+
+.fuel-gauge-ring {
+  fill: none;
+  stroke: rgba(0, 190, 230, 0.35);
+  stroke-width: 1;
+}
+
+.fuel-gauge-tick {
+  stroke: rgba(0, 190, 230, 0.25);
+  stroke-width: 1;
+}
+
+.fuel-gauge-tick--major {
+  stroke: rgba(0, 190, 230, 0.55);
+}
+
+.fuel-gauge-track {
+  fill: none;
+  stroke: rgba(0, 190, 230, 0.12);
+  stroke-width: 4;
+  stroke-linecap: butt;
+}
+
+.fuel-gauge-fill {
+  fill: none;
+  stroke: #00e8ff;
+  stroke-width: 4;
+  stroke-linecap: butt;
+  filter: drop-shadow(0 0 3px rgba(0, 232, 255, 0.6));
+  transition: stroke-dasharray 400ms ease, stroke 300ms ease;
+}
+
+.fuel-gauge-readout {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 116px;
+  height: 116px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.fuel-gauge-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #c8f4ff;
+  text-shadow: 0 0 10px rgba(0, 190, 230, 0.5);
+}
+
+.fuel-gauge-harvest {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  color: rgba(0, 190, 230, 0.6);
+}
+
+.fuel-gauge-caption {
+  margin-top: 2px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(0, 190, 230, 0.55);
+}
+
+.fuel-gauge--low .fuel-gauge-fill {
+  stroke: #e0664a;
+  filter: drop-shadow(0 0 3px rgba(224, 102, 74, 0.6));
+}
+
+.fuel-gauge--low .fuel-gauge-value {
+  color: #e0664a;
+  text-shadow: 0 0 10px rgba(224, 102, 74, 0.5);
+}
+
+.fuel-gauge-harvest-mark {
+  stroke: rgba(80, 227, 156, 0.7);
+  stroke-width: 1.5;
+}
+
+.fuel-gauge-notice {
+  margin-top: 6px;
+  width: 160px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: #e0664a;
+}

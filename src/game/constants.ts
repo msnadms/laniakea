@@ -585,6 +585,7 @@ export const FUEL_PER_MLY = 0.005;
 export const FUEL_HARVEST_PER_HOUR = 12;
 export const FUEL_HARVEST_FLOOR = 0.05;
 export const FUEL_HARVEST_CAP = CONDENSATE_START;
+export const FUEL_TANK_CAPACITY = 50;
 export const FUEL_VOID_HEART_FRACTION = 0.45;
 export const FUEL_DOCK_RADIUS = 200;
 export const FUEL_SYNC_SECONDS = 3;

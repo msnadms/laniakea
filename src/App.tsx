@@ -18,6 +18,7 @@ import { AnomalyToast } from './ui/AnomalyToast';
 import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
 import { ProbePanel } from './ui/Probes';
 import { useFirstDiscoverer } from './hooks/useFirstDiscoverer';
+import { FuelGauge } from './ui/FuelGauge';
 
 type TitleScope = 'supercluster' | 'galaxy' | 'system';
 
@@ -77,6 +78,7 @@ export default function App() {
       {showScanlines && <div className="app-scanlines" />}
       <TopNavBar />
       <InfoPanel open={infoOpen} onOpenChange={setInfoOpen} />
+      {!infoOpen && <FuelGauge />}
       <div className="top-left">
         <ConfigPanel hidden={infoOpen} />
       </div>

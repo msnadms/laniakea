@@ -1,6 +1,7 @@
 .tutorial-control {
   position: relative;
-  width: 160px;
+  order: 1;
+  width: 77px;
   font-family: inherit;
   user-select: none;
 }
@@ -9,16 +10,18 @@
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  width: 160px;
+  width: 77px;
   min-height: 31px;
-  gap: 6px;
-  padding: 6px 10px;
+  box-sizing: border-box;
+  gap: 5px;
+  padding: 6px 7px;
   background: rgba(6, 12, 28, 0.88);
   border: 1px solid rgba(40, 80, 120, 0.5);
   border-radius: 4px;
   color: #6a90b0;
   cursor: pointer;
   font: inherit;
+  font-size: 11px;
   letter-spacing: 0.04em;
   opacity: 0.45;
   backdrop-filter: blur(4px);
@@ -61,11 +64,13 @@
 }
 
 .tutorial-trigger-chevron {
-  font-size: 8px;
-  opacity: 0.6;
+  display: none;
 }
 
 .tutorial-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -83px;
   width: min(330px, calc(100vw - 32px));
   max-height: min(620px, calc(100vh - 120px));
   margin-top: 2px;

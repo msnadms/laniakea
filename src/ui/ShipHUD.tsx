@@ -5,7 +5,6 @@ import { useFlightStore } from '../store/flightStore';
 import { fireBackZoom } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { ProbeButton } from './Probes';
-import { FuelReadout } from './FuelReadout';
 import { getAnomalyLore } from '../game/anomalyLore';
 import './ShipHUD.css';
 import './AnomalyToast.css';
@@ -154,7 +153,6 @@ export function ShipHUD() {
       <HudOutline />
       <div className="hud-header">Navigation</div>
       <AddressReadout />
-      <FuelReadout />
       <AnomalyReadout />
     </div>
   );

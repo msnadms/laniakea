@@ -103,7 +103,9 @@ function ProbeFindings() {
 }
 
 export function ConfigPanel({ hidden }: { hidden?: boolean }) {
-  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [open, setOpen] = useState<'settings' | 'tutorial' | null>(null);
+  const settingsExpanded = open === 'settings';
+  const toggle = (panel: 'settings' | 'tutorial') => setOpen((current) => current === panel ? null : panel);
   const showAttractorLabels = useUIStore((s) => s.showAttractorLabels);
   const toggleAttractorLabels = useUIStore((s) => s.toggleAttractorLabels);
   const showOrbitRings = useUIStore((s) => s.showOrbitRings);
@@ -122,7 +124,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
     <div className="config-panel">
       <button
         className={`config-header${settingsExpanded ? ' config-header--open' : ''}`}
-        onClick={() => setSettingsExpanded((e) => !e)}
+        onClick={() => toggle('settings')}
         title="Settings"
       >
         <span className="config-icon">⚙</span>
@@ -148,7 +150,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           <ProbeFindings />
         </div>
       )}
-      <TutorialPanel />
+      <TutorialPanel expanded={open === 'tutorial'} onToggle={() => toggle('tutorial')} />
     </div>
   );
 }
