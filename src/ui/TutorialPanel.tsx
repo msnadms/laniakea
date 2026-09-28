@@ -22,7 +22,7 @@ const TUTORIAL_CONTENT: Record<AppView, TutorialContent> = {
       {
         title: 'Fly',
         items: [
-          'W and S fly forward and back, A and D strafe, and Q and E turn the view left and right.',
+          'W and S fly forward and back, A and D strafe, and Q and E fly up and down.',
           'Hold Shift to boost, and scroll to change your cruising speed.',
           'Drag to look around.',
         ],

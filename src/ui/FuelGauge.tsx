@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useFuelStore } from '../store/fuelStore';
 import { harvestPerHour } from '../game/fuel';
-import { FUEL_HARVEST_CAP, FUEL_TANK_CAPACITY } from '../game/constants';
+import { FUEL_TANK_CAPACITY } from '../game/constants';
 import { formatCondensate, useFuel } from '../hooks/useFuel';
 import './FuelGauge.css';
 
@@ -40,9 +40,6 @@ const TICKS = Array.from({ length: Math.floor(FUEL_TANK_CAPACITY / TICK_EVERY) +
   return { x1, y1, x2, y2, major };
 });
 
-const [harvestInnerX, harvestInnerY] = polar(ARC_RADIUS - 5, angleOf(FUEL_HARVEST_CAP));
-const [harvestOuterX, harvestOuterY] = polar(TICK_OUTER + 2, angleOf(FUEL_HARVEST_CAP));
-
 export function FuelGauge() {
   const ship = useFuelStore((s) => s.ship);
   const notice = useFuelStore((s) => s.notice);
@@ -58,7 +55,8 @@ export function FuelGauge() {
   if (!ship) return null;
 
   const fraction = Math.min(1, Math.max(0, fuel / FUEL_TANK_CAPACITY));
-  const harvest = fuel >= FUEL_HARVEST_CAP ? 0 : harvestPerHour(ship);
+  const harvest = harvestPerHour(ship);
+  const harvesting = fuel < FUEL_TANK_CAPACITY;
   const low = fuel < 1;
 
   return (
@@ -73,7 +71,6 @@ export function FuelGauge() {
           />
         ))}
         <path className="fuel-gauge-track" d={ARC_PATH} />
-        <line className="fuel-gauge-harvest-mark" x1={harvestInnerX} y1={harvestInnerY} x2={harvestOuterX} y2={harvestOuterY} />
         <path
           className="fuel-gauge-fill"
           d={ARC_PATH}
@@ -82,7 +79,9 @@ export function FuelGauge() {
       </svg>
       <div className="fuel-gauge-readout" role="status" aria-label={`${formatCondensate(fuel)} negative-energy condensate`}>
         <span className="fuel-gauge-value">{formatCondensate(fuel)}</span>
-        <span className="fuel-gauge-harvest">{harvest > 0 ? `+${harvest.toFixed(1)} / h` : 'idle'}</span>
+        <span className={harvesting ? 'fuel-gauge-harvest' : 'fuel-gauge-harvest fuel-gauge-harvest--full'}>
+          +{harvest.toFixed(1)} / h
+        </span>
       </div>
       <div className="fuel-gauge-caption">Negative-energy condensate</div>
       {notice && <div className="fuel-gauge-notice" role="alert">{notice}</div>}

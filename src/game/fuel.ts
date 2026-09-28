@@ -1,6 +1,5 @@
 import {
   FUEL_DOCK_RADIUS,
-  FUEL_HARVEST_CAP,
   FUEL_HARVEST_FLOOR,
   FUEL_HARVEST_PER_HOUR,
   FUEL_PER_MLY,
@@ -46,7 +45,7 @@ export function harvestPerHour(point: Point3): number {
 }
 
 export function harvested(ship: ShipState, condensate: number, now: number): number {
-  const room = FUEL_HARVEST_CAP - condensate;
+  const room = FUEL_TANK_CAPACITY - condensate;
   if (room <= 0 || now <= ship.at) return 0;
   return Math.min(room, harvestPerHour(ship) * (now - ship.at) / 3_600_000);
 }

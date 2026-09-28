@@ -9,7 +9,8 @@ import type { Galaxy } from '../../src/game/types';
 import { deriveAnomalySeeds, type AnomalyKey } from './anomalyKey';
 import { db } from './firebase';
 import { HttpError } from './httpError';
-import { readBalance, writeBalance } from './ledger';
+import { writeBalance } from './ledger';
+import { settledBalance } from './ship';
 import { paths } from './paths';
 import { readPosition } from './position';
 import { explorerNameOf } from './profile';
@@ -88,7 +89,7 @@ export async function catalogue(key: AnomalyKey, uid: string, request: Catalogue
     if (!explorerName) throw new HttpError(403, 'Choose an explorer name first');
     const firstForPlayer = !markerSnap.exists;
     const award = firstForPlayer && anomaly.kind === 'homeworld' ? CONDENSATE_PER_HOMEWORLD : 0;
-    const balance = award > 0 ? await readBalance(tx, uid) : 0;
+    const balance = award > 0 ? await settledBalance(tx, uid) : 0;
 
     const world: WorldAnomaly = worldSnap.exists
       ? {

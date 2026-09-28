@@ -53,6 +53,16 @@ export function settleHarvest(tx: Transaction, uid: string, { ship, condensate }
   return writeBalance(tx, uid, condensate, gained, { type: 'harvest', x: ship.x, y: ship.y, z: ship.z });
 }
 
+export async function settledBalance(tx: Transaction, uid: string): Promise<number> {
+  const [condensate, snap] = await Promise.all([readBalance(tx, uid), tx.get(paths.ship(uid))]);
+  const ship = shipOf(snap.data());
+  return ship ? settleHarvest(tx, uid, { ship, condensate }, Date.now()) : condensate;
+}
+
+export async function grant(uid: string, amount: number): Promise<number> {
+  return db.runTransaction(async (tx) => writeBalance(tx, uid, await settledBalance(tx, uid), amount, { type: 'grant' }));
+}
+
 export async function availableFuel(uid: string): Promise<number> {
   const [ledger, snap] = await Promise.all([paths.ledger(uid).get(), paths.ship(uid).get()]);
   const condensate = ledger.exists ? ledger.get('condensate') as number : CONDENSATE_START;
@@ -74,7 +84,10 @@ export async function ensureShip(uid: string, superclusterSeed: number): Promise
     if (!ledger.exists) tx.set(paths.ledger(uid), { condensate: CONDENSATE_START, updatedAt: FieldValue.serverTimestamp() });
     const condensate = ledger.exists ? ledger.get('condensate') as number : CONDENSATE_START;
     const existing = shipOf(snap.data());
-    if (existing) return { ship: existing, condensate };
+    if (existing) {
+      const now = Date.now();
+      return { ship: { ...existing, at: now }, condensate: settleHarvest(tx, uid, { ship: existing, condensate }, now) };
+    }
     const ship = { ...startingBerth(location), at: Date.now() };
     tx.set(paths.ship(uid), ship);
     return { ship, condensate };

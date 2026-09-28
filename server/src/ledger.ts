@@ -32,7 +32,3 @@ export async function ensureLedger(uid: string): Promise<number> {
     return CONDENSATE_START;
   });
 }
-
-export async function grant(uid: string, amount: number): Promise<number> {
-  return db.runTransaction(async (tx) => writeBalance(tx, uid, await readBalance(tx, uid), amount, { type: 'grant' }));
-}

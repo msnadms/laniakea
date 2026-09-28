@@ -12,11 +12,11 @@ import { superclusterMark } from './debug';
 import { discover } from './discovery';
 import { db } from './firebase';
 import { finiteParam, HttpError, seedParam } from './httpError';
-import { ensureLedger, grant, writeBalance } from './ledger';
+import { ensureLedger, writeBalance } from './ledger';
 import { paths } from './paths';
 import { readPosition, recordPosition } from './position';
 import { setExplorerName } from './profile';
-import { availableFuel, ensureShip, readFuel, settleHarvest, shipIsAt, travel } from './ship';
+import { availableFuel, ensureShip, grant, readFuel, settleHarvest, shipIsAt, travel } from './ship';
 import { TokenBuckets } from './rateLimit';
 import type { SweepPool } from './sweepPool';
 

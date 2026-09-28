@@ -415,7 +415,6 @@ export const UNIVERSE_STAR_MIN_PX = 1.1;
 export const UNIVERSE_STAR_MAX_PX = 5;
 
 export const UNIVERSE_LOOK_SENSITIVITY = 0.004;
-export const UNIVERSE_KEY_YAW_SPEED = 0.9;
 export const UNIVERSE_LOOK_EASE = 0.25;
 export const UNIVERSE_MAX_PITCH = 85 * Math.PI / 180;
 export const UNIVERSE_SPEED_DEFAULT = 5;
@@ -584,7 +583,6 @@ export const CONDENSATE_PER_HOMEWORLD = 10;
 export const FUEL_PER_MLY = 0.005;
 export const FUEL_HARVEST_PER_HOUR = 12;
 export const FUEL_HARVEST_FLOOR = 0.05;
-export const FUEL_HARVEST_CAP = CONDENSATE_START;
 export const FUEL_TANK_CAPACITY = 50;
 export const FUEL_VOID_HEART_FRACTION = 0.45;
 export const FUEL_DOCK_RADIUS = 200;
