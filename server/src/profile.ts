@@ -2,8 +2,6 @@ import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import { HttpError } from './httpError';
 import { paths } from './paths';
 
-export const UNNAMED_EXPLORER = 'An unnamed explorer';
-
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} .'_-]{1,23}$/u;
 
 export function normalizeExplorerName(value: unknown): string {
@@ -12,12 +10,8 @@ export function normalizeExplorerName(value: unknown): string {
   return name;
 }
 
-const MAX_NAME_LENGTH = 24;
-
-export function explorerNameOf(user: DocumentSnapshot, googleName: string | null): string {
-  const explorerName = user.get('explorerName') as string | undefined;
-  if (explorerName) return explorerName;
-  return googleName?.trim().replace(/\s+/g, ' ').slice(0, MAX_NAME_LENGTH) || UNNAMED_EXPLORER;
+export function explorerNameOf(user: DocumentSnapshot): string | null {
+  return (user.get('explorerName') as string | undefined) || null;
 }
 
 export async function setExplorerName(uid: string, value: unknown): Promise<string> {

@@ -19,7 +19,7 @@ function catalogue(system: StarSystem | null) {
   if (!system) return;
   const game = useGameStore.getState();
   if (!game.galaxyAnomalies.byHost.has(system.id)) return;
-  const key = anomalyRecordKey(game.galaxy.seed, system.id);
+  const key = anomalyRecordKey(game.supercluster.seed, game.galaxy.seed, system.id);
   if (useAnomalyStore.getState().records[key] || cataloguing.has(key)) return;
   cataloguing.add(key);
   const superclusterSeed = game.supercluster.seed;

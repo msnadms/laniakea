@@ -31,3 +31,16 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
+
+const RETRIES = 3;
+
+export async function withRetry<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 429 || attempt >= RETRIES) throw err;
+      await new Promise((resolve) => setTimeout(resolve, (err.retryAfter ?? 2) * 1000));
+    }
+  }
+}

@@ -73,6 +73,7 @@ export function AnomalyPanel() {
   const open = useUIStore((s) => s.anomalyPanelOpen);
   const setOpen = useUIStore((s) => s.setAnomalyPanelOpen);
   const anomaly = useGameStore((s) => (s.system ? s.galaxyAnomalies.byHost.get(s.system.id) : undefined) ?? null);
+  const superclusterSeed = useGameStore((s) => s.supercluster.seed);
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
 
   if (!open || !anomaly) return null;
@@ -92,7 +93,7 @@ export function AnomalyPanel() {
         </div>
 
         <AnomalyStats anomaly={anomaly} />
-        <FirstCatalogued recordKey={anomalyRecordKey(galaxySeed, anomaly.hostId)} />
+        <FirstCatalogued recordKey={anomalyRecordKey(superclusterSeed, galaxySeed, anomaly.hostId)} />
 
         <p className="anomaly-panel-lore">{lore.lore}</p>
 

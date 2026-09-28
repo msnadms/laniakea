@@ -18,6 +18,7 @@ import { api } from '../net/api';
 interface AuthState {
   user: User | null;
   explorerName: string | null;
+  needsExplorerName: boolean;
   loading: boolean;
   settingsLoaded: boolean;
   signIn: () => Promise<void>;
@@ -27,6 +28,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(() => ({
   user: null,
   explorerName: null,
+  needsExplorerName: false,
   loading: true,
   settingsLoaded: false,
   signIn: async () => {
@@ -49,12 +51,23 @@ function watchServerState(uid: string): () => void {
   };
 }
 
+let pendingRestore: (() => void) | null = null;
+
+export async function chooseExplorerName(value: string): Promise<void> {
+  const { explorerName } = await api<{ explorerName: string }>('/profile', { explorerName: value });
+  useAuthStore.setState({ explorerName, needsExplorerName: false });
+  const restore = pendingRestore;
+  pendingRestore = null;
+  restore?.();
+}
+
 // Call once from App on mount. Returns the Firebase unsubscribe function.
 export function initAuth(): () => void {
   let unsubscribeServerState: (() => void) | null = null;
   const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
     unsubscribeServerState?.();
     unsubscribeServerState = null;
+    pendingRestore = null;
     if (user) {
       unsubscribeServerState = watchServerState(user.uid);
       try {
@@ -86,35 +99,40 @@ export function initAuth(): () => void {
 
         const { lastSuperclusterSeed, lastGalaxySeed, lastSystemId } = settings;
 
-        useGameStore.getState().regenerateSupercluster(lastSuperclusterSeed);
-        useGameStore.setState((state) => ({
-          supercluster: {
-            ...state.supercluster,
-            dots: state.supercluster.dots.map((d) =>
-              d.seed === lastGalaxySeed ? { ...d, current: true } : d.current ? { ...d, current: false } : d,
-            ),
-          },
-        }));
+        const restore = () => {
+          useGameStore.getState().regenerateSupercluster(lastSuperclusterSeed);
+          useGameStore.setState((state) => ({
+            supercluster: {
+              ...state.supercluster,
+              dots: state.supercluster.dots.map((d) =>
+                d.seed === lastGalaxySeed ? { ...d, current: true } : d.current ? { ...d, current: false } : d,
+              ),
+            },
+          }));
 
-        useGameStore.getState().restoreGalaxyAndSystem(lastGalaxySeed, lastSystemId);
+          useGameStore.getState().restoreGalaxyAndSystem(lastGalaxySeed, lastSystemId);
 
-        const restoredSystem = useGameStore.getState().system;
-        const restoredView = settings.lastView === 'system' && restoredSystem === null
-          ? 'galaxy'
-          : settings.lastView;
-        const [scX, scY, scZ] = getSuperclusterCoords(lastSuperclusterSeed);
-        const address = settings.address.map((a) =>
-          a.type === 'supercluster' ? { ...a, x: scX, y: scY, z: scZ } : a,
-        );
-        useUIStore.setState({ view: restoredView, address });
+          const restoredSystem = useGameStore.getState().system;
+          const restoredView = settings.lastView === 'system' && restoredSystem === null
+            ? 'galaxy'
+            : settings.lastView;
+          const [scX, scY, scZ] = getSuperclusterCoords(lastSuperclusterSeed);
+          const address = settings.address.map((a) =>
+            a.type === 'supercluster' ? { ...a, x: scX, y: scY, z: scZ } : a,
+          );
+          useUIStore.setState({ view: restoredView, address });
+          useAuthStore.setState({ settingsLoaded: true });
+        };
 
-        useAuthStore.setState({ user, explorerName: userDoc.explorerName, loading: false, settingsLoaded: true });
+        if (userDoc.explorerName) restore();
+        else pendingRestore = restore;
+        useAuthStore.setState({ user, explorerName: userDoc.explorerName, needsExplorerName: !userDoc.explorerName, loading: false });
       } catch (err) {
         console.error('Auth init failed:', err);
         useAuthStore.setState({ user, loading: false, settingsLoaded: false });
       }
     } else {
-      useAuthStore.setState({ user: null, explorerName: null, loading: false, settingsLoaded: false });
+      useAuthStore.setState({ user: null, explorerName: null, needsExplorerName: false, loading: false, settingsLoaded: false });
     }
   });
   return () => {

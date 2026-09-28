@@ -9,5 +9,5 @@ export const paths = {
   scan: (uid: string, id: string) => db.doc(`users/${uid}/scans/${id}`),
   anomaly: (uid: string, key: string) => db.doc(`users/${uid}/anomalies/${key}`),
   world: (key: string) => db.doc(`world/anomalies/records/${key}`),
-  discovery: (kind: 'superclusters' | 'galaxies', seed: number) => db.doc(`world/discoveries/${kind}/${seed}`),
+  discovery: (kind: 'superclusters' | 'galaxies' | 'systems', id: string) => db.doc(`world/discoveries/${kind}/${id}`),
 };

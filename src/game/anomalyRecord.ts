@@ -18,6 +18,6 @@ export interface WorldAnomaly {
   count: number;
 }
 
-export function anomalyRecordKey(galaxySeed: number, systemId: number | string): string {
-  return `${galaxySeed}-${systemId}`;
+export function anomalyRecordKey(superclusterSeed: number, galaxySeed: number, systemId: number | string): string {
+  return `${superclusterSeed}-${galaxySeed}-${systemId}`;
 }

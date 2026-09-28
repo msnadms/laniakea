@@ -51,7 +51,36 @@
   text-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
 }
 
-.login-btn:hover {
+.login-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.login-input {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  width: 260px;
+  max-width: 100%;
+  background: transparent;
+  border: 1px solid rgba(0, 216, 255, 0.4);
+  color: #00d8ff;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.login-input:focus {
+  border-color: rgba(0, 216, 255, 0.8);
+}
+
+.login-error {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: #ff6b6b;
+  max-width: 340px;
+}
+
+.login-btn:not(:disabled):hover {
   background: rgba(0, 216, 255, 0.08);
   border-color: rgba(0, 216, 255, 0.8);
 }

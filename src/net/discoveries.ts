@@ -1,23 +1,28 @@
-import { LANIAKEA_SEED, MILKY_WAY_SEED } from '../game/hardcoded';
-import { api } from './api';
+import { discoveryId, isChartedHome, type Discovery } from '../game/discovery';
+import { api, withRetry } from './api';
 
-export interface Discovery {
-  firstBy: string;
-  firstAt: number;
-}
+export type { Discovery };
 
 const discoveries = new Map<string, Promise<Discovery | null>>();
 
-export function discoveryKey(superclusterSeed: number, galaxySeed: number | null): string {
-  return galaxySeed === null ? `sc:${superclusterSeed}` : `g:${superclusterSeed}:${galaxySeed}`;
+export function discoveryKey(superclusterSeed: number, galaxySeed: number | null, systemId: number | null = null): string {
+  const kind = galaxySeed === null ? 'sc' : systemId === null ? 'g' : 's';
+  return `${kind}:${discoveryId(superclusterSeed, galaxySeed, systemId)}`;
 }
 
-export function discover(superclusterSeed: number, galaxySeed: number | null): Promise<Discovery | null> {
-  if (galaxySeed === null ? superclusterSeed === LANIAKEA_SEED : galaxySeed === MILKY_WAY_SEED) return Promise.resolve(null);
+export function rememberGalaxyDiscovery(superclusterSeed: number, galaxySeed: number, discovery: Promise<Discovery | null>): void {
   const key = discoveryKey(superclusterSeed, galaxySeed);
+  const settled = discovery.catch(() => {
+    if (discoveries.get(key) === settled) discoveries.delete(key);
+    return null;
+  });
+  discoveries.set(key, settled);
+}
+
+function fetchDiscovery(key: string, request: () => Promise<{ discovery: Discovery | null }>): Promise<Discovery | null> {
   const known = discoveries.get(key);
   if (known) return known;
-  const promise = api<{ discovery: Discovery | null }>('/discover', { superclusterSeed, galaxySeed })
+  const promise = withRetry(request)
     .then(({ discovery }) => discovery)
     .catch((err) => {
       discoveries.delete(key);
@@ -26,4 +31,19 @@ export function discover(superclusterSeed: number, galaxySeed: number | null): P
     });
   discoveries.set(key, promise);
   return promise;
+}
+
+function discoverSystem(superclusterSeed: number, galaxySeed: number, systemId: number): Promise<Discovery | null> {
+  const galaxyEntry = discoveries.get(discoveryKey(superclusterSeed, galaxySeed)) ?? Promise.resolve(null);
+  return fetchDiscovery(discoveryKey(superclusterSeed, galaxySeed, systemId), () =>
+    galaxyEntry.then(() => api<{ discovery: Discovery | null }>('/discover/system', { superclusterSeed, galaxySeed, systemId })));
+}
+
+export function discover(superclusterSeed: number, galaxySeed: number | null, systemId: number | null = null): Promise<Discovery | null> {
+  if (isChartedHome(superclusterSeed, galaxySeed)) return Promise.resolve(null);
+  if (galaxySeed === null) {
+    return fetchDiscovery(discoveryKey(superclusterSeed, null), () => api('/discover', { superclusterSeed }));
+  }
+  if (systemId !== null) return discoverSystem(superclusterSeed, galaxySeed, systemId);
+  return discoveries.get(discoveryKey(superclusterSeed, galaxySeed)) ?? Promise.resolve(null);
 }

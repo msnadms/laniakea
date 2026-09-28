@@ -1,12 +1,16 @@
 .top-nav-bar {
   position: absolute;
-  top: 50px;
+  top: 35px;
   left: 20%;
   right: 20%;
   height: 56px;
   z-index: 90;
   pointer-events: none;
   user-select: none;
+}
+
+.app:has(.galaxy-title-discoverer) .top-nav-bar {
+  top: 50px;
 }
 
 .top-nav-ol {

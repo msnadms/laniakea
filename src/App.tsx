@@ -11,7 +11,7 @@ import { PlanetPanel } from './ui/PlanetPanel';
 import { useSettingsPersist } from './hooks/useSettingsPersist';
 import { initAuth, useAuthStore } from './store/authStore';
 import { InfoPanel } from './ui/InfoPanel';
-import { LoginScreen } from './ui/LoginScreen';
+import { ExplorerNameScreen, LoginScreen } from './ui/LoginScreen';
 import { TopNavBar } from './ui/TopNavBar';
 import { AnomalyPanel } from './ui/AnomalyPanel';
 import { AnomalyToast } from './ui/AnomalyToast';
@@ -19,10 +19,17 @@ import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
 import { ProbePanel } from './ui/Probes';
 import { useFirstDiscoverer } from './hooks/useFirstDiscoverer';
 
-function GalaxyDiscoverer() {
+type TitleScope = 'supercluster' | 'galaxy' | 'system';
+
+function TitleDiscoverer({ scope }: { scope: TitleScope }) {
   const superclusterSeed = useGameStore((s) => s.supercluster.seed);
   const galaxySeed = useGameStore((s) => s.galaxy.seed);
-  const firstBy = useFirstDiscoverer(superclusterSeed, galaxySeed);
+  const systemId = useGameStore((s) => s.system?.id ?? null);
+  const firstBy = useFirstDiscoverer(
+    superclusterSeed,
+    scope === 'supercluster' ? null : galaxySeed,
+    scope === 'system' ? systemId : null,
+  );
   if (!firstBy) return null;
   return <div className="galaxy-title-discoverer">First discovered by {firstBy}</div>;
 }
@@ -43,7 +50,7 @@ const ViewTitle = memo(function ViewTitle() {
   return (
     <div className="galaxy-title">
       {title}
-      {view === 'galaxy' && <GalaxyDiscoverer />}
+      {view !== 'universe' && <TitleDiscoverer key={view} scope={view} />}
     </div>
   );
 });
@@ -54,12 +61,14 @@ export default function App() {
   useEffect(() => initAuth(), []);
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
+  const needsExplorerName = useAuthStore((s) => s.needsExplorerName);
   const view = useUIStore((s) => s.view);
   const showHUD = useUIStore((s) => s.showHUD);
   const showScanlines = useUIStore((s) => s.showScanlines);
   const [infoOpen, setInfoOpen] = useState(false);
 
   if (authLoading || !user) return <LoginScreen />;
+  if (needsExplorerName) return <ExplorerNameScreen />;
 
   return (
     <div className="app">

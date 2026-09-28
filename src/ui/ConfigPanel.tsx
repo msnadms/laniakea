@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useScanStore } from '../store/scanStore';
-import { useAuthStore } from '../store/authStore';
+import { chooseExplorerName, useAuthStore } from '../store/authStore';
 import { deleteScanFindings } from '../firebase/scans';
 import { api, ApiError } from '../net/api';
 import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
@@ -53,9 +53,8 @@ function ExplorerName() {
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    api<{ explorerName: string }>('/profile', { explorerName: value })
-      .then(({ explorerName }) => {
-        useAuthStore.setState({ explorerName });
+    chooseExplorerName(value)
+      .then(() => {
         setDraft(null);
         setError(null);
       })

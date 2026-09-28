@@ -10,7 +10,7 @@ interface AnomalyState {
   setWorld: (key: string, world: WorldAnomaly) => void;
   setAll: (records: AnomalyRecord[]) => void;
   dismissLatest: () => void;
-  removeSystem: (galaxySeed: number, systemId: number) => string[];
+  removeSystem: (superclusterSeed: number, galaxySeed: number, systemId: number) => string[];
   removeGalaxy: (superclusterSeed: number, galaxySeed: number) => string[];
   removeSupercluster: (superclusterSeed: number) => string[];
 }
@@ -32,18 +32,18 @@ export const useAnomalyStore = create<AnomalyState>((set, get) => {
     latestAwarded: 0,
     worlds: {},
     add: (record, awarded = 0) => set((state) => ({
-      records: { ...state.records, [anomalyRecordKey(record.galaxySeed, record.systemId)]: record },
+      records: { ...state.records, [anomalyRecordKey(record.superclusterSeed, record.galaxySeed, record.systemId)]: record },
       latest: record,
       latestAwarded: awarded,
     })),
     setWorld: (key, world) => set((state) => ({ worlds: { ...state.worlds, [key]: world } })),
     setAll: (records) => set({
-      records: Object.fromEntries(records.map((record) => [anomalyRecordKey(record.galaxySeed, record.systemId), record])),
+      records: Object.fromEntries(records.map((record) => [anomalyRecordKey(record.superclusterSeed, record.galaxySeed, record.systemId), record])),
       latest: null,
     }),
     dismissLatest: () => set({ latest: null }),
-    removeSystem: (galaxySeed, systemId) =>
-      removeWhere((record) => record.galaxySeed === galaxySeed && record.systemId === systemId),
+    removeSystem: (superclusterSeed, galaxySeed, systemId) =>
+      removeWhere((record) => record.superclusterSeed === superclusterSeed && record.galaxySeed === galaxySeed && record.systemId === systemId),
     removeGalaxy: (superclusterSeed, galaxySeed) =>
       removeWhere((record) => record.superclusterSeed === superclusterSeed && record.galaxySeed === galaxySeed),
     removeSupercluster: (superclusterSeed) =>

@@ -22,7 +22,7 @@ export function AnomalyToast() {
 
   return (
     <div
-      key={`${anomalyRecordKey(latest.galaxySeed, latest.systemId)}-${latest.discoveredAt}`}
+      key={`${anomalyRecordKey(latest.superclusterSeed, latest.galaxySeed, latest.systemId)}-${latest.discoveredAt}`}
       className={`anomaly-toast${latest.living ? ' anomaly-toast--living' : ''}`}
       role="status"
       style={{ animationDuration: `${TOAST_DURATION_MS}ms` }}

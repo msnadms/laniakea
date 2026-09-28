@@ -33,7 +33,7 @@ interface SurveyedGalaxy {
 const SURVEY_CACHE = 64;
 const surveys = new Map<string, SurveyedGalaxy>();
 
-function surveyGalaxy(key: AnomalyKey, superclusterSeed: number, galaxySeed: number): SurveyedGalaxy {
+export function surveyGalaxy(key: AnomalyKey, superclusterSeed: number, galaxySeed: number): SurveyedGalaxy {
   const cacheKey = `${superclusterSeed}:${galaxySeed}`;
   const cached = surveys.get(cacheKey);
   if (cached) {
@@ -52,7 +52,7 @@ function timestampMillis(value: unknown): number {
   return (value as { toMillis?: () => number } | undefined)?.toMillis?.() ?? Date.now();
 }
 
-export async function catalogue(key: AnomalyKey, uid: string, googleName: string | null, request: CatalogueRequest): Promise<CatalogueResult> {
+export async function catalogue(key: AnomalyKey, uid: string, request: CatalogueRequest): Promise<CatalogueResult> {
   const { superclusterSeed, galaxySeed, systemId } = request;
   const position = await readPosition(uid);
   if (position?.superclusterSeed !== superclusterSeed || position.galaxySeed !== galaxySeed) {
@@ -63,7 +63,7 @@ export async function catalogue(key: AnomalyKey, uid: string, googleName: string
   const anomaly = system ? anomalies.byHost.get(systemId) : undefined;
   if (!system || !anomaly) throw new HttpError(404, 'No anomaly at that system');
 
-  const recordKey = anomalyRecordKey(galaxySeed, systemId);
+  const recordKey = anomalyRecordKey(superclusterSeed, galaxySeed, systemId);
   const record: AnomalyRecord = {
     kind: anomaly.kind,
     living: anomaly.living,
@@ -83,6 +83,8 @@ export async function catalogue(key: AnomalyKey, uid: string, googleName: string
       tx.get(paths.world(recordKey)),
       tx.get(paths.user(uid)),
     ]);
+    const explorerName = explorerNameOf(userSnap);
+    if (!explorerName) throw new HttpError(403, 'Choose an explorer name first');
     const firstForPlayer = !markerSnap.exists;
     const award = firstForPlayer && anomaly.kind === 'homeworld' ? CONDENSATE_PER_HOMEWORLD : 0;
     const balance = award > 0 ? await readBalance(tx, uid) : 0;
@@ -93,7 +95,7 @@ export async function catalogue(key: AnomalyKey, uid: string, googleName: string
         firstAt: timestampMillis(worldSnap.get('firstAt')),
         count: (worldSnap.get('count') as number) + (firstForPlayer ? 1 : 0),
       }
-      : { firstBy: explorerNameOf(userSnap, googleName), firstAt: Date.now(), count: 1 };
+      : { firstBy: explorerName, firstAt: Date.now(), count: 1 };
 
     if (!recordSnap.exists) tx.set(paths.anomaly(uid, recordKey), { ...record, discoveredAt: FieldValue.serverTimestamp() });
     if (firstForPlayer) {

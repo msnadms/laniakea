@@ -4,16 +4,17 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { CONDENSATE_PER_HOMEWORLD, SC_WORLD_HALF, SCAN_UNIVERSE_MAX_RADIUS } from '../../src/game/constants';
 import { scanCost, type ScanScope } from '../../src/game/scan';
 import { sweepFinding } from '../../src/game/scanSurvey';
+import { locateSupercluster } from '../../src/game/universe';
 import { deriveAnomalySeeds, galaxyInSupercluster, type AnomalyKey } from './anomalyKey';
 import { requireUser, type AuthedLocals } from './auth';
-import { catalogue } from './catalogue';
+import { catalogue, surveyGalaxy } from './catalogue';
 import { superclusterMark } from './debug';
 import { discover } from './discovery';
 import { db } from './firebase';
 import { finiteParam, HttpError, seedParam } from './httpError';
 import { ensureLedger, grant, readBalance, writeBalance } from './ledger';
 import { paths } from './paths';
-import { recordPosition } from './position';
+import { readPosition, recordPosition } from './position';
 import { setExplorerName } from './profile';
 import { TokenBuckets } from './rateLimit';
 import type { SweepPool } from './sweepPool';
@@ -30,6 +31,8 @@ type Authed = Response<unknown, AuthedLocals>;
 const SEED_BUCKET = { capacity: 40, refillPerSecond: 0.5 };
 const CATALOGUE_BUCKET = { capacity: 10, refillPerSecond: 0.1 };
 const DISCOVER_BUCKET = { capacity: 40, refillPerSecond: 0.5 };
+const CLAIM_BUCKET = { capacity: 30, refillPerSecond: 1 / 120 };
+const SYSTEM_CLAIM_BUCKET = { capacity: 30, refillPerSecond: 1 / 30 };
 const SUPERCLUSTER_MAX_RADIUS = SC_WORLD_HALF * 4;
 const DEBUG_MARKS_MAX = 50;
 
@@ -47,6 +50,8 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
   const seedBuckets = new TokenBuckets(SEED_BUCKET);
   const catalogueBuckets = new TokenBuckets(CATALOGUE_BUCKET);
   const discoverBuckets = new TokenBuckets(DISCOVER_BUCKET);
+  const claimBuckets = new TokenBuckets(CLAIM_BUCKET);
+  const systemClaimBuckets = new TokenBuckets(SYSTEM_CLAIM_BUCKET);
 
   const throttle = (buckets: TokenBuckets, res: Authed, message: string) => {
     const wait = buckets.take(res.locals.uid);
@@ -54,6 +59,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     res.setHeader('Retry-After', String(wait));
     throw new HttpError(429, message);
   };
+  const mayClaim = (res: Authed) => () => claimBuckets.take(res.locals.uid) <= 0;
   const sweeping = new Set<string>();
 
   app.use(express.json());
@@ -81,8 +87,16 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     const galaxySeed = seedParam(req.params.galaxySeed, 'galaxySeed');
     throttle(seedBuckets, res, 'Too many galaxy requests');
     if (!galaxyInSupercluster(superclusterSeed, galaxySeed)) throw new HttpError(404, 'No such galaxy in that supercluster');
-    if (req.query.peek !== '1') await recordPosition(res.locals.uid, { superclusterSeed, galaxySeed });
-    res.json(deriveAnomalySeeds(key, superclusterSeed, galaxySeed));
+    const seeds = deriveAnomalySeeds(key, superclusterSeed, galaxySeed);
+    if (req.query.peek === '1') {
+      res.json({ seeds, discovery: null });
+      return;
+    }
+    const [, discovery] = await Promise.all([
+      recordPosition(res.locals.uid, { superclusterSeed, galaxySeed }),
+      discover(res.locals.uid, superclusterSeed, galaxySeed, null, mayClaim(res)),
+    ]);
+    res.json({ seeds, discovery });
   });
 
   api.post('/scan', async (req, res: Authed) => {
@@ -119,7 +133,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     const systemId = body.systemId;
     if (!Number.isInteger(systemId) || systemId < 0) throw new HttpError(400, 'systemId must be a non-negative integer');
     throttle(catalogueBuckets, res, 'Too many catalogue requests');
-    res.json(await catalogue(key, res.locals.uid, res.locals.googleName, {
+    res.json(await catalogue(key, res.locals.uid, {
       superclusterSeed: seedParam(body.superclusterSeed, 'superclusterSeed'),
       galaxySeed: seedParam(body.galaxySeed, 'galaxySeed'),
       systemId,
@@ -127,11 +141,28 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
   });
 
   api.post('/discover', async (req, res: Authed) => {
+    const superclusterSeed = seedParam(req.body?.superclusterSeed, 'superclusterSeed');
+    throttle(discoverBuckets, res, 'Too many discovery requests');
+    if (locateSupercluster(superclusterSeed) === null) throw new HttpError(404, 'No such supercluster');
+    res.json({ discovery: await discover(res.locals.uid, superclusterSeed, null, null, mayClaim(res)) });
+  });
+
+  api.post('/discover/system', async (req, res: Authed) => {
+    const uid = res.locals.uid;
     const body = req.body ?? {};
     const superclusterSeed = seedParam(body.superclusterSeed, 'superclusterSeed');
-    const galaxySeed = body.galaxySeed === undefined || body.galaxySeed === null ? null : seedParam(body.galaxySeed, 'galaxySeed');
+    const galaxySeed = seedParam(body.galaxySeed, 'galaxySeed');
+    const systemId = body.systemId;
+    if (!Number.isInteger(systemId) || systemId < 0) throw new HttpError(400, 'systemId must be a non-negative integer');
     throttle(discoverBuckets, res, 'Too many discovery requests');
-    res.json({ discovery: await discover(res.locals.uid, res.locals.googleName, superclusterSeed, galaxySeed) });
+    if (!galaxyInSupercluster(superclusterSeed, galaxySeed)) throw new HttpError(404, 'No such galaxy in that supercluster');
+    if (!surveyGalaxy(key, superclusterSeed, galaxySeed).galaxy.systems[systemId]) throw new HttpError(404, 'No such system in that galaxy');
+    const mayClaimSystem = async () => {
+      const position = await readPosition(uid);
+      if (position?.superclusterSeed !== superclusterSeed || position.galaxySeed !== galaxySeed) return false;
+      return systemClaimBuckets.take(uid) <= 0;
+    };
+    res.json({ discovery: await discover(uid, superclusterSeed, galaxySeed, systemId, mayClaimSystem) });
   });
 
   api.post('/profile', async (req, res: Authed) => {

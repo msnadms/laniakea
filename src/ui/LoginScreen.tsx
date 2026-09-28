@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useAuthStore } from '../store/authStore';
+import { useState, type FormEvent } from 'react';
+import { chooseExplorerName, useAuthStore } from '../store/authStore';
+import { ApiError } from '../net/api';
 import './LoginScreen.css';
 import { SHIP_NAME } from './strings';
 
@@ -35,6 +36,44 @@ export function LoginScreen() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+export function ExplorerNameScreen() {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    chooseExplorerName(name).catch((err) => {
+      setError(err instanceof ApiError ? err.message : 'Could not save the name');
+      setSaving(false);
+    });
+  };
+
+  return (
+    <div className="login-overlay">
+      <form className="login-panel" onSubmit={submit}>
+        <div className="login-title">EPHAPSE-CLASS WARP CRUISER | {SHIP_NAME}</div>
+        <div className="login-divider" />
+        <div className="login-status">Enter the name other explorers will see on your first finds.</div>
+        <input
+          className="login-input"
+          value={name}
+          maxLength={24}
+          autoFocus
+          placeholder="Explorer name"
+          disabled={saving}
+          onChange={(event) => setName(event.target.value)}
+        />
+        {error && <div className="login-error">{error}</div>}
+        <button className="login-btn" type="submit" disabled={saving || name.trim().length < 2}>
+          {saving ? 'Registering' : 'Continue'}
+        </button>
+      </form>
     </div>
   );
 }

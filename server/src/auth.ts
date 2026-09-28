@@ -3,7 +3,6 @@ import { adminAuth } from './firebase';
 
 export interface AuthedLocals {
   uid: string;
-  googleName: string | null;
 }
 
 export async function requireUser(req: Request, res: Response<unknown, AuthedLocals>, next: NextFunction) {
@@ -16,7 +15,6 @@ export async function requireUser(req: Request, res: Response<unknown, AuthedLoc
   try {
     const decoded = await adminAuth.verifyIdToken(token);
     res.locals.uid = decoded.uid;
-    res.locals.googleName = typeof decoded.name === 'string' ? decoded.name : null;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid ID token' });

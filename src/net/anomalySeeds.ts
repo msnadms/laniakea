@@ -1,33 +1,27 @@
 import type { AnomalySeeds } from '../game/anomalies';
+import type { Discovery } from '../game/discovery';
 import { MILKY_WAY_SEED } from '../game/hardcoded';
 import { anomalySeedsKey, cachedAnomalySeeds, useAnomalySeedsStore } from '../store/anomalySeedsStore';
-import { api, ApiError } from './api';
+import { api, withRetry } from './api';
+import { rememberGalaxyDiscovery } from './discoveries';
 
-const RETRIES = 3;
-
-const inFlight = new Map<string, Promise<AnomalySeeds>>();
-let lastEntry: Promise<unknown> = Promise.resolve();
-
-async function request(superclusterSeed: number, galaxySeed: number, peek: boolean): Promise<AnomalySeeds> {
-  const path = `/galaxy/${superclusterSeed}/${galaxySeed}/anomaly-seeds${peek ? '?peek=1' : ''}`;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await api<AnomalySeeds>(path);
-    } catch (err) {
-      if (!(err instanceof ApiError) || err.status !== 429 || attempt >= RETRIES) throw err;
-      await new Promise((resolve) => setTimeout(resolve, (err.retryAfter ?? 2) * 1000));
-    }
-  }
+interface GalaxyEntry {
+  seeds: AnomalySeeds;
+  discovery: Discovery | null;
 }
 
-function load(superclusterSeed: number, galaxySeed: number, peek: boolean): Promise<AnomalySeeds> {
+const inFlight = new Map<string, Promise<GalaxyEntry>>();
+let lastEntry: Promise<unknown> = Promise.resolve();
+
+function load(superclusterSeed: number, galaxySeed: number, peek: boolean): Promise<GalaxyEntry> {
   const key = `${anomalySeedsKey(superclusterSeed, galaxySeed)}${peek ? ':peek' : ''}`;
   const pending = inFlight.get(key);
   if (pending) return pending;
-  const promise = request(superclusterSeed, galaxySeed, peek)
-    .then((seeds) => {
-      useAnomalySeedsStore.getState().put(superclusterSeed, galaxySeed, seeds);
-      return seeds;
+  const path = `/galaxy/${superclusterSeed}/${galaxySeed}/anomaly-seeds${peek ? '?peek=1' : ''}`;
+  const promise = withRetry(() => api<GalaxyEntry>(path))
+    .then((entry) => {
+      useAnomalySeedsStore.getState().put(superclusterSeed, galaxySeed, entry.seeds);
+      return entry;
     })
     .finally(() => inFlight.delete(key));
   inFlight.set(key, promise);
@@ -37,8 +31,9 @@ function load(superclusterSeed: number, galaxySeed: number, peek: boolean): Prom
 export function enterGalaxy(superclusterSeed: number, galaxySeed: number): Promise<AnomalySeeds> | null {
   if (galaxySeed === MILKY_WAY_SEED) return null;
   const entry = load(superclusterSeed, galaxySeed, false);
+  rememberGalaxyDiscovery(superclusterSeed, galaxySeed, entry.then(({ discovery }) => discovery));
   lastEntry = entry.catch(() => undefined);
-  return entry;
+  return entry.then(({ seeds }) => seeds);
 }
 
 export function galaxyEntered(): Promise<unknown> {

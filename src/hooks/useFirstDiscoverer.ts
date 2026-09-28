@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import { discover, discoveryKey } from '../net/discoveries';
 
-export function useFirstDiscoverer(superclusterSeed: number, galaxySeed: number | null): string | null {
-  const key = discoveryKey(superclusterSeed, galaxySeed);
+export function useFirstDiscoverer(superclusterSeed: number, galaxySeed: number | null, systemId: number | null = null): string | null {
+  const key = discoveryKey(superclusterSeed, galaxySeed, systemId);
   const [found, setFound] = useState<{ key: string; firstBy: string } | null>(null);
 
   useEffect(() => {
     let live = true;
-    discover(superclusterSeed, galaxySeed).then((discovery) => {
+    discover(superclusterSeed, galaxySeed, systemId).then((discovery) => {
       if (live && discovery) setFound({ key, firstBy: discovery.firstBy });
     });
     return () => {
       live = false;
     };
-  }, [key, superclusterSeed, galaxySeed]);
+  }, [key, superclusterSeed, galaxySeed, systemId]);
 
   return found?.key === key ? found.firstBy : null;
 }

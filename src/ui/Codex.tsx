@@ -78,7 +78,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
 
   function handleDeleteSystem(scSeed: number, galaxySeed: number, systemId: string) {
     deleteSystem(scSeed, galaxySeed, systemId);
-    forgetAnomalies(useAnomalyStore.getState().removeSystem(galaxySeed, Number(systemId)));
+    forgetAnomalies(useAnomalyStore.getState().removeSystem(scSeed, galaxySeed, Number(systemId)));
     if (user) deleteSystemDiscovery(user.uid, scSeed, galaxySeed, systemId);
   }
 
@@ -132,7 +132,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
     return enriched.flatMap((sc) => {
       const matchingGalaxies = sc.enrichedGalaxies.flatMap((g) => {
         const matchingSystems = g.enrichedSystems.filter((sys) =>
-          sys.name.toLowerCase().includes(q) || anomalyNameMatches(anomalyRecords, g.galaxySeed, sys.id, q),
+          sys.name.toLowerCase().includes(q) || anomalyNameMatches(anomalyRecords, sc.superclusterSeed, g.galaxySeed, sys.id, q),
         );
         const galMatches = g.galaxyName.toLowerCase().includes(q);
         if (!galMatches && matchingSystems.length === 0) return [];
@@ -225,8 +225,8 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-function anomalyNameMatches(records: Record<string, AnomalyRecord>, galaxySeed: number, systemId: string, query: string): boolean {
-  const record = records[anomalyRecordKey(galaxySeed, systemId)];
+function anomalyNameMatches(records: Record<string, AnomalyRecord>, superclusterSeed: number, galaxySeed: number, systemId: string, query: string): boolean {
+  const record = records[anomalyRecordKey(superclusterSeed, galaxySeed, systemId)];
   return !!record && getAnomalyLore(record).name.toLowerCase().includes(query);
 }
 
@@ -317,10 +317,10 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
     () => galaxy.enrichedSystems.some((s) => systemHasHabitable(
       s.seed,
       s.starType,
-      anomalyRecords[anomalyRecordKey(galaxy.galaxySeed, s.id)]?.kind,
+      anomalyRecords[anomalyRecordKey(superclusterSeed, galaxy.galaxySeed, s.id)]?.kind,
       populated.has(Number(s.id)),
     )),
-    [galaxy.enrichedSystems, galaxy.galaxySeed, anomalyRecords, populated],
+    [galaxy.enrichedSystems, superclusterSeed, galaxy.galaxySeed, anomalyRecords, populated],
   );
   const hasAnomaly = useAnomalyStore((s) => Object.values(s.records).some(
     (record) => record.superclusterSeed === superclusterSeed && record.galaxySeed === galaxy.galaxySeed,
@@ -415,7 +415,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
   const [expanded, setExpanded] = useState(false);
   const forceExpand = query.length > 0;
   const isOpen = forceExpand || expanded;
-  const anomalyRecord = useAnomalyStore((s) => s.records[anomalyRecordKey(galaxySeed, system.id)] ?? null);
+  const anomalyRecord = useAnomalyStore((s) => s.records[anomalyRecordKey(superclusterSeed, galaxySeed, system.id)] ?? null);
   const anomalyKind = anomalyRecord?.kind ?? null;
   const hasHabitable = useMemo(
     () => systemHasHabitable(system.seed, system.starType, anomalyKind, populated),
