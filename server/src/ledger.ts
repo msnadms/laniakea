@@ -6,7 +6,9 @@ import { paths } from './paths';
 export type LedgerEntry =
   | { type: 'sweep'; scope: string; radius: number; findingId: string | null }
   | { type: 'award'; key: string; kind: string }
-  | { type: 'grant' };
+  | { type: 'grant' }
+  | { type: 'harvest'; x: number; y: number; z: number }
+  | { type: 'travel'; distance: number; harvested: number; superclusterSeed: number | null };
 
 export async function readBalance(tx: Transaction, uid: string): Promise<number> {
   const snap = await tx.get(paths.ledger(uid));

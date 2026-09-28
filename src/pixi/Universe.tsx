@@ -38,6 +38,8 @@ import {
   SCAN_SHELL_DENIED_COLOR,
   SCAN_UNIVERSE_MAX_RADIUS,
   UNIVERSE_SEED,
+  FUEL_SYNC_MIN_MLY,
+  FUEL_SYNC_SECONDS,
   WEB_GLOW_CROSSFADE_SECS,
   WEB_GLOW_REBAKE,
 } from '../game/constants';
@@ -72,6 +74,9 @@ import { createScanShell } from './scanShell';
 import { createUniverseScanOverlay } from './scanOverlay';
 import { startSweep, type PendingSweep } from './scanRun';
 import { scanCost, type ScanSphere } from '../game/scan';
+import { useFuelStore } from '../store/fuelStore';
+import { fuelAtShip, fuelNow, isBoarded, setLivePosition, syncFlight, travelTo } from '../net/ship';
+import { distance, towards, travelReach } from '../game/fuel';
 
 const N_BLINK_GROUPS = 10;
 const BLINK_FREQ = 0.22;
@@ -106,16 +111,28 @@ function tierOf(brightness: number): number {
 
 function initialPose(): FlyCamera {
   const target = locateSupercluster(useGameStore.getState().supercluster.seed);
-  const saved = useUIStore.getState().universePose;
-  const pose = saved ? { ...saved } : createUniverseCamera();
-  if (!target) return pose;
-  if (!saved) {
+  const ship = useFuelStore.getState().ship;
+  const pose = createUniverseCamera();
+  if (ship) {
+    pose.x = ship.x;
+    pose.y = ship.y;
+    pose.z = ship.z;
+  } else if (target) {
     pose.x += target.x;
     pose.y += target.y;
     pose.z += target.z;
   }
-  faceTarget(pose, target.x, target.y, target.z);
+  if (target) faceTarget(pose, target.x, target.y, target.z);
   return pose;
+}
+
+function constrainToFuel(camera: FlyCamera) {
+  const ship = useFuelStore.getState().ship;
+  if (!ship || isBoarded()) return;
+  const held = towards(ship, camera, travelReach(fuelAtShip()));
+  camera.x = held.x;
+  camera.y = held.y;
+  camera.z = held.z;
 }
 
 function formatSpeed(speed: number): string {
@@ -139,8 +156,12 @@ export function UniverseWorld() {
 
   const getCurrentPos = useCallback(() => ({ x: 0, y: 0 }), []);
   const { isAnimatingRef, cancelZoomRef } = useZoomController(screenCamera, worldRef, isReady, { getCurrentPos });
-  const isFrozen = useCallback(() => isAnimatingRef.current || useUIStore.getState().viewTransitioning, [isAnimatingRef]);
-  const { flyCamera, speed, pointer, didLook } = useFlyCamera(initialPose, isFrozen);
+  const boardingRef = useRef(false);
+  const isFrozen = useCallback(
+    () => isAnimatingRef.current || boardingRef.current || useUIStore.getState().viewTransitioning,
+    [isAnimatingRef],
+  );
+  const { flyCamera, speed, pointer, didLook } = useFlyCamera(initialPose, isFrozen, constrainToFuel);
 
   const visitedRef = useRef<SuperclusterLocation[]>([]);
   const currentRef = useRef<SuperclusterLocation | null>(null);
@@ -323,6 +344,8 @@ export function UniverseWorld() {
     let lastHeight = 0;
     let lastSpeed = -1;
     let hoveredSeed = -1;
+    let syncedAt = 0;
+    let disposed = false;
     let debug: ReturnType<typeof createUniverseAnomalyDebug> | null = null;
     let sweep: PendingSweep | null = null;
     let shellSphere: ScanSphere | null = null;
@@ -402,7 +425,7 @@ export function UniverseWorld() {
           onAim: (aim) => {
             if (sweep) return;
             shellSphere = aim?.sphere ?? null;
-            shellColor = aim && useScanStore.getState().condensate < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
+            shellColor = aim && fuelNow() < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
           },
           onSelect: beginScan,
         });
@@ -568,6 +591,14 @@ export function UniverseWorld() {
       scanOverlay.update(basis, screenCamera.current.scale, elapsedSecs);
       minimap.update(camera, width, elapsedSecs);
       useFlightStore.getState().setPosition(camera.x, camera.y, camera.z);
+      if (!boardingRef.current) {
+        setLivePosition(camera);
+        const ship = useFuelStore.getState().ship;
+        if (ship && elapsedSecs - syncedAt >= FUEL_SYNC_SECONDS && distance(ship, camera) > FUEL_SYNC_MIN_MLY) {
+          syncedAt = elapsedSecs;
+          syncFlight(camera);
+        }
+      }
 
       const current = currentRef.current;
       let visitedCount = 0;
@@ -601,34 +632,45 @@ export function UniverseWorld() {
     Ticker.shared.add(tick);
 
     const onTap = (event: FederatedPointerEvent) => {
-      if (isAnimatingRef.current || didLook.current || event.button > 0) return;
+      if (isAnimatingRef.current || boardingRef.current || didLook.current || event.button > 0) return;
       if (useScanStore.getState().active) return;
       const slot = pick(event.global.x, event.global.y);
       if (slot < 0) return;
       const seed = slotChunk[slot].seeds[slotIndex[slot]];
-      const game = useGameStore.getState();
-      const ui = useUIStore.getState();
-      ui.setUniversePose({ ...flyCamera.current });
-      if (seed !== game.supercluster.seed) game.regenerateSupercluster(seed);
-      ui.clearAddress();
+      const tapX = event.global.x;
+      const tapY = event.global.y;
+      const targetX = slotX[slot];
+      const targetY = slotY[slot];
+      boardingRef.current = true;
+      travelTo(seed).then((arrived) => {
+        if (disposed) return;
+        if (!arrived) {
+          boardingRef.current = false;
+          return;
+        }
+        const game = useGameStore.getState();
+        if (seed !== game.supercluster.seed) game.regenerateSupercluster(seed);
+        useUIStore.getState().clearAddress();
 
-      isAnimatingRef.current = true;
-      cancelZoomRef.current = animateZoomTo(
-        screenCamera, world,
-        slotX[slot], slotY[slot],
-        event.global.x, event.global.y,
-        24, 500,
-        () => useUIStore.getState().setViewTransitioning(true),
-        () => {
-          isAnimatingRef.current = false;
-          cancelZoomRef.current = null;
-          useUIStore.getState().setView('supercluster');
-        },
-      );
+        isAnimatingRef.current = true;
+        cancelZoomRef.current = animateZoomTo(
+          screenCamera, world,
+          targetX, targetY,
+          tapX, tapY,
+          24, 500,
+          () => useUIStore.getState().setViewTransitioning(true),
+          () => {
+            isAnimatingRef.current = false;
+            cancelZoomRef.current = null;
+            useUIStore.getState().setView('supercluster');
+          },
+        );
+      });
     };
     stage.on('pointertap', onTap);
 
     return () => {
+      disposed = true;
       Ticker.shared.remove(tick);
       stage.off('pointertap', onTap);
       if (cancelZoomRef.current) {
@@ -663,6 +705,7 @@ export function UniverseWorld() {
       stage.removeChild(minimap.container);
       minimap.container.destroy({ children: true });
       useFlightStore.getState().clearPosition();
+      setLivePosition(null);
       texture.destroy(true);
     };
   }, [app, isInitialised, flyCamera, speed, pointer, didLook, isAnimatingRef, cancelZoomRef]);

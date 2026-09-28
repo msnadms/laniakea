@@ -19,6 +19,7 @@ import './AnomalyToast.css';
 import { useUIStore } from '../store/uiStore';
 import { fireCodexNavigate } from '../pixi/zoomAnim';
 import { travelToSupercluster, travelToGalaxy, travelToSystem } from './navigation';
+import { travelTo } from '../net/ship';
 
 interface EnrichedSystem extends SystemRecord {
   id: string;
@@ -146,7 +147,8 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
 
   const hasDiscoveries = enriched.length > 0;
 
-  function handleNavigate(travel: () => void) {
+  async function handleNavigate(superclusterSeed: number, travel: () => void) {
+    if (!await travelTo(superclusterSeed)) return;
     onClose();
     const animated = fireCodexNavigate(
       () => useUIStore.getState().setViewTransitioning(true),
@@ -244,7 +246,7 @@ function highlight(text: string, query: string) {
 }
 
 interface EntryHandlers {
-  onNavigate: (travel: () => void) => void;
+  onNavigate: (superclusterSeed: number, travel: () => void) => void;
   onDeleteSupercluster: (scSeed: number) => void;
   onDeleteGalaxy: (scSeed: number, galaxySeed: number) => void;
   onDeleteSystem: (scSeed: number, galaxySeed: number, systemId: string) => void;
@@ -274,7 +276,7 @@ function SuperclusterEntry({ supercluster, query, deleteMode, onNavigate, onDele
             <button
               className="codex-travel-btn"
               title="Travel to supercluster"
-              onClick={(e) => { e.stopPropagation(); onNavigate(() => travelToSupercluster(supercluster.superclusterSeed, supercluster.superclusterName)); }}
+              onClick={(e) => { e.stopPropagation(); onNavigate(supercluster.superclusterSeed, () => travelToSupercluster(supercluster.superclusterSeed, supercluster.superclusterName)); }}
             >⊙</button>
           )}
         </div>
@@ -349,7 +351,7 @@ function GalaxyEntry({ galaxy, query, superclusterSeed, superclusterName, delete
             <button
               className="codex-travel-btn"
               title="Travel to galaxy"
-              onClick={(e) => { e.stopPropagation(); onNavigate(() => travelToGalaxy(superclusterSeed, superclusterName, galaxy.galaxySeed, galaxy.galaxyName)); }}
+              onClick={(e) => { e.stopPropagation(); onNavigate(superclusterSeed, () => travelToGalaxy(superclusterSeed, superclusterName, galaxy.galaxySeed, galaxy.galaxyName)); }}
             >⊙</button>
           )}
         </div>
@@ -446,7 +448,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
             <button
               className="codex-travel-btn"
               title="Travel to system"
-              onClick={(e) => { e.stopPropagation(); onNavigate(() => travelToSystem(superclusterSeed, superclusterName, galaxySeed, galaxyName, system.id, system.name)); }}
+              onClick={(e) => { e.stopPropagation(); onNavigate(superclusterSeed, () => travelToSystem(superclusterSeed, superclusterName, galaxySeed, galaxyName, system.id, system.name)); }}
             >⊙</button>
           )}
         </div>

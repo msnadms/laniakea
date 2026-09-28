@@ -418,15 +418,17 @@ export const UNIVERSE_LOOK_SENSITIVITY = 0.004;
 export const UNIVERSE_KEY_YAW_SPEED = 0.9;
 export const UNIVERSE_LOOK_EASE = 0.25;
 export const UNIVERSE_MAX_PITCH = 85 * Math.PI / 180;
-export const UNIVERSE_SPEED_DEFAULT = 80;
-export const UNIVERSE_SPEED_MIN = 2.5;
-export const UNIVERSE_SPEED_MAX = 1_000;
+export const UNIVERSE_SPEED_DEFAULT = 5;
+export const UNIVERSE_SPEED_MIN = 0.5;
+export const UNIVERSE_SPEED_MAX = 10;
 export const UNIVERSE_SPEED_STEP = 1.25;
 export const UNIVERSE_BOOST = 4;
 export const UNIVERSE_FLIGHT_EASE = 0.08;
 
 export const UNIVERSE_PICK_SCREEN_PX = 14;
 export const UNIVERSE_PICK_MIN_ALPHA = 0.12;
+export const START_RADIUS_FRACTION = 0.9;
+export const START_ATTEMPTS = 64;
 
 // ─── Camera ──────────────────────────────────────────────────────────────────
 
@@ -578,6 +580,15 @@ export const SC_CIVILIZATION_TINT_FULL_SCALE = 2.6;
 
 export const CONDENSATE_START = 16;
 export const CONDENSATE_PER_HOMEWORLD = 10;
+
+export const FUEL_PER_MLY = 0.005;
+export const FUEL_HARVEST_PER_HOUR = 12;
+export const FUEL_HARVEST_FLOOR = 0.05;
+export const FUEL_HARVEST_CAP = CONDENSATE_START;
+export const FUEL_VOID_HEART_FRACTION = 0.45;
+export const FUEL_DOCK_RADIUS = 200;
+export const FUEL_SYNC_SECONDS = 3;
+export const FUEL_SYNC_MIN_MLY = 0.5;
 
 export const SCAN_COST_MIN = 2;
 export const SCAN_COST_UNIVERSE_SPAN = 10;

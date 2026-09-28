@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AddressComponent, AddressComponentType, FlyCamera } from '../game/types';
+import type { AddressComponent, AddressComponentType } from '../game/types';
 import type { UserSettings } from '../firebase/userDoc';
 import { DEFAULT_ADDRESS } from '../game/hardcoded';
 import { useScanStore } from './scanStore';
@@ -27,8 +27,6 @@ interface UIState {
   setViewTransitioning: (v: boolean) => void;
   transitionBack: boolean;
   setTransitionBack: (v: boolean) => void;
-  universePose: FlyCamera | null;
-  setUniversePose: (pose: FlyCamera) => void;
   address: AddressComponent[];
   pushAddress: (segment: AddressComponent) => void;
   popAddress: () => void;
@@ -71,8 +69,6 @@ export const useUIStore = create<UIState>((set) => ({
   setViewTransitioning: (v) => set({ viewTransitioning: v }),
   transitionBack: false,
   setTransitionBack: (v) => set({ transitionBack: v }),
-  universePose: null,
-  setUniversePose: (pose) => set({ universePose: pose }),
   address: DEFAULT_ADDRESS,
   pushAddress: (segment) => set((s) => ({ address: upsertAddress(s.address, segment) })),
   popAddress: () => set((s) => ({ address: s.address.slice(0, -1) })),

@@ -59,6 +59,7 @@ import {
   SCAN_SUPERCLUSTER_ANCHOR_PX,
   SCAN_SHELL_DENIED_COLOR,
 } from '../game/constants';
+import { fuelNow } from '../net/ship';
 
 const SC_NICE_VALUES = [5, 10, 25, 50, 100, 150, 200, 300, 500];
 
@@ -444,7 +445,7 @@ export function SuperclusterWorld() {
           onAim: (aim) => {
             if (sweep) return;
             shellSphere = aim?.sphere ?? null;
-            shellColor = aim && useScanStore.getState().condensate < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
+            shellColor = aim && fuelNow() < aim.cost ? SCAN_SHELL_DENIED_COLOR : SCAN_SHELL_COLOR;
           },
           onSelect: beginScan,
         });

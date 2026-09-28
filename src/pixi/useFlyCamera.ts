@@ -24,7 +24,7 @@ const FRAME_MS = 1000 / 60;
 const LOOK_SNAP = 1e-4;
 const FLIGHT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
-export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boolean) {
+export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boolean, constrain: (camera: FlyCamera) => void) {
   const { app, isInitialised } = useApplication();
   const appRef = useRef(app);
   useEffect(() => {
@@ -36,9 +36,11 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
   const pointer = useRef({ x: 0, y: 0, inside: false });
   const didLook = useRef(false);
   const isFrozenRef = useRef(isFrozen);
+  const constrainRef = useRef(constrain);
   useEffect(() => {
     isFrozenRef.current = isFrozen;
-  }, [isFrozen]);
+    constrainRef.current = constrain;
+  }, [isFrozen, constrain]);
 
   useEffect(() => {
     if (!isInitialised) return;
@@ -159,6 +161,7 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
           velocity.z -= nz * outward;
         }
       }
+      constrainRef.current(cam);
     };
 
     stage.on('pointerdown', onDown);

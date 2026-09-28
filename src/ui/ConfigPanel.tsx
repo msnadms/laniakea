@@ -5,6 +5,7 @@ import { chooseExplorerName, useAuthStore } from '../store/authStore';
 import { deleteScanFindings } from '../firebase/scans';
 import { api, ApiError } from '../net/api';
 import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
+import { formatCondensate, useFuel } from '../hooks/useFuel';
 import { TutorialPanel } from './TutorialPanel';
 import './ConfigPanel.css';
 
@@ -26,7 +27,7 @@ function ConfigToggle({ label, checked, onChange }: { label: string; checked: bo
 }
 
 function CondensateBalance() {
-  const condensate = useScanStore((s) => s.condensate);
+  const condensate = useFuel();
   const grant = () => {
     api<{ condensate: number }>('/debug/grant', {})
       .then((result) => useScanStore.getState().setCondensate(result.condensate))
@@ -35,7 +36,7 @@ function CondensateBalance() {
   return (
     <div className="config-row config-row--action">
       <span className="config-row-label">Negative-Energy Condensate</span>
-      <span className="config-row-value">{condensate}</span>
+      <span className="config-row-value">{formatCondensate(condensate)}</span>
       {import.meta.env.DEV && (
         <button className="config-action" onClick={grant}>
           +{CONDENSATE_PER_HOMEWORLD}

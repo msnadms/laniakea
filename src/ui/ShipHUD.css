@@ -73,6 +73,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+.hud-fuel {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-fuel-balance {
+  color: rgba(0, 190, 230, 0.85);
+}
+
+.hud-fuel-balance--low {
+  color: #e0664a;
+}
+
+.hud-fuel-detail {
+  color: #1e4a6a;
+}
+
+.hud-fuel-notice {
+  flex-basis: 100%;
+  text-align: center;
+  color: #e0664a;
+}
+
 .hud-anomaly {
   position: relative;
   align-self: center;

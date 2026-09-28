@@ -4,6 +4,7 @@ import { db } from './firebase';
 import { MILKY_WAY_SEED, LANIAKEA_SEED, DEFAULT_ADDRESS } from '../game/hardcoded';
 import type { AddressComponent } from '../game/types';
 import type { AppView } from '../store/uiStore';
+import { randomStartLocation, type StartLocation } from '../game/startLocation';
 
 export interface UserSettings {
   showOrbitRings: boolean;
@@ -30,6 +31,19 @@ export const defaultSettings: UserSettings = {
 export interface UserDoc {
   settings: UserSettings;
   explorerName: string | null;
+  start: StartLocation | null;
+}
+
+function startSettings(start: StartLocation | null): UserSettings {
+  if (!start) return defaultSettings;
+  return {
+    ...defaultSettings,
+    lastView: 'galaxy',
+    lastSuperclusterSeed: start.superclusterSeed,
+    lastGalaxySeed: start.galaxySeed,
+    lastSystemId: null,
+    address: start.address,
+  };
 }
 
 export async function initUserDoc(user: User): Promise<UserDoc> {
@@ -37,20 +51,23 @@ export async function initUserDoc(user: User): Promise<UserDoc> {
   const snap = await getDoc(ref);
 
   if (!snap.exists()) {
+    const start = randomStartLocation();
+    const settings = startSettings(start);
     await setDoc(ref, {
       displayName: user.displayName,
       email: user.email,
       photoURL: user.photoURL,
       createdAt: serverTimestamp(),
-      settings: defaultSettings,
+      settings,
     });
-    return { settings: defaultSettings, explorerName: null };
+    return { settings, explorerName: null, start };
   }
 
   const data = snap.data();
   return {
     settings: { ...defaultSettings, ...(data.settings ?? {}) } as UserSettings,
     explorerName: (data.explorerName as string | undefined) ?? null,
+    start: null,
   };
 }
 

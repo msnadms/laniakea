@@ -52,6 +52,11 @@ export function animateZoomTo(
   let fadeFired = false;
 
   const tick = (ticker: Ticker) => {
+    if (world.destroyed) {
+      stopZoomTick(tick);
+      onComplete();
+      return;
+    }
     elapsed += ticker.deltaMS;
     const t = Math.min(elapsed / durationMs, 1);
     const eased = easeOut
@@ -89,6 +94,7 @@ export function animateIntro(
   pinWorldX?: number,
   pinWorldY?: number,
 ): () => void {
+  if (world.destroyed) return () => {};
   const targetScale = camera.current.scale;
   const startScale = targetScale * startScaleMult;
   const pinned = startScaleMult > 1;
@@ -110,6 +116,10 @@ export function animateIntro(
   let elapsed = 0;
 
   const tick = (ticker: Ticker) => {
+    if (world.destroyed) {
+      stop();
+      return;
+    }
     elapsed += ticker.deltaMS;
     const t = Math.min(elapsed / durationMs, 1);
     const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
@@ -140,7 +150,7 @@ export function registerCodexZoomOut(
   resetCamera?: () => void,
 ): () => void {
   registerCodexNavigate((onFadeStart, onComplete) => {
-    if (isAnimatingRef.current || !worldRef.current) return false;
+    if (isAnimatingRef.current || !worldRef.current || worldRef.current.destroyed) return false;
     cancelZoomRef.current?.();
     isAnimatingRef.current = true;
     const cx = (window.innerWidth / 2 - camera.current.x) / camera.current.scale;
@@ -182,7 +192,7 @@ export function registerZoomOutBack(
   onFadeStart: () => void,
 ): () => void {
   registerBackZoom(() => {
-    if (isAnimatingRef.current || !worldRef.current) return false;
+    if (isAnimatingRef.current || !worldRef.current || worldRef.current.destroyed) return false;
     isAnimatingRef.current = true;
     const cx = (window.innerWidth / 2 - camera.current.x) / camera.current.scale;
     const cy = (window.innerHeight / 2 - camera.current.y) / camera.current.scale;

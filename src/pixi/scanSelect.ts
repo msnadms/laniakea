@@ -4,6 +4,7 @@ import type { ScanSphere } from '../game/scan';
 import { SCAN_MIN_DRAG_PX } from '../game/constants';
 import { useScanStore } from '../store/scanStore';
 import { sweepRunning } from './scanRun';
+import { fuelNow } from '../net/ship';
 
 export interface ScanAnchor {
   x: number;
@@ -94,7 +95,7 @@ export function createScanSelect(app: Application, handlers: ScanSelectHandlers)
     aim = resolved && resolved.screenRadius >= SCAN_MIN_DRAG_PX ? resolved : null;
     handlers.onAim(aim);
 
-    const affordable = aim !== null && useScanStore.getState().condensate >= aim.cost;
+    const affordable = aim !== null && fuelNow() >= aim.cost;
     const color = aim === null ? SELECT_COLOR : affordable ? SELECT_COLOR : DENIED_COLOR;
     const centreX = resolved?.screenX ?? anchor.screenX;
     const centreY = resolved?.screenY ?? anchor.screenY;
@@ -142,7 +143,7 @@ export function createScanSelect(app: Application, handlers: ScanSelectHandlers)
     const resolved = aim;
     clear();
     if (!resolved || sweepRunning()) return;
-    if (useScanStore.getState().condensate < resolved.cost) {
+    if (fuelNow() < resolved.cost) {
       useScanStore.getState().setOutcome('Not enough negative-energy condensate', null);
       return;
     }

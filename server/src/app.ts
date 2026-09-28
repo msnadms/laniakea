@@ -12,10 +12,11 @@ import { superclusterMark } from './debug';
 import { discover } from './discovery';
 import { db } from './firebase';
 import { finiteParam, HttpError, seedParam } from './httpError';
-import { ensureLedger, grant, readBalance, writeBalance } from './ledger';
+import { ensureLedger, grant, writeBalance } from './ledger';
 import { paths } from './paths';
 import { readPosition, recordPosition } from './position';
 import { setExplorerName } from './profile';
+import { availableFuel, ensureShip, readFuel, settleHarvest, shipIsAt, travel } from './ship';
 import { TokenBuckets } from './rateLimit';
 import type { SweepPool } from './sweepPool';
 
@@ -35,6 +36,7 @@ const CLAIM_BUCKET = { capacity: 30, refillPerSecond: 1 / 120 };
 const SYSTEM_CLAIM_BUCKET = { capacity: 30, refillPerSecond: 1 / 30 };
 const SUPERCLUSTER_MAX_RADIUS = SC_WORLD_HALF * 4;
 const DEBUG_MARKS_MAX = 50;
+const TRAVEL_BUCKET = { capacity: 20, refillPerSecond: 1 };
 
 function newScanId(): string {
   return `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
@@ -59,6 +61,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     res.setHeader('Retry-After', String(wait));
     throw new HttpError(429, message);
   };
+  const travelBuckets = new TokenBuckets(TRAVEL_BUCKET);
   const mayClaim = (res: Authed) => () => claimBuckets.take(res.locals.uid) <= 0;
   const sweeping = new Set<string>();
 
@@ -82,6 +85,20 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     res.json({ condensate: await ensureLedger(res.locals.uid) });
   });
 
+  api.post('/ship', async (req, res: Authed) => {
+    res.json(await ensureShip(res.locals.uid, seedParam(req.body?.superclusterSeed, 'superclusterSeed')));
+  });
+
+  api.post('/ship/travel', async (req, res: Authed) => {
+    const body = req.body ?? {};
+    const to = { x: finiteParam(body.x, 'x'), y: finiteParam(body.y, 'y'), z: finiteParam(body.z, 'z') };
+    const superclusterSeed = body.superclusterSeed === undefined || body.superclusterSeed === null
+      ? null
+      : seedParam(body.superclusterSeed, 'superclusterSeed');
+    throttle(travelBuckets, res, 'Too many travel requests');
+    res.json(await travel(res.locals.uid, to, superclusterSeed));
+  });
+
   api.get('/galaxy/:superclusterSeed/:galaxySeed/anomaly-seeds', async (req, res: Authed) => {
     const superclusterSeed = seedParam(req.params.superclusterSeed, 'superclusterSeed');
     const galaxySeed = seedParam(req.params.galaxySeed, 'galaxySeed');
@@ -92,6 +109,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
       res.json({ seeds, discovery: null });
       return;
     }
+    if (!await shipIsAt(res.locals.uid, superclusterSeed)) throw new HttpError(409, 'Your ship is not at that supercluster');
     const [, discovery] = await Promise.all([
       recordPosition(res.locals.uid, { superclusterSeed, galaxySeed }),
       discover(res.locals.uid, superclusterSeed, galaxySeed, null, mayClaim(res)),
@@ -113,11 +131,11 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     if (sweeping.has(uid)) throw new HttpError(429, 'A sweep is already running');
     sweeping.add(uid);
     try {
-      if (await ensureLedger(uid) < cost) throw new HttpError(402, 'Not enough negative-energy condensate');
+      if (await availableFuel(uid) < cost) throw new HttpError(402, 'Not enough negative-energy condensate');
       const survey = await pool.run({ scope, sphere, superclusterSeed });
       const finding = sweepFinding(scope, superclusterSeed, survey, newScanId(), Date.now());
       const condensate = await db.runTransaction(async (tx) => {
-        const balance = await readBalance(tx, uid);
+        const balance = settleHarvest(tx, uid, await readFuel(tx, uid), Date.now());
         if (balance < cost) throw new HttpError(402, 'Not enough negative-energy condensate');
         if (finding) tx.set(paths.scan(uid, finding.id), { ...finding, foundAt: FieldValue.serverTimestamp() });
         return writeBalance(tx, uid, balance, -cost, { type: 'sweep', scope, radius, findingId: finding?.id ?? null });
@@ -144,7 +162,9 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     const superclusterSeed = seedParam(req.body?.superclusterSeed, 'superclusterSeed');
     throttle(discoverBuckets, res, 'Too many discovery requests');
     if (locateSupercluster(superclusterSeed) === null) throw new HttpError(404, 'No such supercluster');
-    res.json({ discovery: await discover(res.locals.uid, superclusterSeed, null, null, mayClaim(res)) });
+    const uid = res.locals.uid;
+    const mayClaimSupercluster = async () => await shipIsAt(uid, superclusterSeed) && claimBuckets.take(uid) <= 0;
+    res.json({ discovery: await discover(uid, superclusterSeed, null, null, mayClaimSupercluster) });
   });
 
   api.post('/discover/system', async (req, res: Authed) => {

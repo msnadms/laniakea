@@ -62,6 +62,7 @@ export default function App() {
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
   const needsExplorerName = useAuthStore((s) => s.needsExplorerName);
+  const settingsLoaded = useAuthStore((s) => s.settingsLoaded);
   const view = useUIStore((s) => s.view);
   const showHUD = useUIStore((s) => s.showHUD);
   const showScanlines = useUIStore((s) => s.showScanlines);
@@ -72,7 +73,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <PixiApp />
+      {settingsLoaded && <PixiApp />}
       {showScanlines && <div className="app-scanlines" />}
       <TopNavBar />
       <InfoPanel open={infoOpen} onOpenChange={setInfoOpen} />

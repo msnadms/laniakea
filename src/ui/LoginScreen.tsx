@@ -49,6 +49,7 @@ export function ExplorerNameScreen() {
     event.preventDefault();
     setSaving(true);
     chooseExplorerName(name).catch((err) => {
+      console.error('chooseExplorerName failed:', err);
       setError(err instanceof ApiError ? err.message : 'Could not save the name');
       setSaving(false);
     });

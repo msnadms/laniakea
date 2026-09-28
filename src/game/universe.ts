@@ -2,6 +2,7 @@ import { createRng } from './galaxyGen';
 import { LANIAKEA_SEED } from './hardcoded';
 import type { Rng, UniverseChunk } from './types';
 import {
+  FUEL_VOID_HEART_FRACTION,
   UNIVERSE_ANCHOR_RADIUS,
   UNIVERSE_ANCHOR_SAMPLES,
   UNIVERSE_CHUNK_AXIS_BITS,
@@ -128,7 +129,7 @@ function cellCentres(ci: number, cj: number, ck: number): Float64Array {
   return centres;
 }
 
-const weight = { wall: 0, filament: 0 };
+const weight = { wall: 0, filament: 0, wallGap: 0 };
 
 function foamWeight(c: Float64Array, px: number, py: number, pz: number): typeof weight {
   let d1 = Infinity, d2 = Infinity, d3 = Infinity;
@@ -151,6 +152,7 @@ function foamWeight(c: Float64Array, px: number, py: number, pz: number): typeof
   }
   const wallGap = (d2 - d1) / (2 * centreDistance(c, o1, o2));
   const filamentGap = (d3 - d1) / (2 * centreDistance(c, o1, o3));
+  weight.wallGap = wallGap;
   weight.wall = kernel(wallGap / UNIVERSE_WALL_WIDTH);
   weight.filament = kernel(filamentGap / UNIVERSE_FILAMENT_WIDTH);
   return weight;
@@ -362,6 +364,17 @@ export function universeWebWeight(ux: number, uy: number, uz: number): number {
   const fy = origin.y + uy / UNIVERSE_SCALE;
   const fz = origin.z + uz / UNIVERSE_SCALE;
   return combinedWeight(foamWeight(cellCentres(cellOf(fx), cellOf(fy), cellOf(fz)), fx, fy, fz));
+}
+
+export function universeVoidDepth(ux: number, uy: number, uz: number): number {
+  const origin = getAnchor();
+  const fx = origin.x + ux / UNIVERSE_SCALE;
+  const fy = origin.y + uy / UNIVERSE_SCALE;
+  const fz = origin.z + uz / UNIVERSE_SCALE;
+  const gap = foamWeight(cellCentres(cellOf(fx), cellOf(fy), cellOf(fz)), fx, fy, fz).wallGap;
+  const edge = 2 * UNIVERSE_WALL_WIDTH;
+  const heart = FUEL_VOID_HEART_FRACTION * UNIVERSE_VOID_CELL;
+  return Math.min(1, Math.max(0, (gap - edge) / (heart - edge)));
 }
 
 export function universeCellPosition(ux: number, uy: number, uz: number, out: { x: number; y: number; z: number }): void {

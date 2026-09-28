@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useScanStore } from '../store/scanStore';
 import { useUIStore } from '../store/uiStore';
 import { SCAN_HEAT_COLORS } from '../game/constants';
+import { formatCondensate, useFuel } from '../hooks/useFuel';
 import './Probes.css';
 
 const SCAN_VIEWS = new Set(['universe', 'supercluster']);
@@ -26,7 +27,7 @@ function HeatLegend() {
 export function ProbeButton() {
   const view = useUIStore((s) => s.view);
   const active = useScanStore((s) => s.active);
-  const condensate = useScanStore((s) => s.condensate);
+  const condensate = useFuel();
   const toggleActive = useScanStore((s) => s.toggleActive);
   const setActive = useScanStore((s) => s.setActive);
   const available = SCAN_VIEWS.has(view);
@@ -57,14 +58,14 @@ export function ProbeButton() {
         <circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
         <line x1="9.9" y1="9.9" x2="14" y2="14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       </svg>
-      <span className="probe-btn-count">{condensate}</span>
+      <span className="probe-btn-count">{Math.floor(condensate)}</span>
     </button>
   );
 }
 
 export function ProbePanel() {
   const active = useScanStore((s) => s.active);
-  const condensate = useScanStore((s) => s.condensate);
+  const condensate = useFuel();
   const progress = useScanStore((s) => s.progress);
   const outcome = useScanStore((s) => s.outcome);
   const clearOutcome = useScanStore((s) => s.clearOutcome);
@@ -98,7 +99,7 @@ export function ProbePanel() {
           <>
             <div className="probe-panel-row">
               <span className="probe-panel-label">Probe sweep</span>
-              <span className="probe-panel-value">Drag out from a dot to aim · {condensate} negative-energy condensate held</span>
+              <span className="probe-panel-value">Drag out from a dot to aim · {formatCondensate(condensate)} negative-energy condensate held</span>
             </div>
             <HeatLegend />
           </>
