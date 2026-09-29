@@ -1,9 +1,10 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { randomBytes } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
-import { CONDENSATE_PER_HOMEWORLD, SC_WORLD_HALF, SCAN_UNIVERSE_MAX_RADIUS } from '../../src/game/constants';
+import { CONDENSATE_PER_HOMEWORLD, SC_WORLD_HALF, SCAN_UNIVERSE_MAX_RADIUS, TECH_NODE_COSTS } from '../../src/game/constants';
 import { scanCost, type ScanScope } from '../../src/game/scan';
 import { sweepFinding } from '../../src/game/scanSurvey';
+import { isTechPath, scanDecoyFactor, scanPrecisionFactor } from '../../src/game/tech';
 import { locateSupercluster } from '../../src/game/universe';
 import { deriveAnomalySeeds, galaxyInSupercluster, type AnomalyKey } from './anomalyKey';
 import { requireUser, type AuthedLocals } from './auth';
@@ -16,6 +17,7 @@ import { ensureLedger, writeBalance } from './ledger';
 import { paths } from './paths';
 import { readPosition, recordPosition } from './position';
 import { setExplorerName } from './profile';
+import { grantTechnology, research } from './tech';
 import { availableFuel, ensureShip, grant, readFuel, settleHarvest, shipIsAt, travel } from './ship';
 import { TokenBuckets } from './rateLimit';
 import type { SweepPool } from './sweepPool';
@@ -37,6 +39,7 @@ const SYSTEM_CLAIM_BUCKET = { capacity: 30, refillPerSecond: 1 / 30 };
 const SUPERCLUSTER_MAX_RADIUS = SC_WORLD_HALF * 4;
 const DEBUG_MARKS_MAX = 50;
 const TRAVEL_BUCKET = { capacity: 20, refillPerSecond: 1 };
+const RESEARCH_BUCKET = { capacity: 10, refillPerSecond: 0.5 };
 
 function newScanId(): string {
   return `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
@@ -62,6 +65,7 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     throw new HttpError(429, message);
   };
   const travelBuckets = new TokenBuckets(TRAVEL_BUCKET);
+  const researchBuckets = new TokenBuckets(RESEARCH_BUCKET);
   const mayClaim = (res: Authed) => () => claimBuckets.take(res.locals.uid) <= 0;
   const sweeping = new Set<string>();
 
@@ -82,7 +86,15 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
   api.use(requireUser);
 
   api.get('/ledger', async (_req, res: Authed) => {
-    res.json({ condensate: await ensureLedger(res.locals.uid) });
+    const { condensate, technology, tech } = await ensureLedger(res.locals.uid);
+    res.json({ condensate, technology, tech });
+  });
+
+  api.post('/tech/research', async (req, res: Authed) => {
+    const path = req.body?.path;
+    if (!isTechPath(path)) throw new HttpError(400, 'path must be capacity, speed or scanning');
+    throttle(researchBuckets, res, 'Too many research requests');
+    res.json(await research(res.locals.uid, path));
   });
 
   api.post('/ship', async (req, res: Authed) => {
@@ -131,14 +143,18 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     if (sweeping.has(uid)) throw new HttpError(429, 'A sweep is already running');
     sweeping.add(uid);
     try {
-      if (await availableFuel(uid) < cost) throw new HttpError(402, 'Not enough negative-energy condensate');
+      const { fuel, ledger } = await availableFuel(uid);
+      if (fuel < cost) throw new HttpError(402, 'Not enough negative-energy condensate');
+      const scanning = ledger.tech.scanning;
       const survey = await pool.run({ scope, sphere, superclusterSeed });
-      const finding = sweepFinding(scope, superclusterSeed, survey, newScanId(), Date.now());
+      const tuned = { ...survey, precisionRadius: survey.precisionRadius * scanPrecisionFactor(scanning) };
+      const finding = sweepFinding(scope, superclusterSeed, tuned, newScanId(), Date.now(), scanDecoyFactor(scanning));
       const condensate = await db.runTransaction(async (tx) => {
-        const balance = settleHarvest(tx, uid, await readFuel(tx, uid), Date.now());
+        const current = await readFuel(tx, uid);
+        const balance = settleHarvest(tx, uid, current, Date.now());
         if (balance < cost) throw new HttpError(402, 'Not enough negative-energy condensate');
         if (finding) tx.set(paths.scan(uid, finding.id), { ...finding, foundAt: FieldValue.serverTimestamp() });
-        return writeBalance(tx, uid, balance, -cost, { type: 'sweep', scope, radius, findingId: finding?.id ?? null });
+        return writeBalance(tx, uid, balance, -cost, current.ledger.capacity, { type: 'sweep', scope, radius, findingId: finding?.id ?? null });
       });
       res.json({ finding, condensate });
     } finally {
@@ -192,6 +208,10 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
   if (devRoutes) {
     api.post('/debug/grant', async (_req, res: Authed) => {
       res.json({ condensate: await grant(res.locals.uid, CONDENSATE_PER_HOMEWORLD) });
+    });
+
+    api.post('/debug/grant-technology', async (_req, res: Authed) => {
+      res.json(await grantTechnology(res.locals.uid, TECH_NODE_COSTS[TECH_NODE_COSTS.length - 1]));
     });
 
     api.post('/debug/marks', (req, res: Authed) => {

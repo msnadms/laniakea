@@ -118,6 +118,7 @@ export function sweepFinding(
   survey: SweepSurvey,
   id: string,
   foundAt: number,
+  noise = 1,
 ): ScanFinding | null {
   const contact = mergeSignals(survey.signals, survey.precisionRadius);
   const drawable = contact !== null || (scope === 'universe' && survey.graph.nodes.length > 3);
@@ -136,6 +137,7 @@ export function sweepFinding(
     markZ: contact?.z ?? sphere.z,
     bloom: survey.precisionRadius,
     confidence: survey.confidence,
+    noise,
     signals: flattenSignals(survey.signals),
     strength: contact?.strength ?? NO_CONTACT_STRENGTH,
     sources: contact?.sources ?? 0,

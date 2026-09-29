@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useUIStore } from '../store/uiStore';
 import { useCodexStore } from '../store/codexStore';
-import { useFlightStore } from '../store/flightStore';
+import { publishFlightCamera, useFlightStore } from '../store/flightStore';
 import {
   getUniverseChunk,
   isUniverseChunkCached,
@@ -64,7 +64,6 @@ import {
 import { CLUSTER_TINT, clusterRadius, clusterStarCount, clusterTemplate } from './clusterStars';
 import type { ProjectedPoint } from './projection';
 import { drawCrosshair, drawVisitedRings } from './dotOverlays';
-import { createUniverseMinimap } from './universeMinimap';
 import { createCmbShell } from './cmbShell';
 import { createWebGlow } from './webGlow';
 import { createUniverseAnomalyDebug } from './anomalyDebug';
@@ -77,6 +76,7 @@ import { scanCost, type ScanSphere } from '../game/scan';
 import { useFuelStore } from '../store/fuelStore';
 import { fuelAtShip, fuelNow, isBoarded, setLivePosition, syncFlight, travelTo } from '../net/ship';
 import { distance, towards, travelReach } from '../game/fuel';
+import { formatSpeedMpc } from '../game/tech';
 
 const N_BLINK_GROUPS = 10;
 const BLINK_FREQ = 0.22;
@@ -94,7 +94,6 @@ const TIER_BGR = TIERS.map((t) => ((t.color & 0xff) << 16) | (t.color & 0xff00) 
 const TIER_SCALE = TIERS.map((t) => t.size / SC_DOT_TEXTURE_RADIUS);
 
 const FIELD_EXTENT = 100_000;
-const MLY_PER_MPC = 3.26156;
 const READOUT_BOTTOM_PX = 40;
 const SLOT_GROWTH = 4096;
 
@@ -133,10 +132,6 @@ function constrainToFuel(camera: FlyCamera) {
   camera.x = held.x;
   camera.y = held.y;
   camera.z = held.z;
-}
-
-function formatSpeed(speed: number): string {
-  return (speed / MLY_PER_MPC).toLocaleString('en-US', { maximumSignificantDigits: 3 });
 }
 
 function grow<T extends Float32Array | Int32Array>(array: T, capacity: number): T {
@@ -236,9 +231,6 @@ export function UniverseWorld() {
     speedText.anchor.set(0.5, 1);
     speedText.alpha = 0.75;
     stage.addChild(speedText);
-
-    const minimap = createUniverseMinimap();
-    stage.addChild(minimap.container);
 
     const projectedX = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
     const projectedY = new Float32Array(UNIVERSE_CHUNK_TRIALS + 1);
@@ -551,7 +543,7 @@ export function UniverseWorld() {
 
       if (speed.current !== lastSpeed || width !== lastWidth || height !== lastHeight) {
         lastSpeed = speed.current;
-        speedText.text = `Cruise ${formatSpeed(lastSpeed)} Megaparsecs / s`;
+        speedText.text = `Cruise ${formatSpeedMpc(lastSpeed)} Megaparsecs / s`;
         speedText.position.set(width / 2, height - READOUT_BOTTOM_PX);
       }
 
@@ -589,7 +581,7 @@ export function UniverseWorld() {
       advanceScan();
       drawShell();
       scanOverlay.update(basis, screenCamera.current.scale, elapsedSecs);
-      minimap.update(camera, width, elapsedSecs);
+      publishFlightCamera(camera);
       useFlightStore.getState().setPosition(camera.x, camera.y, camera.z);
       if (!boardingRef.current) {
         setLivePosition(camera);
@@ -702,8 +694,7 @@ export function UniverseWorld() {
       webGlow.destroy();
       stage.removeChild(speedText);
       speedText.destroy();
-      stage.removeChild(minimap.container);
-      minimap.container.destroy({ children: true });
+      publishFlightCamera(null);
       useFlightStore.getState().clearPosition();
       setLivePosition(null);
       texture.destroy(true);

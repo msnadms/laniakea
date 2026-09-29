@@ -17,7 +17,7 @@ const origin = { x: 0, y: 0, z: 0 };
 function source(partial: Partial<ScanHeatSource>): ScanHeatSource {
   return {
     x: 0, y: 0, z: 0, radius: 1000,
-    bloom: 200, confidence: 1, signals: [0, 0, 0, 3],
+    bloom: 200, confidence: 1, noise: 1, signals: [0, 0, 0, 3],
     ...partial,
   };
 }

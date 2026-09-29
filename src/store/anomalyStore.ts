@@ -5,8 +5,9 @@ interface AnomalyState {
   records: Record<string, AnomalyRecord>;
   latest: AnomalyRecord | null;
   latestAwarded: number;
+  latestTechnology: number;
   worlds: Record<string, WorldAnomaly>;
-  add: (record: AnomalyRecord, awarded?: number) => void;
+  add: (record: AnomalyRecord, awarded?: number, technology?: number) => void;
   setWorld: (key: string, world: WorldAnomaly) => void;
   setAll: (records: AnomalyRecord[]) => void;
   dismissLatest: () => void;
@@ -30,11 +31,13 @@ export const useAnomalyStore = create<AnomalyState>((set, get) => {
     records: {},
     latest: null,
     latestAwarded: 0,
+    latestTechnology: 0,
     worlds: {},
-    add: (record, awarded = 0) => set((state) => ({
+    add: (record, awarded = 0, technology = 0) => set((state) => ({
       records: { ...state.records, [anomalyRecordKey(record.superclusterSeed, record.galaxySeed, record.systemId)]: record },
       latest: record,
       latestAwarded: awarded,
+      latestTechnology: technology,
     })),
     setWorld: (key, world) => set((state) => ({ worlds: { ...state.worlds, [key]: world } })),
     setAll: (records) => set({

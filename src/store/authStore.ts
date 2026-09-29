@@ -12,10 +12,12 @@ import { useCodexStore } from './codexStore';
 import { useGameStore } from './gameStore';
 import { loadNav } from '../lib/navLocalStorage';
 import { getSuperclusterCoords } from '../game/universe';
-import { subscribeLedger, subscribeShip } from '../firebase/ledger';
+import { subscribeLedger, subscribeShip, type LedgerState } from '../firebase/ledger';
+import { useTechStore } from './techStore';
 import { useFuelStore } from './fuelStore';
 import { dockedAt, ensureShip } from '../net/ship';
 import { api } from '../net/api';
+import { NO_TECH } from '../game/tech';
 
 interface AuthState {
   user: User | null;
@@ -42,16 +44,21 @@ export const useAuthStore = create<AuthState>()(() => ({
 }));
 
 function watchServerState(uid: string): () => void {
-  api<{ condensate: number }>('/ledger')
-    .then(({ condensate }) => useScanStore.getState().setCondensate(condensate))
+  const applyLedger = (ledger: LedgerState) => {
+    useScanStore.getState().setCondensate(ledger.condensate);
+    useTechStore.getState().setLedger(ledger);
+  };
+  api<LedgerState>('/ledger')
+    .then(applyLedger)
     .catch((err) => console.error('ledger failed:', err));
-  const unsubscribeLedger = subscribeLedger(uid, (condensate) => useScanStore.getState().setCondensate(condensate));
+  const unsubscribeLedger = subscribeLedger(uid, applyLedger);
   const unsubscribeScans = subscribeScanFindings(uid, (findings) => useScanStore.getState().setAllFindings(findings));
   const unsubscribeShip = subscribeShip(uid, (ship) => useFuelStore.getState().setShip(ship));
   return () => {
     unsubscribeLedger();
     unsubscribeShip();
     useFuelStore.getState().setShip(null);
+    useTechStore.setState({ technology: 0, levels: NO_TECH, open: false });
     unsubscribeScans();
   };
 }

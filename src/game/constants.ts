@@ -589,6 +589,15 @@ export const FUEL_DOCK_RADIUS = 200;
 export const FUEL_SYNC_SECONDS = 3;
 export const FUEL_SYNC_MIN_MLY = 0.5;
 
+export const TECH_NODE_COSTS = [1, 2, 3, 5, 8];
+export const TECH_CAPACITY_PER_LEVEL = 10;
+export const MLY_PER_MPC = 3.26156;
+export const TECH_SPEED_TOP = 30 * MLY_PER_MPC;
+export const TECH_SCAN_PRECISION_PER_LEVEL = 0.1;
+export const TECH_SCAN_DECOY_PER_LEVEL = 0.15;
+export const TECH_AWARD_BY_STAGE = [1, 1, 2, 3, 4, 6];
+export const TECH_AWARD_LIVING_BONUS = 1;
+
 export const SCAN_COST_MIN = 2;
 export const SCAN_COST_UNIVERSE_SPAN = 10;
 export const SCAN_COST_SUPERCLUSTER_SPAN = 7;

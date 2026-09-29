@@ -1,12 +1,25 @@
 import { doc, onSnapshot, type Unsubscribe } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ShipState } from '../game/fuel';
+import { techLevelsOf, type TechLevels } from '../game/tech';
 
-export function subscribeLedger(uid: string, onBalance: (condensate: number) => void): Unsubscribe {
+export interface LedgerState {
+  condensate: number;
+  technology: number;
+  tech: TechLevels;
+}
+
+export function subscribeLedger(uid: string, onLedger: (ledger: LedgerState) => void): Unsubscribe {
   return onSnapshot(
     doc(db, 'users', uid, 'ledger', 'state'),
     (snap) => {
-      if (snap.exists()) onBalance(snap.data().condensate as number);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      onLedger({
+        condensate: data.condensate as number,
+        technology: (data.technology as number | undefined) ?? 0,
+        tech: techLevelsOf(data.tech),
+      });
     },
     (err) => console.error('subscribeLedger failed:', err),
   );

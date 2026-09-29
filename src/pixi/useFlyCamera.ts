@@ -11,13 +11,14 @@ import {
   UNIVERSE_LOOK_SENSITIVITY,
   UNIVERSE_RADIUS,
   UNIVERSE_SPEED_DEFAULT,
-  UNIVERSE_SPEED_MAX,
   UNIVERSE_SPEED_MIN,
   UNIVERSE_SPEED_STEP,
 } from '../game/constants';
 import { clampPitch, flyForward, flyRight, flyUp } from './flyProjection';
 import { isEditable } from './keyboard';
 import { useScanStore } from '../store/scanStore';
+import { useTechStore } from '../store/techStore';
+import { maxFlightSpeed } from '../game/tech';
 
 const FRAME_MS = 1000 / 60;
 const LOOK_SNAP = 1e-4;
@@ -88,7 +89,8 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const step = event.deltaY < 0 ? UNIVERSE_SPEED_STEP : 1 / UNIVERSE_SPEED_STEP;
-      speed.current = Math.min(UNIVERSE_SPEED_MAX, Math.max(UNIVERSE_SPEED_MIN, speed.current * step));
+      const max = maxFlightSpeed(useTechStore.getState().levels.speed);
+      speed.current = Math.min(max, Math.max(UNIVERSE_SPEED_MIN, speed.current * step));
     };
 
     const onKeyDown = (event: KeyboardEvent) => {

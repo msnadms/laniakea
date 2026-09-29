@@ -1,10 +1,12 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { useFlightStore } from '../store/flightStore';
 import { fireBackZoom } from '../pixi/zoomAnim';
 import { Codex } from './Codex';
 import { ProbeButton } from './Probes';
+import { FuelGauge } from './FuelGauge';
+import { Minimap } from './Minimap';
 import { getAnomalyLore } from '../game/anomalyLore';
 import './ShipHUD.css';
 import './AnomalyToast.css';
@@ -144,9 +146,23 @@ function HudOutline() {
   );
 }
 
+function HudPod({ side, children }: { side: 'left' | 'right'; children: ReactNode }) {
+  return (
+    <div className={`hud-pod hud-pod--${side}`}>
+      {children}
+    </div>
+  );
+}
+
 export function ShipHUD() {
   return (
     <div className="ship-hud">
+      <HudPod side="left">
+        <FuelGauge />
+      </HudPod>
+      <HudPod side="right">
+        <Minimap />
+      </HudPod>
       <Codex />
       <ProbeButton />
       <NavBack />

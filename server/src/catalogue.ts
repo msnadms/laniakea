@@ -4,13 +4,14 @@ import { anomalyRecordKey, type AnomalyRecord, type WorldAnomaly } from '../../s
 import { CONDENSATE_PER_HOMEWORLD } from '../../src/game/constants';
 import { creditable } from '../../src/game/fuel';
 import { generateGalaxy } from '../../src/game/galaxyGen';
+import { technologyAward } from '../../src/game/tech';
 import { generateGalaxyName, generateSuperclusterName } from '../../src/game/superclusters';
 import type { Galaxy } from '../../src/game/types';
 import { deriveAnomalySeeds, type AnomalyKey } from './anomalyKey';
 import { db } from './firebase';
 import { HttpError } from './httpError';
-import { writeBalance } from './ledger';
-import { settledBalance } from './ship';
+import { readLedger, writeBalance, writeTechnology } from './ledger';
+import { settledLedger } from './ship';
 import { paths } from './paths';
 import { readPosition } from './position';
 import { explorerNameOf } from './profile';
@@ -24,6 +25,7 @@ export interface CatalogueRequest {
 export interface CatalogueResult {
   record: AnomalyRecord;
   awarded: number;
+  technologyAwarded: number;
   world: WorldAnomaly;
 }
 
@@ -78,18 +80,23 @@ export async function catalogue(key: AnomalyKey, uid: string, request: Catalogue
     discoveredAt: Date.now(),
   };
 
+  const civilization = anomaly.kind === 'blackHole' ? null : anomalies.civilization;
+  const civilizationKey = `${superclusterSeed}-${galaxySeed}`;
+
   return db.runTransaction(async (tx) => {
-    const [recordSnap, markerSnap, worldSnap, userSnap] = await Promise.all([
+    const [recordSnap, markerSnap, worldSnap, userSnap, civilizationSnap] = await Promise.all([
       tx.get(paths.anomaly(uid, recordKey)),
       tx.get(paths.catalogued(uid, recordKey)),
       tx.get(paths.world(recordKey)),
       tx.get(paths.user(uid)),
+      civilization ? tx.get(paths.civilization(uid, civilizationKey)) : Promise.resolve(null),
     ]);
     const explorerName = explorerNameOf(userSnap);
     if (!explorerName) throw new HttpError(403, 'Choose an explorer name first');
     const firstForPlayer = !markerSnap.exists;
     const award = firstForPlayer && anomaly.kind === 'homeworld' ? CONDENSATE_PER_HOMEWORLD : 0;
-    const balance = award > 0 ? await settledBalance(tx, uid) : 0;
+    const firstOfCivilization = civilization !== null && civilizationSnap !== null && !civilizationSnap.exists;
+    const ledger = award > 0 ? await settledLedger(tx, uid) : firstOfCivilization ? await readLedger(tx, uid) : null;
 
     const world: WorldAnomaly = worldSnap.exists
       ? {
@@ -105,10 +112,16 @@ export async function catalogue(key: AnomalyKey, uid: string, request: Catalogue
       if (worldSnap.exists) tx.update(paths.world(recordKey), { count: FieldValue.increment(1) });
       else tx.set(paths.world(recordKey), { kind: anomaly.kind, firstBy: world.firstBy, firstAt: FieldValue.serverTimestamp(), count: 1 });
     }
-    const awarded = award > 0 ? creditable(balance, award) : 0;
-    if (awarded > 0) writeBalance(tx, uid, balance, awarded, { type: 'award', key: recordKey, kind: anomaly.kind });
+    const awarded = ledger && award > 0 ? creditable(ledger.condensate, award, ledger.capacity) : 0;
+    if (ledger && awarded > 0) writeBalance(tx, uid, ledger.condensate, awarded, ledger.capacity, { type: 'award', key: recordKey, kind: anomaly.kind });
+    let technologyAwarded = 0;
+    if (ledger && civilization && firstOfCivilization) {
+      technologyAwarded = technologyAward(civilization);
+      tx.set(paths.civilization(uid, civilizationKey), { stage: civilization.stage, living: civilization.living, at: FieldValue.serverTimestamp() });
+      writeTechnology(tx, uid, ledger, technologyAwarded, ledger.tech, { type: 'technology', key: civilizationKey, stage: civilization.stage, living: civilization.living });
+    }
 
     const stored = recordSnap.exists ? { ...record, discoveredAt: timestampMillis(recordSnap.get('discoveredAt')) } : record;
-    return { record: stored, awarded, world };
+    return { record: stored, awarded, technologyAwarded, world };
   });
 }

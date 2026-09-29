@@ -157,3 +157,22 @@
   text-align: center;
   line-height: 1;
 }
+
+.hud-pod {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.hud-pod--left {
+  right: calc(100% + 116px + 48px);
+}
+
+.hud-pod--right {
+  left: calc(100% + 58px + 48px);
+}

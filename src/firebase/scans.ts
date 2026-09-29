@@ -21,6 +21,7 @@ function toFinding(scanDoc: QueryDocumentSnapshot<DocumentData>): ScanFinding {
     markZ: data.markZ as number,
     bloom: data.bloom as number,
     confidence: (data.confidence as number | undefined) ?? 1,
+    noise: (data.noise as number | undefined) ?? 1,
     signals: (data.signals as number[]) ?? [],
     strength: data.strength as number,
     sources: data.sources as number,

@@ -1,8 +1,5 @@
 .fuel-gauge {
-  position: absolute;
-  top: 58px;
-  left: 26px;
-  z-index: 99;
+  position: relative;
   width: 116px;
   pointer-events: none;
   user-select: none;
@@ -37,10 +34,10 @@
 
 .fuel-gauge-fill {
   fill: none;
-  stroke: #00e8ff;
+  stroke: rgba(0, 200, 235, 0.6);
   stroke-width: 4;
   stroke-linecap: butt;
-  filter: drop-shadow(0 0 3px rgba(0, 232, 255, 0.6));
+  filter: drop-shadow(0 0 2px rgba(0, 200, 232, 0.3));
   transition: stroke-dasharray 400ms ease, stroke 300ms ease;
 }
 
@@ -62,14 +59,14 @@
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #c8f4ff;
-  text-shadow: 0 0 10px rgba(0, 190, 230, 0.5);
+  color: rgba(120, 210, 235, 0.75);
+  text-shadow: 0 0 8px rgba(0, 190, 230, 0.25);
 }
 
 .fuel-gauge-harvest {
   font-family: var(--font-ui);
   font-size: 9px;
-  color: rgba(0, 190, 230, 0.6);
+  color: rgba(0, 190, 230, 0.45);
 }
 
 .fuel-gauge-harvest--full {
@@ -77,33 +74,53 @@
   text-decoration: line-through;
 }
 
-.fuel-gauge-caption {
-  margin-top: 2px;
-  text-align: center;
-  font-family: var(--font-ui);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(0, 190, 230, 0.55);
-}
-
 .fuel-gauge--low .fuel-gauge-fill {
-  stroke: #e0664a;
-  filter: drop-shadow(0 0 3px rgba(224, 102, 74, 0.6));
+  stroke: rgba(224, 102, 74, 0.7);
+  filter: drop-shadow(0 0 2px rgba(224, 102, 74, 0.3));
 }
 
 .fuel-gauge--low .fuel-gauge-value {
-  color: #e0664a;
-  text-shadow: 0 0 10px rgba(224, 102, 74, 0.5);
+  color: rgba(224, 102, 74, 0.8);
+  text-shadow: 0 0 8px rgba(224, 102, 74, 0.25);
 }
 
 .fuel-gauge-notice {
-  margin-top: 6px;
-  width: 160px;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 180px;
+  text-align: center;
   font-family: var(--font-ui);
   font-size: 9px;
   letter-spacing: 0.06em;
   line-height: 1.4;
   text-transform: uppercase;
   color: #e0664a;
+}
+
+.fuel-gauge-button {
+  position: relative;
+  display: block;
+  width: 116px;
+  height: 116px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: filter 200ms ease;
+}
+
+.fuel-gauge-button:hover,
+.fuel-gauge-button:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 8px rgba(0, 215, 255, 0.55));
+}
+
+.fuel-gauge-button:hover .fuel-gauge-ring,
+.fuel-gauge-button:focus-visible .fuel-gauge-ring {
+  stroke: rgba(0, 215, 255, 0.75);
 }

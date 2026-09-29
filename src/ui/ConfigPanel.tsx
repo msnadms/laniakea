@@ -4,7 +4,9 @@ import { useScanStore } from '../store/scanStore';
 import { chooseExplorerName, useAuthStore } from '../store/authStore';
 import { deleteScanFindings } from '../firebase/scans';
 import { api, ApiError } from '../net/api';
-import { CONDENSATE_PER_HOMEWORLD } from '../game/constants';
+import { CONDENSATE_PER_HOMEWORLD, TECH_NODE_COSTS } from '../game/constants';
+import { useTechStore } from '../store/techStore';
+import { grantTechnology } from '../net/tech';
 import { formatCondensate, useFuel } from '../hooks/useFuel';
 import { TutorialPanel } from './TutorialPanel';
 import './ConfigPanel.css';
@@ -40,6 +42,24 @@ function CondensateBalance() {
       {import.meta.env.DEV && (
         <button className="config-action" onClick={grant}>
           +{CONDENSATE_PER_HOMEWORLD}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TechnologyBalance() {
+  const technology = useTechStore((s) => s.technology);
+  const grant = () => {
+    grantTechnology().catch((err) => console.error('grant failed:', err));
+  };
+  return (
+    <div className="config-row config-row--action">
+      <span className="config-row-label">Advanced Technology</span>
+      <span className="config-row-value">{technology}</span>
+      {import.meta.env.DEV && (
+        <button className="config-action" onClick={grant}>
+          +{TECH_NODE_COSTS[TECH_NODE_COSTS.length - 1]}
         </button>
       )}
     </div>
@@ -147,6 +167,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           )}
           <ExplorerName />
           <CondensateBalance />
+          <TechnologyBalance />
           <ProbeFindings />
         </div>
       )}

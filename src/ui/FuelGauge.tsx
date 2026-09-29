@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useFuelStore } from '../store/fuelStore';
 import { harvestPerHour } from '../game/fuel';
-import { FUEL_TANK_CAPACITY } from '../game/constants';
+import { tankCapacity } from '../game/tech';
+import { useTechStore } from '../store/techStore';
 import { formatCondensate, useFuel } from '../hooks/useFuel';
 import './FuelGauge.css';
 
@@ -28,23 +29,25 @@ const [arcStartX, arcStartY] = polar(ARC_RADIUS, START_ANGLE);
 const [arcEndX, arcEndY] = polar(ARC_RADIUS, START_ANGLE + SWEEP);
 const ARC_PATH = `M ${arcStartX} ${arcStartY} A ${ARC_RADIUS} ${ARC_RADIUS} 0 1 1 ${arcEndX} ${arcEndY}`;
 
-function angleOf(condensate: number): number {
-  return START_ANGLE + SWEEP * condensate / FUEL_TANK_CAPACITY;
+function gaugeTicks(capacity: number) {
+  const angleOf = (condensate: number) => START_ANGLE + SWEEP * condensate / capacity;
+  return Array.from({ length: Math.floor(capacity / TICK_EVERY) + 1 }, (_, i) => {
+    const value = i * TICK_EVERY;
+    const major = value % MAJOR_EVERY === 0;
+    const [x1, y1] = polar(major ? TICK_MAJOR_INNER : TICK_MINOR_INNER, angleOf(value));
+    const [x2, y2] = polar(TICK_OUTER, angleOf(value));
+    return { x1, y1, x2, y2, major };
+  });
 }
-
-const TICKS = Array.from({ length: Math.floor(FUEL_TANK_CAPACITY / TICK_EVERY) + 1 }, (_, i) => {
-  const value = i * TICK_EVERY;
-  const major = value % MAJOR_EVERY === 0;
-  const [x1, y1] = polar(major ? TICK_MAJOR_INNER : TICK_MINOR_INNER, angleOf(value));
-  const [x2, y2] = polar(TICK_OUTER, angleOf(value));
-  return { x1, y1, x2, y2, major };
-});
 
 export function FuelGauge() {
   const ship = useFuelStore((s) => s.ship);
   const notice = useFuelStore((s) => s.notice);
   const setNotice = useFuelStore((s) => s.setNotice);
   const fuel = useFuel();
+  const capacity = tankCapacity(useTechStore((s) => s.levels.capacity));
+  const setOpen = useTechStore((s) => s.setOpen);
+  const ticks = useMemo(() => gaugeTicks(capacity), [capacity]);
 
   useEffect(() => {
     if (!notice) return;
@@ -54,36 +57,43 @@ export function FuelGauge() {
 
   if (!ship) return null;
 
-  const fraction = Math.min(1, Math.max(0, fuel / FUEL_TANK_CAPACITY));
+  const fraction = Math.min(1, Math.max(0, fuel / capacity));
   const harvest = harvestPerHour(ship);
-  const harvesting = fuel < FUEL_TANK_CAPACITY;
+  const harvesting = fuel < capacity;
   const low = fuel < 1;
 
   return (
     <div className={`fuel-gauge${low ? ' fuel-gauge--low' : ''}`}>
-      <svg className="fuel-gauge-dial" width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
-        <circle className="fuel-gauge-ring" cx={CENTER} cy={CENTER} r={RING_RADIUS - 0.5} />
-        {TICKS.map((tick, i) => (
-          <line
-            key={i}
-            className={tick.major ? 'fuel-gauge-tick fuel-gauge-tick--major' : 'fuel-gauge-tick'}
-            x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2}
+      <button
+        type="button"
+        className="fuel-gauge-button"
+        onClick={() => setOpen(true)}
+        aria-label="Open ship upgrades"
+        title="Ship upgrades"
+      >
+        <svg className="fuel-gauge-dial" width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
+          <circle className="fuel-gauge-ring" cx={CENTER} cy={CENTER} r={RING_RADIUS - 0.5} />
+          {ticks.map((tick, i) => (
+            <line
+              key={i}
+              className={tick.major ? 'fuel-gauge-tick fuel-gauge-tick--major' : 'fuel-gauge-tick'}
+              x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2}
+            />
+          ))}
+          <path className="fuel-gauge-track" d={ARC_PATH} />
+          <path
+            className="fuel-gauge-fill"
+            d={ARC_PATH}
+            strokeDasharray={`${ARC_LENGTH * fraction} ${ARC_LENGTH}`}
           />
-        ))}
-        <path className="fuel-gauge-track" d={ARC_PATH} />
-        <path
-          className="fuel-gauge-fill"
-          d={ARC_PATH}
-          strokeDasharray={`${ARC_LENGTH * fraction} ${ARC_LENGTH}`}
-        />
-      </svg>
-      <div className="fuel-gauge-readout" role="status" aria-label={`${formatCondensate(fuel)} negative-energy condensate`}>
-        <span className="fuel-gauge-value">{formatCondensate(fuel)}</span>
-        <span className={harvesting ? 'fuel-gauge-harvest' : 'fuel-gauge-harvest fuel-gauge-harvest--full'}>
-          +{harvest.toFixed(1)} / h
+        </svg>
+        <span className="fuel-gauge-readout" role="status" aria-label={`${formatCondensate(fuel)} negative-energy condensate`}>
+          <span className="fuel-gauge-value">{formatCondensate(fuel)}</span>
+          <span className={harvesting ? 'fuel-gauge-harvest' : 'fuel-gauge-harvest fuel-gauge-harvest--full'}>
+            +{harvest.toFixed(1)} / h
+          </span>
         </span>
-      </div>
-      <div className="fuel-gauge-caption">Negative-energy condensate</div>
+      </button>
       {notice && <div className="fuel-gauge-notice" role="alert">{notice}</div>}
     </div>
   );

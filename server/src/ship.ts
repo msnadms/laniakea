@@ -1,5 +1,4 @@
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
-import { CONDENSATE_START } from '../../src/game/constants';
 import {
   approachPoint,
   clampToUniverse,
@@ -16,7 +15,7 @@ import {
 import { locateSupercluster, type SuperclusterLocation } from '../../src/game/universe';
 import { db } from './firebase';
 import { HttpError } from './httpError';
-import { readBalance, writeBalance } from './ledger';
+import { ledgerOf, readLedger, writeBalance, type Ledger } from './ledger';
 import { paths } from './paths';
 
 export interface Fuel {
@@ -26,6 +25,11 @@ export interface Fuel {
 
 export interface TravelResult extends Fuel {
   arrived: boolean;
+}
+
+interface LedgerFuel {
+  ship: ShipState;
+  ledger: Ledger;
 }
 
 function shipOf(data: FirebaseFirestore.DocumentData | undefined): ShipState | null {
@@ -39,35 +43,39 @@ function locate(superclusterSeed: number): SuperclusterLocation {
   return location;
 }
 
-export async function readFuel(tx: Transaction, uid: string): Promise<Fuel> {
-  const [condensate, snap] = await Promise.all([readBalance(tx, uid), tx.get(paths.ship(uid))]);
+export async function readFuel(tx: Transaction, uid: string): Promise<LedgerFuel> {
+  const [ledger, snap] = await Promise.all([readLedger(tx, uid), tx.get(paths.ship(uid))]);
   const ship = shipOf(snap.data());
   if (!ship) throw new HttpError(409, 'No ship');
-  return { ship, condensate };
+  return { ship, ledger };
 }
 
-export function settleHarvest(tx: Transaction, uid: string, { ship, condensate }: Fuel, now: number): number {
+export function settleHarvest(tx: Transaction, uid: string, { ship, ledger }: LedgerFuel, now: number): number {
   tx.set(paths.ship(uid), { ...ship, at: now });
-  const gained = harvested(ship, condensate, now);
-  if (gained <= 0) return condensate;
-  return writeBalance(tx, uid, condensate, gained, { type: 'harvest', x: ship.x, y: ship.y, z: ship.z });
+  const gained = harvested(ship, ledger.condensate, now, ledger.capacity);
+  if (gained <= 0) return ledger.condensate;
+  return writeBalance(tx, uid, ledger.condensate, gained, ledger.capacity, { type: 'harvest', x: ship.x, y: ship.y, z: ship.z });
 }
 
-export async function settledBalance(tx: Transaction, uid: string): Promise<number> {
-  const [condensate, snap] = await Promise.all([readBalance(tx, uid), tx.get(paths.ship(uid))]);
+export async function settledLedger(tx: Transaction, uid: string): Promise<Ledger> {
+  const [ledger, snap] = await Promise.all([readLedger(tx, uid), tx.get(paths.ship(uid))]);
   const ship = shipOf(snap.data());
-  return ship ? settleHarvest(tx, uid, { ship, condensate }, Date.now()) : condensate;
+  return ship ? { ...ledger, condensate: settleHarvest(tx, uid, { ship, ledger }, Date.now()) } : ledger;
 }
 
 export async function grant(uid: string, amount: number): Promise<number> {
-  return db.runTransaction(async (tx) => writeBalance(tx, uid, await settledBalance(tx, uid), amount, { type: 'grant' }));
+  return db.runTransaction(async (tx) => {
+    const ledger = await settledLedger(tx, uid);
+    return writeBalance(tx, uid, ledger.condensate, amount, ledger.capacity, { type: 'grant' });
+  });
 }
 
-export async function availableFuel(uid: string): Promise<number> {
-  const [ledger, snap] = await Promise.all([paths.ledger(uid).get(), paths.ship(uid).get()]);
-  const condensate = ledger.exists ? ledger.get('condensate') as number : CONDENSATE_START;
-  const ship = shipOf(snap.data());
-  return ship ? condensate + harvested(ship, condensate, Date.now()) : condensate;
+export async function availableFuel(uid: string): Promise<{ fuel: number; ledger: Ledger }> {
+  const [snap, shipSnap] = await Promise.all([paths.ledger(uid).get(), paths.ship(uid).get()]);
+  const ledger = ledgerOf(snap);
+  const ship = shipOf(shipSnap.data());
+  const fuel = ship ? ledger.condensate + harvested(ship, ledger.condensate, Date.now(), ledger.capacity) : ledger.condensate;
+  return { fuel, ledger };
 }
 
 export async function shipIsAt(uid: string, superclusterSeed: number): Promise<boolean> {
@@ -80,26 +88,27 @@ export async function shipIsAt(uid: string, superclusterSeed: number): Promise<b
 export async function ensureShip(uid: string, superclusterSeed: number): Promise<Fuel> {
   const location = locate(superclusterSeed);
   return db.runTransaction(async (tx) => {
-    const [ledger, snap] = await Promise.all([tx.get(paths.ledger(uid)), tx.get(paths.ship(uid))]);
-    if (!ledger.exists) tx.set(paths.ledger(uid), { condensate: CONDENSATE_START, updatedAt: FieldValue.serverTimestamp() });
-    const condensate = ledger.exists ? ledger.get('condensate') as number : CONDENSATE_START;
+    const [ledgerSnap, snap] = await Promise.all([tx.get(paths.ledger(uid)), tx.get(paths.ship(uid))]);
+    const ledger = ledgerOf(ledgerSnap);
+    if (!ledgerSnap.exists) tx.set(paths.ledger(uid), { condensate: ledger.condensate, updatedAt: FieldValue.serverTimestamp() });
     const existing = shipOf(snap.data());
     if (existing) {
       const now = Date.now();
-      return { ship: { ...existing, at: now }, condensate: settleHarvest(tx, uid, { ship: existing, condensate }, now) };
+      return { ship: { ...existing, at: now }, condensate: settleHarvest(tx, uid, { ship: existing, ledger }, now) };
     }
     const ship = { ...startingBerth(location), at: Date.now() };
     tx.set(paths.ship(uid), ship);
-    return { ship, condensate };
+    return { ship, condensate: ledger.condensate };
   });
 }
 
 export async function travel(uid: string, to: Point3, superclusterSeed: number | null): Promise<TravelResult> {
   const location = superclusterSeed === null ? null : locate(superclusterSeed);
   return db.runTransaction(async (tx) => {
-    const { ship, condensate } = await readFuel(tx, uid);
+    const { ship, ledger } = await readFuel(tx, uid);
+    const { condensate, capacity } = ledger;
     const now = Date.now();
-    const gained = harvested(ship, condensate, now);
+    const gained = harvested(ship, condensate, now, capacity);
     const fuel = condensate + gained;
     const flight = towards(ship, clampToUniverse(to), travelReach(fuel));
     let spent = travelCost(distance(ship, flight));
@@ -117,7 +126,7 @@ export async function travel(uid: string, to: Point3, superclusterSeed: number |
     const next = { x: end.x, y: end.y, z: end.z, at: now };
     tx.set(paths.ship(uid), next);
     const amount = Math.max(-condensate, gained - spent);
-    const balance = amount === 0 ? condensate : writeBalance(tx, uid, condensate, amount, {
+    const balance = amount === 0 ? condensate : writeBalance(tx, uid, condensate, amount, capacity, {
       type: 'travel',
       distance: distance(ship, end),
       harvested: gained,

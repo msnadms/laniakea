@@ -9,6 +9,7 @@ const TOAST_DURATION_MS = 5000;
 export function AnomalyToast() {
   const latest = useAnomalyStore((s) => s.latest);
   const awarded = useAnomalyStore((s) => s.latestAwarded);
+  const technology = useAnomalyStore((s) => s.latestTechnology);
   const dismissLatest = useAnomalyStore((s) => s.dismissLatest);
 
   useEffect(() => {
@@ -35,6 +36,12 @@ export function AnomalyToast() {
         <>
           <span className="anomaly-toast-sep">▸</span>
           <span className="anomaly-toast-gain">+{awarded} negative-energy condensate</span>
+        </>
+      )}
+      {technology > 0 && (
+        <>
+          <span className="anomaly-toast-sep">▸</span>
+          <span className="anomaly-toast-gain">+{technology} advanced technology</span>
         </>
       )}
       <span className="anomaly-toast-rule" />

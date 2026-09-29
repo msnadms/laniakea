@@ -29,6 +29,7 @@ export interface ScanHeatSource {
   radius: number;
   bloom: number;
   confidence: number;
+  noise: number;
   signals: number[];
 }
 
@@ -107,6 +108,7 @@ export function covers(source: ScanHeatSource, x: number, y: number, z: number):
 export interface HeatReading {
   heat: number;
   coverage: number;
+  noise: number;
 }
 
 export function sweepConfidence(source: ScanHeatSource): number {
@@ -131,10 +133,12 @@ export function detectedAt(source: ScanHeatSource, x: number, y: number, z: numb
 // resolved a contact, since it may never have checked there at all.
 export function readHeat(sources: readonly ScanHeatSource[], x: number, y: number, z: number): HeatReading {
   let coverage = 0;
+  let noise = 1;
   let heard = false;
   let detected = false;
   for (const source of sources) {
     if (!covers(source, x, y, z)) continue;
+    noise = Math.min(noise, source.noise);
     if (source.signals.length === 0) {
       coverage += sweepConfidence(source);
       continue;
@@ -143,7 +147,7 @@ export function readHeat(sources: readonly ScanHeatSource[], x: number, y: numbe
     coverage++;
     detected = detected || detectedAt(source, x, y, z);
   }
-  if (!heard) return { heat: 0, coverage };
+  if (!heard) return { heat: 0, coverage, noise };
   let heat = 1;
   for (const source of sources) {
     if (!covers(source, x, y, z)) continue;
@@ -152,9 +156,9 @@ export function readHeat(sources: readonly ScanHeatSource[], x: number, y: numbe
       const surveyed = sweepConfidence(source);
       if (surveyed >= 1 || !detected) heat *= 1 - surveyed;
     }
-    if (heat <= 0) return { heat: 0, coverage };
+    if (heat <= 0) return { heat: 0, coverage, noise };
   }
-  return { heat: Math.pow(heat, 1 + (coverage - 1) * SCAN_HEAT_OVERLAP_SHARPEN), coverage };
+  return { heat: Math.pow(heat, 1 + (coverage - 1) * SCAN_HEAT_OVERLAP_SHARPEN), coverage, noise };
 }
 
 export function combinedHeat(sources: readonly ScanHeatSource[], x: number, y: number, z: number): number {
@@ -218,11 +222,11 @@ export function heatColor(heat: number): number {
 
 // Noise only ever adds a decoy, never cools a true reading: a contact the probes actually
 // heard must read hot wherever it sits, or the colour stops meaning anything.
-export function decoyHeat(x: number, y: number, z: number, cell: number, coverage: number): number {
+export function decoyHeat(x: number, y: number, z: number, cell: number, coverage: number, clarity = 1): number {
   const noise = heatNoise(x, y, z, Math.max(1, cell));
   if (noise <= SCAN_HEAT_DECOY_THRESHOLD) return 0;
   const tail = (noise - SCAN_HEAT_DECOY_THRESHOLD) / (1 - SCAN_HEAT_DECOY_THRESHOLD);
-  return tail * noiseAmount(coverage);
+  return tail * noiseAmount(coverage) * clarity;
 }
 
 export function jitteredHeat(
@@ -232,8 +236,8 @@ export function jitteredHeat(
   z: number,
   cell: number,
 ): number {
-  const { heat, coverage } = readHeat(sources, x, y, z);
+  const { heat, coverage, noise } = readHeat(sources, x, y, z);
   if (coverage === 0) return 0;
-  const decoy = decoyHeat(x, y, z, cell, coverage);
+  const decoy = decoyHeat(x, y, z, cell, coverage, noise);
   return 1 - (1 - heat) * (1 - decoy);
 }

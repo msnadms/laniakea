@@ -2,6 +2,8 @@ import { distance, harvested, isDocked, travelCost, type Point3, type ShipState 
 import { locateSupercluster } from '../game/universe';
 import { useFuelStore } from '../store/fuelStore';
 import { useScanStore } from '../store/scanStore';
+import { useTechStore } from '../store/techStore';
+import { tankCapacity } from '../game/tech';
 import { api, withRetry } from './api';
 
 interface FuelReply {
@@ -43,7 +45,8 @@ export function setLivePosition(point: Point3 | null) {
 export function fuelAtShip(now = Date.now()): number {
   const ship = useFuelStore.getState().ship;
   const condensate = useScanStore.getState().condensate;
-  return ship ? condensate + harvested(ship, condensate, now) : condensate;
+  const capacity = tankCapacity(useTechStore.getState().levels.capacity);
+  return ship ? condensate + harvested(ship, condensate, now, capacity) : condensate;
 }
 
 export function fuelNow(now = Date.now()): number {

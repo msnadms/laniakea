@@ -19,19 +19,19 @@ describe('fuel', () => {
   });
 
   it('never fills the tank past its capacity', () => {
-    expect(creditable(10, 5)).toBe(5);
-    expect(creditable(FUEL_TANK_CAPACITY - 3, 10)).toBe(3);
-    expect(creditable(FUEL_TANK_CAPACITY, 10)).toBe(0);
-    expect(creditable(FUEL_TANK_CAPACITY + 5, 10)).toBe(0);
-    expect(creditable(FUEL_TANK_CAPACITY, -4)).toBe(-4);
+    expect(creditable(10, 5, FUEL_TANK_CAPACITY)).toBe(5);
+    expect(creditable(FUEL_TANK_CAPACITY - 3, 10, FUEL_TANK_CAPACITY)).toBe(3);
+    expect(creditable(FUEL_TANK_CAPACITY, 10, FUEL_TANK_CAPACITY)).toBe(0);
+    expect(creditable(FUEL_TANK_CAPACITY + 5, 10, FUEL_TANK_CAPACITY)).toBe(0);
+    expect(creditable(FUEL_TANK_CAPACITY, -4, FUEL_TANK_CAPACITY)).toBe(-4);
   });
 
   it('harvests only until the tank is full', () => {
     const ship = { x: 0, y: 0, z: 0, at: 0 };
-    expect(harvested(ship, FUEL_TANK_CAPACITY, 100 * HOUR)).toBe(0);
-    expect(harvested(ship, FUEL_TANK_CAPACITY - 2, 100 * HOUR)).toBeCloseTo(2);
-    expect(harvested(ship, 0, 0)).toBe(0);
-    expect(harvested(ship, 0, HOUR)).toBeCloseTo(harvestPerHour(ship));
+    expect(harvested(ship, FUEL_TANK_CAPACITY, 100 * HOUR, FUEL_TANK_CAPACITY)).toBe(0);
+    expect(harvested(ship, FUEL_TANK_CAPACITY - 2, 100 * HOUR, FUEL_TANK_CAPACITY)).toBeCloseTo(2);
+    expect(harvested(ship, 0, 0, FUEL_TANK_CAPACITY)).toBe(0);
+    expect(harvested(ship, 0, HOUR, FUEL_TANK_CAPACITY)).toBeCloseTo(harvestPerHour(ship));
   });
 
   it('harvests far more deep in a void than on the web', () => {

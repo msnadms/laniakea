@@ -10,6 +10,7 @@ import { useUIStore } from '../store/uiStore';
 interface CatalogueResponse {
   record: AnomalyRecord;
   awarded: number;
+  technologyAwarded: number;
   world: WorldAnomaly;
 }
 
@@ -36,8 +37,8 @@ function catalogue(system: StarSystem | null) {
       await enterGalaxy(superclusterSeed, galaxySeed);
       return post();
     })
-    .then(({ record, awarded, world }) => {
-      useAnomalyStore.getState().add(record, awarded);
+    .then(({ record, awarded, technologyAwarded, world }) => {
+      useAnomalyStore.getState().add(record, awarded, technologyAwarded);
       useAnomalyStore.getState().setWorld(key, world);
     })
     .catch((err) => console.error('catalogue failed:', err))

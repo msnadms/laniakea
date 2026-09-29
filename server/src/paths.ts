@@ -5,6 +5,7 @@ export const paths = {
   ledger: (uid: string) => db.doc(`users/${uid}/ledger/state`),
   entries: (uid: string) => db.collection(`users/${uid}/ledger/state/entries`),
   catalogued: (uid: string, key: string) => db.doc(`users/${uid}/ledger/state/catalogued/${key}`),
+  civilization: (uid: string, key: string) => db.doc(`users/${uid}/ledger/state/civilizations/${key}`),
   position: (uid: string) => db.doc(`users/${uid}/position/current`),
   ship: (uid: string) => db.doc(`users/${uid}/position/ship`),
   scan: (uid: string, id: string) => db.doc(`users/${uid}/scans/${id}`),

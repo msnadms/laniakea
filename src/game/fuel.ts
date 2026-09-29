@@ -3,7 +3,6 @@ import {
   FUEL_HARVEST_FLOOR,
   FUEL_HARVEST_PER_HOUR,
   FUEL_PER_MLY,
-  FUEL_TANK_CAPACITY,
   UNIVERSE_RADIUS,
   UNIVERSE_START_BACKOFF,
 } from './constants';
@@ -34,9 +33,9 @@ export function travelReach(condensate: number): number {
   return Math.max(0, condensate) / FUEL_PER_MLY;
 }
 
-export function creditable(balance: number, amount: number): number {
+export function creditable(balance: number, amount: number, capacity: number): number {
   if (amount <= 0) return amount;
-  return Math.max(0, Math.min(amount, FUEL_TANK_CAPACITY - balance));
+  return Math.max(0, Math.min(amount, capacity - balance));
 }
 
 export function harvestPerHour(point: Point3): number {
@@ -44,8 +43,8 @@ export function harvestPerHour(point: Point3): number {
   return FUEL_HARVEST_PER_HOUR * (FUEL_HARVEST_FLOOR + (1 - FUEL_HARVEST_FLOOR) * depth * depth);
 }
 
-export function harvested(ship: ShipState, condensate: number, now: number): number {
-  const room = FUEL_TANK_CAPACITY - condensate;
+export function harvested(ship: ShipState, condensate: number, now: number, capacity: number): number {
+  const room = capacity - condensate;
   if (room <= 0 || now <= ship.at) return 0;
   return Math.min(room, harvestPerHour(ship) * (now - ship.at) / 3_600_000);
 }

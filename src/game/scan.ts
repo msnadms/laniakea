@@ -49,6 +49,7 @@ export interface ScanFinding {
   markZ: number;
   bloom: number;
   confidence: number;
+  noise: number;
   signals: number[];
   strength: number;
   sources: number;
