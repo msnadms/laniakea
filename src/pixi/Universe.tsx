@@ -11,6 +11,7 @@ import {
   isUniverseChunkCached,
   locateSupercluster,
   universeChunksNear,
+  universeVoidDepth,
   type ChunkRef,
   type SuperclusterLocation,
 } from '../game/universe';
@@ -576,7 +577,7 @@ export function UniverseWorld() {
         drawnFrom.glowMix = glowMix;
         lastWidth = width;
         lastHeight = height;
-        cmb.render(width, height, basis, glowMix);
+        cmb.render(width, height, basis, glowMix, universeVoidDepth(camera.x, camera.y, camera.z));
       }
       advanceScan();
       drawShell();

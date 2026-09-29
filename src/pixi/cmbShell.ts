@@ -1,12 +1,12 @@
 import { Container, Filter, GlProgram, GpuProgram, RenderTexture, Sprite, Texture, UniformGroup } from 'pixi.js';
 import type { Renderer, TextureSource } from 'pixi.js';
 import { createRng } from '../game/galaxyGen';
-import { CMB_COLD, CMB_FREQUENCY, CMB_OCTAVES, CMB_RESOLUTION, CMB_WARM, SKY_BASE_COLOR, UNIVERSE_RADIUS } from '../game/constants';
+import { CMB_COLD, CMB_FREQUENCY, CMB_OCTAVES, CMB_RESOLUTION, CMB_WARM, SKY_BASE_COLOR, UNIVERSE_RADIUS, VOID_GLOW_FLOOR, VOID_SKY_FLOOR } from '../game/constants';
 import type { FlyBasis } from './flyProjection';
 
 export interface CmbShell {
   node: Container;
-  render(width: number, height: number, basis: FlyBasis, glowMix: number): void;
+  render(width: number, height: number, basis: FlyBasis, glowMix: number, voidDepth: number): void;
   destroy(): void;
 }
 
@@ -93,13 +93,10 @@ vec3 worldRay(vec2 s)
 void main(void)
 {
     vec3 d = worldRay(vPixel - uFrame.xy);
-    vec3 o = uCamera.xyz;
-    float b = dot(o, d);
-    float t = -b + sqrt(max(b * b - dot(o, o) + 1.0, 0.0));
-    float a = anisotropy((o + t * d) * uFrame.w + uSeed.xyz);
-    vec3 color = uBase.rgb + uWarm.rgb * max(a, 0.0) + uCold.rgb * max(-a, 0.0);
+    float a = anisotropy((uCamera.xyz + d) * uFrame.w + uSeed.xyz);
+    vec3 color = (uBase.rgb + uWarm.rgb * max(a, 0.0) + uCold.rgb * max(-a, 0.0)) * uGlow.y;
     vec2 glowUv = vec2(atan(d.x, d.z) / 6.2831853 + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.1415927);
-    color += mix(texture(uGlowA, glowUv).rgb, texture(uGlowB, glowUv).rgb, uGlow.x);
+    color += mix(texture(uGlowA, glowUv).rgb, texture(uGlowB, glowUv).rgb, uGlow.x) * uGlow.z;
     finalColor = vec4(color, 1.0) * texture(uTexture, vTextureCoord).a;
 }
 `;
@@ -199,16 +196,13 @@ fn worldRay(s: vec2<f32>) -> vec3<f32> {
 fn mainFragment(@location(0) uv: vec2<f32>, @location(1) pixel: vec2<f32>) -> @location(0) vec4<f32> {
     let u = cmbUniforms;
     let d = worldRay(pixel - u.uFrame.xy);
-    let o = u.uCamera.xyz;
-    let b = dot(o, d);
-    let t = -b + sqrt(max(b * b - dot(o, o) + 1.0, 0.0));
-    let a = anisotropy((o + t * d) * u.uFrame.w + u.uSeed.xyz);
+    let a = anisotropy((u.uCamera.xyz + d) * u.uFrame.w + u.uSeed.xyz);
     let glowUv = vec2(atan2(d.x, d.z) / 6.2831853 + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.1415927);
     let glow = mix(
         textureSampleLevel(uGlowA, uGlowASampler, glowUv, 0.0).rgb,
         textureSampleLevel(uGlowB, uGlowBSampler, glowUv, 0.0).rgb,
         u.uGlow.x);
-    let color = u.uBase.rgb + u.uWarm.rgb * max(a, 0.0) + u.uCold.rgb * max(-a, 0.0) + glow;
+    let color = (u.uBase.rgb + u.uWarm.rgb * max(a, 0.0) + u.uCold.rgb * max(-a, 0.0)) * u.uGlow.y + glow * u.uGlow.z;
     return vec4(color, 1.0) * textureSampleLevel(uTexture, uSampler, uv, 0.0).a;
 }
 `;
@@ -224,7 +218,7 @@ class CmbFilter extends Filter {
       uWarm: { value: new Float32Array([...CMB_WARM, 1]), type: 'vec4<f32>' },
       uCold: { value: new Float32Array([...CMB_COLD, 1]), type: 'vec4<f32>' },
       uBase: { value: new Float32Array([...SKY_BASE_COLOR, 1]), type: 'vec4<f32>' },
-      uGlow: { value: new Float32Array([0, 0, 0, 0]), type: 'vec4<f32>' },
+      uGlow: { value: new Float32Array([0, 1, 1, 0]), type: 'vec4<f32>' },
     });
     super({
       gpuProgram: GpuProgram.from({
@@ -244,7 +238,7 @@ class CmbFilter extends Filter {
     });
   }
 
-  setView(centreX: number, centreY: number, basis: FlyBasis, scale: number, glowMix: number) {
+  setView(centreX: number, centreY: number, basis: FlyBasis, scale: number, glowMix: number, voidDepth: number) {
     const uniforms = this.resources.cmbUniforms.uniforms;
     const view = uniforms.uView as Float32Array;
     view[0] = basis.cosYaw;
@@ -259,7 +253,10 @@ class CmbFilter extends Filter {
     camera[0] = basis.x / UNIVERSE_RADIUS;
     camera[1] = basis.y / UNIVERSE_RADIUS;
     camera[2] = basis.z / UNIVERSE_RADIUS;
-    (uniforms.uGlow as Float32Array)[0] = glowMix;
+    const glow = uniforms.uGlow as Float32Array;
+    glow[0] = glowMix;
+    glow[1] = 1 + (VOID_SKY_FLOOR - 1) * voidDepth;
+    glow[2] = 1 + (VOID_GLOW_FLOOR - 1) * voidDepth;
     this.resources.cmbUniforms.update();
   }
 }
@@ -277,7 +274,7 @@ export function createCmbShell(renderer: Renderer, seed: number, glow: readonly 
 
   return {
     node,
-    render(width, height, basis, glowMix) {
+    render(width, height, basis, glowMix, voidDepth) {
       const w = Math.max(1, Math.ceil(width * CMB_RESOLUTION));
       const h = Math.max(1, Math.ceil(height * CMB_RESOLUTION));
       if (!texture || texture.width !== w || texture.height !== h) {
@@ -286,7 +283,7 @@ export function createCmbShell(renderer: Renderer, seed: number, glow: readonly 
         sprite.texture = texture;
       }
       quad.setSize(w, h);
-      filter.setView(w / 2, h / 2, basis, w / width, glowMix);
+      filter.setView(w / 2, h / 2, basis, w / width, glowMix, voidDepth);
       renderer.render({ container: source, target: texture, clear: true });
       sprite.setSize(width, height);
     },

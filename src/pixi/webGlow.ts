@@ -1,6 +1,9 @@
 import { BufferImageSource, Container, Filter, GlProgram, GpuProgram, RenderTexture, Sprite, Texture, UniformGroup } from 'pixi.js';
 import type { Renderer, TextureSource } from 'pixi.js';
 import {
+  COSMIC_DECELERATION,
+  HUBBLE_PER_MLY,
+  TOLMAN_EXPONENT,
   UNIVERSE_FOG_FAR,
   UNIVERSE_RADIUS,
   UNIVERSE_SCALE,
@@ -14,6 +17,7 @@ import {
   WEB_GLOW_INTENSITY,
   WEB_GLOW_NEAR,
   WEB_GLOW_STEPS,
+  WEB_GLOW_TEMPERATURE_KK,
   WEB_GLOW_WALL_WIDTH,
   WEB_GLOW_WIDTH,
 } from '../game/constants';
@@ -73,6 +77,7 @@ uniform vec4 uCell;
 uniform vec4 uRange;
 uniform vec4 uWidths;
 uniform vec4 uColor;
+uniform vec4 uRedshift;
 
 const float N = ${N}.0;
 
@@ -122,6 +127,21 @@ float webWeight(vec3 q)
     return uWidths.z * wall + filament;
 }
 
+vec3 planck(float temperature)
+{
+    vec3 lambda = vec3(0.63, 0.532, 0.465);
+    vec3 l5 = lambda * lambda * lambda * lambda * lambda;
+    return 1.0 / (l5 * (exp(14.388 / (lambda * temperature)) - 1.0));
+}
+
+vec3 redshiftTint(float t)
+{
+    float x = t * uRedshift.x;
+    float stretch = 1.0 + x + uRedshift.y * x * x;
+    vec3 shifted = planck(uRedshift.z / stretch) / planck(uRedshift.z);
+    return shifted / dot(shifted, vec3(0.2126, 0.7152, 0.0722)) * pow(stretch, -uRedshift.w);
+}
+
 void main(void)
 {
     vec2 uv = vPixel / uFrame.xy;
@@ -130,14 +150,14 @@ void main(void)
     vec3 d = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
     float dither = fract(52.9829189 * fract(dot(vPixel, vec2(0.06711056, 0.00583715))));
     float stride = (uRange.z - uRange.x) / ${WEB_GLOW_STEPS}.0;
-    float sum = 0.0;
+    vec3 sum = vec3(0.0);
     for (int s = 0; s < ${WEB_GLOW_STEPS}; s++) {
         float t = uRange.x + (float(s) + dither) * stride;
         vec3 p = uCamera.xyz + d * t;
         if (dot(p, p) > uCamera.w * uCamera.w) break;
         float fog = 1.0 - clamp(t / uRange.w, 0.0, 1.0);
         float fade = (1.0 - fog * fog) * (1.0 - smoothstep(uRange.y, uRange.z, t));
-        sum += webWeight(uCell.xyz + d * (t * uCell.w)) * fade;
+        sum += webWeight(uCell.xyz + d * (t * uCell.w)) * fade * redshiftTint(t);
     }
     vec3 glow = 1.0 - exp(-uColor.rgb * (sum / ${WEB_GLOW_STEPS}.0) * uColor.w);
     finalColor = vec4(glow, 1.0) * texture(uTexture, vTextureCoord).a;
@@ -161,6 +181,7 @@ struct GlowUniforms {
   uRange:vec4<f32>,
   uWidths:vec4<f32>,
   uColor:vec4<f32>,
+  uRedshift:vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> gfu: GlobalFilterUniforms;
@@ -235,6 +256,20 @@ fn webWeight(q: vec3<f32>) -> f32 {
     return w.z * wall + filament;
 }
 
+fn planck(temperature: f32) -> vec3<f32> {
+    let lambda = vec3<f32>(0.63, 0.532, 0.465);
+    let l5 = lambda * lambda * lambda * lambda * lambda;
+    return 1.0 / (l5 * (exp(14.388 / (lambda * temperature)) - 1.0));
+}
+
+fn redshiftTint(t: f32) -> vec3<f32> {
+    let r = glowUniforms.uRedshift;
+    let x = t * r.x;
+    let stretch = 1.0 + x + r.y * x * x;
+    let shifted = planck(r.z / stretch) / planck(r.z);
+    return shifted / dot(shifted, vec3(0.2126, 0.7152, 0.0722)) * pow(stretch, -r.w);
+}
+
 @fragment
 fn mainFragment(@location(0) uv: vec2<f32>, @location(1) pixel: vec2<f32>) -> @location(0) vec4<f32> {
     let u = glowUniforms;
@@ -244,14 +279,14 @@ fn mainFragment(@location(0) uv: vec2<f32>, @location(1) pixel: vec2<f32>) -> @l
     let d = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
     let dither = fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
     let stride = (u.uRange.z - u.uRange.x) / ${WEB_GLOW_STEPS}.0;
-    var sum = 0.0;
+    var sum = vec3(0.0);
     for (var s = 0; s < ${WEB_GLOW_STEPS}; s++) {
         let t = u.uRange.x + (f32(s) + dither) * stride;
         let p = u.uCamera.xyz + d * t;
         if (dot(p, p) > u.uCamera.w * u.uCamera.w) { break; }
         let fog = 1.0 - clamp(t / u.uRange.w, 0.0, 1.0);
         let fade = (1.0 - fog * fog) * (1.0 - smoothstep(u.uRange.y, u.uRange.z, t));
-        sum += webWeight(u.uCell.xyz + d * (t * u.uCell.w)) * fade;
+        sum += webWeight(u.uCell.xyz + d * (t * u.uCell.w)) * fade * redshiftTint(t);
     }
     let glow = 1.0 - exp(-u.uColor.rgb * (sum / ${WEB_GLOW_STEPS}.0) * u.uColor.w);
     return vec4(glow, 1.0) * textureSampleLevel(uTexture, uSampler, uv, 0.0).a;
@@ -275,6 +310,10 @@ class WebGlowFilter extends Filter {
         type: 'vec4<f32>',
       },
       uColor: { value: new Float32Array([...WEB_GLOW_COLOR, WEB_GLOW_INTENSITY]), type: 'vec4<f32>' },
+      uRedshift: {
+        value: new Float32Array([HUBBLE_PER_MLY, (1 + COSMIC_DECELERATION) / 2, WEB_GLOW_TEMPERATURE_KK, TOLMAN_EXPONENT]),
+        type: 'vec4<f32>',
+      },
     });
     super({
       gpuProgram: GpuProgram.from({

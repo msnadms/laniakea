@@ -222,6 +222,8 @@ export const CMB_FREQUENCY = 3.2;
 export const CMB_OCTAVES = 6;
 export const CMB_WARM: readonly [number, number, number] = [0.085, 0.045, 0.03];
 export const CMB_COLD: readonly [number, number, number] = [0.01, 0.03, 0.075];
+export const VOID_SKY_FLOOR = 0.1;
+export const VOID_GLOW_FLOOR = 0.4;
 
 export const WEB_GLOW_NEAR = 600;
 export const WEB_GLOW_FADE = 2_500;
@@ -235,7 +237,11 @@ export const WEB_GLOW_CROSSFADE_SECS = 0.15;
 export const WEB_GLOW_WALL_WIDTH = 1_400;
 export const WEB_GLOW_FILAMENT_WIDTH = 2_400;
 export const WEB_GLOW_COLOR: readonly [number, number, number] = [0.5, 0.34, 0.72];
-export const WEB_GLOW_INTENSITY = 0.25;
+export const WEB_GLOW_INTENSITY = 0.5;
+export const WEB_GLOW_TEMPERATURE_KK = 5;
+export const HUBBLE_PER_MLY = 70 / 299_792.458 / 3.26156;
+export const COSMIC_DECELERATION = -0.55;
+export const TOLMAN_EXPONENT = 4;
 
 // The nebula renders at this fraction of screen resolution and is upscaled; it has no hard edges.
 export const SKY_NEBULA_RESOLUTION = 0.5;
