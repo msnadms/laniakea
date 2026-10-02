@@ -645,3 +645,26 @@ export const SCAN_WEB_BACK_ALPHA = 0.62;
 export const SCAN_WEB_FRONT_ALPHA = 1;
 export const SCAN_WEB_SEGMENTS = 4;
 export const SCAN_WEB_NODE_RADIUS_PX = 5;
+
+export const BASE_START_POPULATION = 20;
+export const BASE_START_ALLOYS = 150;
+export const BASE_POPULATION_GROWTH_PER_HOUR = 0.1;
+export const BASE_MAX_LEVEL = 5;
+export const BASE_LEVEL_ALLOY_FACTORS = [1, 2.5, 6, 14, 30];
+export const BASE_LEVEL_SECONDS = [60, 600, 3600, 4 * 3600, 12 * 3600];
+export const BASE_LEVEL_TECHNOLOGY = [0, 0, 0, 1, 2];
+export const BASE_VAULT_ALLOYS = [100, 200, 400, 800, 1500, 3000];
+export const BASE_VAULT_CONDENSATE = [0, 10, 20, 35, 55, 80];
+export const BASE_HABITAT_POPULATION = [20, 40, 70, 110, 150, 190];
+export const BASE_HANGAR_UNITS = [0, 6, 12, 20, 30, 45];
+export const BASE_PLATFORM_LIMITS = [0, 3, 5, 8, 11, 14];
+export const BASE_WORLD_POPULATION_MIN = 80;
+export const BASE_WORLD_POPULATION_PER_RADIUS = 5;
+export const BASE_WORLD_POPULATION_PER_MOON = 15;
+export const BASE_WORLD_SIPHON_BASE = 1;
+export const BASE_WORLD_SIPHON_PER_MOON = 0.5;
+
+export const DEFENCE_ORBIT_SLOTS = [6, 8, 10];
+export const DEFENCE_LEVEL_ALLOY_FACTORS = [1, 2, 4, 8, 16];
+export const DEFENCE_LEVEL_SECONDS = [30, 300, 1800, 3 * 3600, 8 * 3600];
+export const DEFENCE_LEVEL_TECHNOLOGY = [0, 0, 0, 1, 2];

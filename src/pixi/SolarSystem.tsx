@@ -50,6 +50,12 @@ import { createAnomalyVisual } from './anomalies';
 import { createCityLights, createSettlementLights, type CityLights } from './ecumenopolis';
 import { createFoundryAlbedoTexture, createFurnaceLights } from './foundry';
 import { createSunBody, sunGlowColor } from './sunBody';
+import { createBaseVisual, type BaseVisual } from './baseVisual';
+import { systemKey, useBaseStore } from '../store/baseStore';
+import { createEstablishOverlay, type EstablishOverlay } from './establishBase';
+import { isSettleableWorld } from '../game/base';
+import { isChartedHome } from '../game/discovery';
+import { fetchClaimed, foundBase } from '../net/base';
 
 type MoonState = {
   visual: Container;
@@ -79,6 +85,10 @@ type PlanetState = {
   moonOrbitFar: Graphics | null;
   moonOrbitNear: Graphics | null;
   moonOrbitRadius: number;
+  seed: number;
+  radius: number;
+  landCanvas: HTMLCanvasElement | null;
+  surfaceJob: SurfaceJob | null;
 };
 
 const ASTEROID_COLORS = [0x888888, 0x999999, 0xaaaaaa, 0x776655, 0x887766, 0x998877];
@@ -86,6 +96,11 @@ const ASTEROID_SIZE_SCALE = 1.15;
 const SYSTEM_NICE_VALUES = [1, 2, 5, 10, 20, 30, 60];
 const SURFACE_BUDGET_MS = 5;
 const INTRO_TILT_OFFSET = 8 * Math.PI / 180;
+
+function baseRingIn(superclusterSeed: number, galaxySeed: number, systemId: number): number | null {
+  const base = useBaseStore.getState().base;
+  return base && base.superclusterSeed === superclusterSeed && base.galaxySeed === galaxySeed && base.systemId === systemId ? base.ring : null;
+}
 
 const SYSTEM_ORBIT: OrbitConfig = {
   createCamera: () => createSystemCamera({ planets: [] }),
@@ -349,6 +364,26 @@ export function SolarSystem() {
     const flatDetail = createSurfaceTexture(createFlatDetailCanvas());
     const surfaceJobs: { job: SurfaceJob; textures: Texture[] }[] = [];
     const generatedPlanets = system.planets ?? [];
+    let baseVisual: BaseVisual | null = null;
+    let basePlanet: PlanetState | null = null;
+    let baseLights: CityLights | null = null;
+    const systemSuperclusterSeed = useGameStore.getState().supercluster.seed;
+    const systemGalaxySeed = useGameStore.getState().galaxy.seed;
+    const initialBaseRing = baseRingIn(systemSuperclusterSeed, systemGalaxySeed, system.id);
+    const settleable = !isChartedHome(systemSuperclusterSeed, systemGalaxySeed) && layout.planets.some(isSettleableWorld);
+    const canSettle = (ring: number) => {
+      const { base, loaded, claimed } = useBaseStore.getState();
+      const rings = claimed[systemKey(systemSuperclusterSeed, systemGalaxySeed, system.id)];
+      return loaded && base === null && rings !== undefined && !rings.includes(ring);
+    };
+    const establish: EstablishOverlay | null = settleable
+      ? createEstablishOverlay(
+        canSettle,
+        (ring) => foundBase({ superclusterSeed: systemSuperclusterSeed, galaxySeed: systemGalaxySeed, systemId: system.id, ring })
+          .then(() => useBaseStore.getState().setOpen(true)),
+      )
+      : null;
+    if (settleable) fetchClaimed(systemSuperclusterSeed, systemGalaxySeed, system.id).catch((err) => console.error('claimed worlds failed:', err));
 
     for (const orbitGfx of systemOrbitGfx) depthScene.addChild(orbitGfx);
 
@@ -394,7 +429,7 @@ export function SolarSystem() {
       const builtTexture = isFoundry ? createFoundryAlbedoTexture(planetLayout.color, planetSeed) : null;
       if (builtTexture) bodyTextures.push(builtTexture);
       const surface = surfaceJob
-        ? paintedTextures(surfaceJob, planetLayout.zone === 'populated')
+        ? paintedTextures(surfaceJob, planetLayout.zone === 'populated' || ring === initialBaseRing)
         : { albedo: builtTexture!, detail: flatDetail };
       const planetBody = addBody(surface.albedo, surface.detail, BODY_LOOKS[planetLayout.zone], radius);
       planetVisual.addChild(planetBody.mesh);
@@ -423,6 +458,10 @@ export function SolarSystem() {
         moonOrbitFar: null,
         moonOrbitNear: null,
         moonOrbitRadius: 0,
+        seed: planetSeed,
+        radius,
+        landCanvas,
+        surfaceJob,
       };
 
       if (planetLayout.moons.length > 0) {
@@ -461,16 +500,55 @@ export function SolarSystem() {
         planetVisual.hitArea = new Circle(0, 0, radius * 1.5);
         planetVisual.eventMode = 'static';
         planetVisual.cursor = 'pointer';
+        const settleWorld = establish && isSettleableWorld(planetLayout) ? establish : null;
+        const isOwnBase = () => baseRingIn(systemSuperclusterSeed, systemGalaxySeed, system.id) === ring;
+        const claimable = () => settleWorld !== null && (isOwnBase() || canSettle(ring));
         planetVisual.on('pointerdown', (event) => {
           if (isOrbitGesture(event)) return;
           event.stopPropagation();
+          if (claimable()) return;
           useUIStore.getState().setAnomalyPanelOpen(false);
           useUIStore.getState().setSelectedPlanet(planetData.name);
         });
+        if (settleWorld) {
+          planetVisual.on('pointertap', (event) => {
+            if (isOrbitGesture(event) || hasDragged.current || didOrbit.current) return;
+            if (isOwnBase()) {
+              useUIStore.getState().setSelectedPlanet(null);
+              useBaseStore.getState().setOpen(true);
+            } else if (canSettle(ring)) {
+              settleWorld.establish(ring);
+            }
+          });
+          planetVisual.on('pointerover', () => settleWorld.hover(ring));
+          planetVisual.on('pointerout', () => settleWorld.hover(null));
+        }
       }
 
       depthScene.addChild(planetVisual);
       planets.push(planet);
+    }
+
+    function syncBase() {
+      const ring = baseRingIn(systemSuperclusterSeed, systemGalaxySeed, system!.id);
+      const planet = ring === null ? null : planets[ring] ?? null;
+      if (planet === basePlanet) return;
+      if (planet?.landCanvas && surfaceJobs.some((pending) => pending.job === planet.surfaceJob)) return;
+      baseVisual?.destroy();
+      baseVisual = null;
+      if (basePlanet && baseLights) {
+        basePlanet.cityLights = null;
+        baseLights.node.destroy();
+      }
+      baseLights = null;
+      basePlanet = planet;
+      if (!planet) return;
+      if (!planet.cityLights && planet.landCanvas) {
+        baseLights = createSettlementLights(planet.landCanvas, planet.seed, planet.radius);
+        planet.cityLights = baseLights;
+        planet.visual.addChild(baseLights.node);
+      }
+      baseVisual = createBaseVisual(depthScene, planet.radius);
     }
 
     for (const gfx of [...systemOrbitGfx, ...moonOrbitGfx]) gfx.visible = showOrbitRingsRef.current;
@@ -510,6 +588,18 @@ export function SolarSystem() {
 
     if (anomalyVisual) {
       for (const node of anomalyVisual.nodes) depthScene.addChild(node);
+    }
+    if (establish) screenEffectLayer.addChild(establish.node);
+
+    function updateEstablish(elapsed: number) {
+      if (!establish) return;
+      const ring = establish.target();
+      const planet = ring === null ? null : planets[ring];
+      establish.update(
+        elapsed,
+        planet && ring !== null ? { x: planet.projected.x, y: planet.projected.y, radius: layout.planets[ring].radius * planet.projected.scale } : null,
+        camera.current.scale,
+      );
     }
 
     const nebulaSprite = createNebulaSprite(anomalyVisual?.nebulaColor ?? (sunBody ? sunGlowColor(system.starType) : system.color), sunRadius);
@@ -573,9 +663,11 @@ export function SolarSystem() {
           moon.body.setLight(moon.lightDirection);
         }
       }
+      if (basePlanet) baseVisual?.update(basePlanet.systemPoint, projectionBasis, elapsed);
     }
 
     if (anomalyVisual?.surface) surfaceJobs.push(anomalyVisual.surface);
+    syncBase();
     updateProjectionPresentation();
     updateBodies(0, 0);
     anomalyVisual?.update(0, 0, projectionBasis);
@@ -603,12 +695,16 @@ export function SolarSystem() {
       asteroidSpin += 0.025 * dt;
       updateBodies(dt, elapsed);
       anomalyVisual?.update(dt, elapsed, projectionBasis);
+      syncBase();
+      updateEstablish(elapsed);
     };
     Ticker.shared.add(onTick);
 
     return () => {
       Ticker.shared.remove(onTick);
       anomalyVisual?.destroy();
+      baseVisual?.destroy();
+      establish?.destroy();
       asteroidBelt?.destroy();
       orbitGfxRef.current = [];
       world.removeChild(systemRoot);
@@ -621,7 +717,7 @@ export function SolarSystem() {
       flatDetail.destroy(true);
       for (const texture of bodyTextures) texture.destroy(true);
     };
-  }, [system, isInitialised, hasDragged, didOrbit, viewOrbit]);
+  }, [system, isInitialised, hasDragged, didOrbit, viewOrbit, camera]);
 
   return (
     <>

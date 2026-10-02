@@ -7,6 +7,8 @@ import { api, ApiError } from '../net/api';
 import { CONDENSATE_PER_HOMEWORLD, TECH_NODE_COSTS } from '../game/constants';
 import { useTechStore } from '../store/techStore';
 import { grantTechnology } from '../net/tech';
+import { grantAlloys } from '../net/base';
+import { useBaseStore } from '../store/baseStore';
 import { formatCondensate, useFuel } from '../hooks/useFuel';
 import { TutorialPanel } from './TutorialPanel';
 import './ConfigPanel.css';
@@ -60,6 +62,25 @@ function TechnologyBalance() {
       {import.meta.env.DEV && (
         <button className="config-action" onClick={grant}>
           +{TECH_NODE_COSTS[TECH_NODE_COSTS.length - 1]}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AlloyBalance() {
+  const alloys = useBaseStore((s) => s.base?.alloys ?? null);
+  if (alloys === null) return null;
+  const grant = () => {
+    grantAlloys().catch((err) => console.error('grant failed:', err));
+  };
+  return (
+    <div className="config-row config-row--action">
+      <span className="config-row-label">Alloys</span>
+      <span className="config-row-value">{Math.floor(alloys)}</span>
+      {import.meta.env.DEV && (
+        <button className="config-action" onClick={grant}>
+          +1000
         </button>
       )}
     </div>
@@ -168,6 +189,7 @@ export function ConfigPanel({ hidden }: { hidden?: boolean }) {
           <ExplorerName />
           <CondensateBalance />
           <TechnologyBalance />
+          <AlloyBalance />
           <ProbeFindings />
         </div>
       )}

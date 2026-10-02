@@ -19,6 +19,7 @@ import { useAnomalyWatcher } from './hooks/useAnomalyWatcher';
 import { ProbePanel } from './ui/Probes';
 import { useFirstDiscoverer } from './hooks/useFirstDiscoverer';
 import { SkillTree } from './ui/SkillTree';
+import { BasePanel } from './ui/BasePanel';
 
 type TitleScope = 'supercluster' | 'galaxy' | 'system';
 
@@ -95,6 +96,7 @@ export default function App() {
       {view === 'system' && <PlanetPanel />}
       {view === 'system' && <AnomalyPanel />}
       <SkillTree />
+      <BasePanel />
     </div>
   );
 }

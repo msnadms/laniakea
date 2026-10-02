@@ -3,7 +3,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 const SUBTITLE_SCALE = 0.42;
 const SUBTITLE_GAP = 0.12;
 
-function makeLabelBox(label: string, fontSize: number, alpha: number, subtitle?: string) {
+export function makeLabelBox(label: string, fontSize: number, alpha: number, subtitle?: string) {
   const textObj = new Text({
     text: label,
     style: { fontFamily: 'Saira Condensed', fontSize, fill: 0x8ec4d4, align: 'center' },

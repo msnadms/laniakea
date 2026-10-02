@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useAuthStore } from '../store/authStore';
 import { useCodexStore } from '../store/codexStore';
 import { generateSystemLayout, generatePlanets } from '../game/planetGen';
+import { useBaseStore } from '../store/baseStore';
 import { STAR_TYPE_LABELS, type StarType } from '../game/types';
 import type { GalaxyRecord, SuperclusterRecord, SystemRecord } from '../firebase/discoveries';
 import { deleteSystemDiscovery, deleteGalaxyDiscovery, deleteSuperclusterDiscovery } from '../firebase/discoveries';
@@ -424,6 +425,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
     [system.seed, system.starType, anomalyKind, populated],
   );
   const anomalyLore = anomalyRecord ? getAnomalyLore(anomalyRecord) : null;
+  const isBase = useBaseStore((s) => s.base !== null && s.base.superclusterSeed === superclusterSeed && s.base.galaxySeed === galaxySeed && s.base.systemId === Number(system.id));
 
   return (
     <div className="codex-system">
@@ -432,6 +434,7 @@ function SystemEntry({ system, query, superclusterSeed, superclusterName, galaxy
         <span className="codex-system-name">
           {highlight(system.name, query)}
           {hasHabitable && <span className="codex-habitable-dot" title="Contains habitable planet" />}
+          {isBase && <span className="codex-base-marker" title="Your base">⌂</span>}
           {anomalyLore && (
             <span className={`codex-anomaly-marker anomaly-tier-${anomalyLore.tier.toLowerCase()}`} title={anomalyLore.name}>◬</span>
           )}

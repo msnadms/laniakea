@@ -10,12 +10,15 @@ export type LedgerEntry =
   | { type: 'award'; key: string; kind: string }
   | { type: 'grant' }
   | { type: 'harvest'; x: number; y: number; z: number }
-  | { type: 'travel'; distance: number; harvested: number; superclusterSeed: number | null };
+  | { type: 'travel'; distance: number; harvested: number; superclusterSeed: number | null }
+  | { type: 'collect'; key: string }
+  | { type: 'found'; key: string };
 
 export type TechEntry =
   | { type: 'technology'; key: string; stage: number; living: boolean }
   | { type: 'research'; path: TechPath; level: number }
-  | { type: 'technologyGrant' };
+  | { type: 'technologyGrant' }
+  | { type: 'base'; action: string };
 
 export interface Ledger {
   condensate: number;
@@ -45,6 +48,10 @@ export function writeBalance(tx: Transaction, uid: string, balance: number, requ
   tx.set(paths.ledger(uid), { condensate: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   tx.create(paths.entries(uid).doc(), { ...entry, amount, balance: next, at: FieldValue.serverTimestamp() });
   return next;
+}
+
+export function logEntry(tx: Transaction, uid: string, entry: LedgerEntry) {
+  tx.create(paths.entries(uid).doc(), { ...entry, at: FieldValue.serverTimestamp() });
 }
 
 export function writeTechnology(tx: Transaction, uid: string, ledger: Ledger, amount: number, tech: TechLevels, entry: TechEntry): number {

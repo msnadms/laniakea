@@ -18,6 +18,8 @@ import { useFuelStore } from './fuelStore';
 import { dockedAt, ensureShip } from '../net/ship';
 import { api } from '../net/api';
 import { NO_TECH } from '../game/tech';
+import { subscribeBase } from '../firebase/base';
+import { useBaseStore } from './baseStore';
 
 interface AuthState {
   user: User | null;
@@ -54,8 +56,11 @@ function watchServerState(uid: string): () => void {
   const unsubscribeLedger = subscribeLedger(uid, applyLedger);
   const unsubscribeScans = subscribeScanFindings(uid, (findings) => useScanStore.getState().setAllFindings(findings));
   const unsubscribeShip = subscribeShip(uid, (ship) => useFuelStore.getState().setShip(ship));
+  const unsubscribeBase = subscribeBase(uid, (base) => useBaseStore.getState().setBase(base));
   return () => {
     unsubscribeLedger();
+    unsubscribeBase();
+    useBaseStore.getState().reset();
     unsubscribeShip();
     useFuelStore.getState().setShip(null);
     useTechStore.setState({ technology: 0, levels: NO_TECH, open: false });

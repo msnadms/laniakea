@@ -7,6 +7,7 @@ import { Codex } from './Codex';
 import { ProbeButton } from './Probes';
 import { FuelGauge } from './FuelGauge';
 import { Minimap } from './Minimap';
+import { BaseButton } from './BasePanel';
 import { getAnomalyLore } from '../game/anomalyLore';
 import './ShipHUD.css';
 import './AnomalyToast.css';
@@ -170,6 +171,7 @@ export function ShipHUD() {
       <div className="hud-header">Navigation</div>
       <AddressReadout />
       <AnomalyReadout />
+      <BaseButton />
     </div>
   );
 }

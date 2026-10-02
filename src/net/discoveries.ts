@@ -33,10 +33,13 @@ function fetchDiscovery(key: string, request: () => Promise<{ discovery: Discove
   return promise;
 }
 
+export function galaxyEntered(superclusterSeed: number, galaxySeed: number): Promise<unknown> {
+  return discoveries.get(discoveryKey(superclusterSeed, galaxySeed)) ?? Promise.resolve(null);
+}
+
 function discoverSystem(superclusterSeed: number, galaxySeed: number, systemId: number): Promise<Discovery | null> {
-  const galaxyEntry = discoveries.get(discoveryKey(superclusterSeed, galaxySeed)) ?? Promise.resolve(null);
   return fetchDiscovery(discoveryKey(superclusterSeed, galaxySeed, systemId), () =>
-    galaxyEntry.then(() => api<{ discovery: Discovery | null }>('/discover/system', { superclusterSeed, galaxySeed, systemId })));
+    galaxyEntered(superclusterSeed, galaxySeed).then(() => api<{ discovery: Discovery | null }>('/discover/system', { superclusterSeed, galaxySeed, systemId })));
 }
 
 export function discover(superclusterSeed: number, galaxySeed: number | null, systemId: number | null = null): Promise<Discovery | null> {

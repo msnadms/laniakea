@@ -34,6 +34,10 @@ service cloud.firestore {
       allow read: if isOwner(userId);
     }
 
+    match /users/{userId}/base/{document=**} {
+      allow read: if isOwner(userId);
+    }
+
     match /world/{document=**} {
       allow read: if request.auth != null;
     }
