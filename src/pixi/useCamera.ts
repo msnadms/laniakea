@@ -12,7 +12,7 @@ import {
   DRAG_THRESHOLD_PX,
 } from '../game/constants';
 import { useUIStore } from '../store/uiStore';
-import { isEditable } from './keyboard';
+import { ignoresKey, isKeyboardCaptured } from './keyboard';
 import { cancelIntroZoom, isZoomAnimating } from './zoomAnim';
 
 const FRAME_MS = 1000 / 60;
@@ -105,7 +105,7 @@ export function useCamera(
     const velocity = { x: 0, y: 0 };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!PAN_KEYS.has(event.code) || isEditable(event.target)) return;
+      if (!PAN_KEYS.has(event.code) || ignoresKey(event)) return;
       keys.add(event.code);
     };
     const onKeyUp = (event: KeyboardEvent) => { keys.delete(event.code); };
@@ -113,6 +113,7 @@ export function useCamera(
 
     const tick = (ticker: Ticker) => {
       if (!worldRef.current) return;
+      if (isKeyboardCaptured()) keys.clear();
       if (isZoomAnimating() || useUIStore.getState().viewTransitioning) {
         velocity.x = 0;
         velocity.y = 0;

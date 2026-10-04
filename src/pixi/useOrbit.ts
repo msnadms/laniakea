@@ -5,7 +5,7 @@ import type { FederatedPointerEvent } from 'pixi.js';
 import { DRAG_THRESHOLD_PX, SC_ORBIT_EASE, SC_ORBIT_KEY_YAW_SPEED, SC_ORBIT_SENSITIVITY } from '../game/constants';
 import { useUIStore } from '../store/uiStore';
 import { useScanStore } from '../store/scanStore';
-import { isEditable } from './keyboard';
+import { ignoresKey, isKeyboardCaptured } from './keyboard';
 import { clampOrbitTilt, createSuperclusterCamera, type Camera3D } from './projection';
 import { isZoomAnimating } from './zoomAnim';
 
@@ -79,7 +79,7 @@ export function useOrbit(config: OrbitConfig = SUPERCLUSTER_ORBIT) {
     const keys = new Set<string>();
     const keyYawSpeed = config.keyYawSpeed ?? 0;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!TURN_KEYS.has(event.code) || isEditable(event.target)) return;
+      if (!TURN_KEYS.has(event.code) || ignoresKey(event)) return;
       keys.add(event.code);
     };
     const onKeyUp = (event: KeyboardEvent) => { keys.delete(event.code); };
@@ -97,6 +97,7 @@ export function useOrbit(config: OrbitConfig = SUPERCLUSTER_ORBIT) {
     }
 
     const tick = (ticker: Ticker) => {
+      if (isKeyboardCaptured()) keys.clear();
       const turn = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0);
       if (turn !== 0 && !isZoomAnimating() && !useUIStore.getState().viewTransitioning) {
         const step = turn * keyYawSpeed * ticker.deltaMS / 1000;

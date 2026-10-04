@@ -15,7 +15,7 @@ import {
   UNIVERSE_SPEED_STEP,
 } from '../game/constants';
 import { clampPitch, flyForward, flyRight, flyUp } from './flyProjection';
-import { isEditable } from './keyboard';
+import { ignoresKey, isKeyboardCaptured } from './keyboard';
 import { useScanStore } from '../store/scanStore';
 import { useTechStore } from '../store/techStore';
 import { maxFlightSpeed } from '../game/tech';
@@ -94,7 +94,7 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!FLIGHT_KEYS.has(event.code) || isEditable(event.target)) return;
+      if (!FLIGHT_KEYS.has(event.code) || ignoresKey(event)) return;
       keys.add(event.code);
     };
     const onKeyUp = (event: KeyboardEvent) => { keys.delete(event.code); };
@@ -102,6 +102,7 @@ export function useFlyCamera(initialPose: () => FlyCamera, isFrozen: () => boole
 
     const tick = (ticker: Ticker) => {
       const cam = camera.current;
+      if (isKeyboardCaptured()) keys.clear();
       if (isFrozenRef.current()) {
         velocity.x = 0;
         velocity.y = 0;

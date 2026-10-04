@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { Base, BaseAddress } from '../game/base';
-import { blockerGrid, surfaceBlockers, surfaceSeed, type BlockerKind } from '../game/baseSurface';
+import { decodeBlockers, surfaceSeed, type BlockerKind } from '../game/baseSurface';
 import { BASE_SURFACE_COLS, BASE_SURFACE_ROWS } from '../game/constants';
 import { WHOLE_MAP, type TerrainRegion } from '../pixi/baseTerrain';
 import type { TerrainTileRequest, TerrainTileResult } from '../pixi/baseTerrain.worker';
@@ -20,14 +20,19 @@ const OVERVIEW_KEY = 'overview';
 const TILE_CELLS = 8;
 const TERRAIN_WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 1));
 const PAINT_SCALE = 0.5;
+const MAX_PIXEL_RATIO = 2;
 const TILE_CACHE_PIXELS = 16_000_000;
 const ZOOM_MS = 260;
 const WHEEL_STEP_MS = 200;
 const DRAG_THRESHOLD_PX = 4;
 const MENU_WIDTH_PX = 240;
 const MENU_HEIGHT_PX = 180;
+const MENU_GAP_PX = 6;
+const MENU_INSET_PX = 8;
 
 const NO_IMAGES: ReadonlyMap<string, ImageData> = new Map();
+
+type BlockerGrid = readonly (BlockerKind | null)[];
 
 const BLOCKER_NAMES: Record<BlockerKind, string> = { ocean: 'Ocean', ridge: 'Mountain range', lake: 'Inland sea' };
 
@@ -77,8 +82,12 @@ function clampAxis(center: number, cells: number, viewport: number, cellPx: numb
   return Math.min(cells - half, Math.max(half, center));
 }
 
+function coverPx(size: Size): number {
+  return Math.max(size.width / BASE_SURFACE_COLS, size.height / BASE_SURFACE_ROWS);
+}
+
 function clampCamera(camera: Camera, size: Size): Camera {
-  const cellPx = Math.max(camera.cellPx, size.width / BASE_SURFACE_COLS, size.height / BASE_SURFACE_ROWS);
+  const cellPx = Math.max(camera.cellPx, coverPx(size));
   return {
     cellPx,
     cx: clampAxis(camera.cx, BASE_SURFACE_COLS, size.width, cellPx),
@@ -86,11 +95,15 @@ function clampCamera(camera: Camera, size: Size): Camera {
   };
 }
 
+function tilePosition(tx: number, ty: number): string {
+  return `${tx}:${ty}`;
+}
+
 function tileAt(tx: number, ty: number, cellPx: number): Tile {
   const col = tx * TILE_CELLS;
   const row = ty * TILE_CELLS;
   return {
-    key: `${cellPx}:${tx}:${ty}`,
+    key: `${cellPx}:${tilePosition(tx, ty)}`,
     cellPx,
     region: { col, row, cols: Math.min(TILE_CELLS, BASE_SURFACE_COLS - col), rows: Math.min(TILE_CELLS, BASE_SURFACE_ROWS - row) },
   };
@@ -118,12 +131,13 @@ function visibleTiles(camera: Camera, size: Size, cellPx: number): Tile[] {
 
 function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Tile[]) {
   const wantedRef = useRef(wanted);
-  const dispatchRef = useRef<() => void>(() => {});
+  const syncRef = useRef<() => void>(() => {});
   const [painted, setPainted] = useState<{ seed: number; images: ReadonlyMap<string, ImageData> } | null>(null);
+  const [surveyed, setSurveyed] = useState<{ seed: number; grid: BlockerGrid } | null>(null);
 
   useLayoutEffect(() => {
     wantedRef.current = wanted;
-    dispatchRef.current();
+    syncRef.current();
   }, [wanted]);
 
   const { superclusterSeed, galaxySeed, systemId, ring } = address;
@@ -132,7 +146,17 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
     const images = new Map<string, ImageData>();
     const inFlight = new Set<string>();
     const idle: Worker[] = [];
+    let surveyRequested = false;
     const isWanted = (key: string) => key === OVERVIEW_KEY || wantedRef.current.some((tile) => tile.key === key);
+
+    const touch = () => {
+      for (const { key } of wantedRef.current) {
+        const image = images.get(key);
+        if (!image) continue;
+        images.delete(key);
+        images.set(key, image);
+      }
+    };
 
     const store = (key: string, image: ImageData) => {
       images.set(key, image);
@@ -152,7 +176,14 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
         const next = wantedRef.current.find((tile) => !images.has(tile.key) && !inFlight.has(tile.key));
         if (!next) return;
         inFlight.add(next.key);
-        const request: TerrainTileRequest = { key: next.key, address: world, region: next.region, cellPx: next.cellPx };
+        const request: TerrainTileRequest = {
+          key: next.key,
+          address: world,
+          region: next.region,
+          cellPx: next.cellPx,
+          withBlockers: !surveyRequested,
+        };
+        surveyRequested = true;
         idle.pop()!.postMessage(request);
       }
     };
@@ -160,8 +191,9 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
     const workers = Array.from({ length: TERRAIN_WORKERS }, () => {
       const worker = new Worker(new URL('../pixi/baseTerrain.worker.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<TerrainTileResult>) => {
-        const { key, width, height, pixels } = event.data;
+        const { key, width, height, pixels, blockers } = event.data;
         inFlight.delete(key);
+        if (blockers) setSurveyed({ seed, grid: decodeBlockers(blockers) });
         store(key, new ImageData(pixels, width, height));
         idle.push(worker);
         dispatch();
@@ -170,15 +202,33 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
       return worker;
     });
 
-    dispatchRef.current = dispatch;
+    syncRef.current = () => {
+      touch();
+      dispatch();
+    };
     dispatch();
     return () => {
-      dispatchRef.current = () => {};
+      syncRef.current = () => {};
       for (const worker of workers) worker.terminate();
     };
   }, [superclusterSeed, galaxySeed, systemId, ring, seed]);
 
-  return painted?.seed === seed ? painted.images : NO_IMAGES;
+  return {
+    images: painted?.seed === seed ? painted.images : NO_IMAGES,
+    grid: surveyed?.seed === seed ? surveyed.grid : null,
+  };
+}
+
+function sharpestTiles(images: ReadonlyMap<string, ImageData>): Map<string, string> {
+  const best = new Map<string, { key: string; cellPx: number }>();
+  for (const key of images.keys()) {
+    if (key === OVERVIEW_KEY) continue;
+    const [cellPx, tx, ty] = key.split(':').map(Number);
+    const position = tilePosition(tx, ty);
+    const current = best.get(position);
+    if (!current || cellPx > current.cellPx) best.set(position, { key, cellPx });
+  }
+  return new Map(Array.from(best, ([position, { key }]) => [position, key]));
 }
 
 function TerrainImage({ image, style }: { image: ImageData; style: CSSProperties }) {
@@ -189,11 +239,12 @@ function TerrainImage({ image, style }: { image: ImageData; style: CSSProperties
   return <canvas ref={ref} className="base-map-image" width={image.width} height={image.height} style={style} />;
 }
 
-function FactoryMenu({ index, left, top, flip, onClose }: { index: number; left: number; top: number; flip: boolean; onClose: () => void }) {
+function FactoryMenu({ index, left, top, onClose }: { index: number; left: number; top: number; onClose: () => void }) {
   return (
     <div
       className="base-factory-menu"
-      style={flip ? { right: left, top } : { left, top }}
+      style={{ left, top }}
+      data-map-overlay
       role="dialog"
       aria-label={`Sector ${sectorName(index)}`}
       onPointerDown={(event) => event.stopPropagation()}
@@ -211,8 +262,6 @@ function FactoryMenu({ index, left, top, flip, onClose }: { index: number; left:
 export function SurfaceMap({ base, children }: { base: Base; children?: ReactNode }) {
   const { superclusterSeed, galaxySeed, systemId, ring } = base;
   const seed = useMemo(() => surfaceSeed({ superclusterSeed, galaxySeed, systemId, ring }), [superclusterSeed, galaxySeed, systemId, ring]);
-  const blockers = useMemo(() => surfaceBlockers({ superclusterSeed, galaxySeed, systemId, ring }), [superclusterSeed, galaxySeed, systemId, ring]);
-  const grid = useMemo(() => blockerGrid(blockers), [blockers]);
   const [size, setSize] = useState<Size | null>(null);
   const [camera, setCamera] = useState<Camera>({ cx: BASE_SURFACE_COLS / 2, cy: BASE_SURFACE_ROWS / 2, cellPx: ZOOM_STAGES[0] });
   const [stage, setStage] = useState(0);
@@ -235,10 +284,11 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
     stageRef.current = stage;
   });
 
-  const paintPx = ZOOM_STAGES[stage] * PAINT_SCALE;
+  const pixelRatio = Math.min(MAX_PIXEL_RATIO, window.devicePixelRatio || 1);
+  const paintPx = Math.round(Math.max(ZOOM_STAGES[stage], size ? coverPx(size) : 0) * PAINT_SCALE * pixelRatio);
   const visible = useMemo(() => (size ? visibleTiles(view, size, paintPx) : []), [view, size, paintPx]);
   const wanted = useMemo(() => [{ key: OVERVIEW_KEY, region: WHOLE_MAP, cellPx: OVERVIEW_CELL_PX }, ...visible], [visible]);
-  const images = useTerrainTiles(base, seed, wanted);
+  const { images, grid } = useTerrainTiles(base, seed, wanted);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -290,6 +340,11 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
     animationFrame.current = requestAnimationFrame(step);
   };
 
+  const zoomRef = useRef(zoomTo);
+  useLayoutEffect(() => {
+    zoomRef.current = zoomTo;
+  });
+
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
@@ -298,7 +353,7 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
       if (event.deltaY === 0 || drag.current?.moved || event.timeStamp - lastWheel.current < WHEEL_STEP_MS) return;
       lastWheel.current = event.timeStamp;
       const rect = frame.getBoundingClientRect();
-      zoomTo(
+      zoomRef.current(
         stageRef.current + (event.deltaY < 0 ? 1 : -1),
         event.clientX - rect.left - rect.width / 2,
         event.clientY - rect.top - rect.height / 2,
@@ -306,7 +361,7 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
     };
     frame.addEventListener('wheel', onWheel, { passive: false });
     return () => frame.removeEventListener('wheel', onWheel);
-  });
+  }, []);
 
   const cellAt = (clientX: number, clientY: number): number | null => {
     const frame = frameRef.current;
@@ -321,12 +376,14 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, cx: view.cx, cy: view.cy, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) {
-      setHovered(cellAt(event.clientX, event.clientY));
+      const overOverlay = event.target instanceof Element && event.target.closest('[data-map-overlay]') !== null;
+      setHovered(overOverlay ? null : cellAt(event.clientX, event.clientY));
       return;
     }
     const dx = event.clientX - current.startX;
@@ -336,11 +393,16 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
       current.moved = true;
       animation.current = null;
       cancelAnimationFrame(animationFrame.current);
-      frameRef.current?.setPointerCapture(event.pointerId);
       setDragging(true);
       setHovered(null);
     }
-    setCamera((c) => ({ ...c, cx: current.cx - dx / c.cellPx, cy: current.cy - dy / c.cellPx }));
+    const bounds = sizeRef.current;
+    if (!bounds) return;
+    setCamera((c) => {
+      const cellPx = clampCamera(c, bounds).cellPx;
+      const panned = clampCamera({ ...c, cx: current.cx - dx / cellPx, cy: current.cy - dy / cellPx }, bounds);
+      return { ...c, cx: panned.cx, cy: panned.cy };
+    });
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -349,14 +411,14 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
     drag.current = null;
     if (current.moved) {
       setDragging(false);
-      setCamera((c) => (sizeRef.current ? clampCamera(c, sizeRef.current) : c));
       return;
     }
     if (event.type !== 'pointerup') return;
     const index = cellAt(event.clientX, event.clientY);
-    setSelected(index === null || grid[index] || index === selected ? null : index);
+    setSelected(index === null || !grid || grid[index] || index === selected ? null : index);
   };
 
+  const fallbacks = sharpestTiles(images);
   const width = size?.width ?? 0;
   const height = size?.height ?? 0;
   const offsetX = Math.round(width / 2 - view.cx * view.cellPx);
@@ -364,15 +426,11 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
   const px = view.cellPx;
   const overview = images.get(OVERVIEW_KEY);
 
-  const paintLevels = ZOOM_STAGES.map((stagePx) => stagePx * PAINT_SCALE);
   const tiles = visible.flatMap((tile) => {
-    const [, tx, ty] = tile.key.split(':').map(Number);
-    const sharpest = [paintPx, ...paintLevels.filter((level) => level !== paintPx).reverse()]
-      .map((cellPx) => tileAt(tx, ty, cellPx))
-      .find((candidate) => images.has(candidate.key));
-    if (!sharpest) return [];
-    const { col, row, cols, rows } = sharpest.region;
-    return [{ key: sharpest.key, image: images.get(sharpest.key)!, style: { left: col * px, top: row * px, width: cols * px, height: rows * px } }];
+    const { col, row, cols, rows } = tile.region;
+    const key = images.has(tile.key) ? tile.key : fallbacks.get(tilePosition(col / TILE_CELLS, row / TILE_CELLS));
+    if (!key) return [];
+    return [{ key, image: images.get(key)!, style: { left: col * px, top: row * px, width: cols * px, height: rows * px } }];
   });
 
   const marker = (index: number): CSSProperties => ({
@@ -386,13 +444,14 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
   if (selected !== null) {
     const col = selected % BASE_SURFACE_COLS;
     const row = Math.floor(selected / BASE_SURFACE_COLS);
-    const right = offsetX + (col + 1) * px + 6;
-    const flip = right + MENU_WIDTH_PX > width;
-    const top = Math.min(Math.max(8, height - MENU_HEIGHT_PX - 8), Math.max(8, offsetY + row * px));
-    menu = <FactoryMenu index={selected} flip={flip} left={flip ? width - (offsetX + col * px) + 6 : right} top={top} onClose={() => setSelected(null)} />;
+    const right = offsetX + (col + 1) * px + MENU_GAP_PX;
+    const beside = right + MENU_WIDTH_PX > width ? offsetX + col * px - MENU_GAP_PX - MENU_WIDTH_PX : right;
+    const left = Math.min(Math.max(MENU_INSET_PX, width - MENU_WIDTH_PX - MENU_INSET_PX), Math.max(MENU_INSET_PX, beside));
+    const top = Math.min(Math.max(MENU_INSET_PX, height - MENU_HEIGHT_PX - MENU_INSET_PX), Math.max(MENU_INSET_PX, offsetY + row * px));
+    menu = <FactoryMenu index={selected} left={left} top={top} onClose={() => setSelected(null)} />;
   }
 
-  const hoveredKind = hovered === null ? null : grid[hovered];
+  const hoveredKind = hovered === null || !grid ? null : grid[hovered];
   const layerStyle = {
     width: BASE_SURFACE_COLS * px,
     height: BASE_SURFACE_ROWS * px,
@@ -410,6 +469,11 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onLostPointerCapture={() => {
+        if (!drag.current) return;
+        drag.current = null;
+        setDragging(false);
+      }}
       onPointerLeave={() => setHovered(null)}
     >
       <div className="base-map-layer" style={layerStyle}>
@@ -421,14 +485,14 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
         )}
         {selected !== null && <div className="base-map-marker base-map-marker--selected" style={marker(selected)} />}
       </div>
-      {children}
+      <div className="base-map-overlays" data-map-overlay>{children}</div>
       {menu}
       {hovered !== null && (
-        <div className="base-map-readout">
-          Sector {sectorName(hovered)} · {hoveredKind ? BLOCKER_NAMES[hoveredKind] : 'Open ground'}
+        <div className="base-map-readout" data-map-overlay>
+          Sector {sectorName(hovered)} · {grid ? (hoveredKind ? BLOCKER_NAMES[hoveredKind] : 'Open ground') : 'Surveying…'}
         </div>
       )}
-      <div className="base-zoom" onPointerDown={(event) => event.stopPropagation()}>
+      <div className="base-zoom" data-map-overlay onPointerDown={(event) => event.stopPropagation()}>
         <button type="button" className="base-zoom-btn" disabled={stage === 0} onClick={() => zoomTo(stage - 1, 0, 0)} aria-label="Zoom out">−</button>
         <span className="base-zoom-level">×{ZOOM_STAGES[stage] / ZOOM_STAGES[0]}</span>
         <button

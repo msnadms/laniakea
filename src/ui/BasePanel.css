@@ -339,6 +339,10 @@
   will-change: transform;
 }
 
+.base-map-overlays {
+  display: contents;
+}
+
 .base-map-image {
   position: absolute;
   display: block;
@@ -616,4 +620,8 @@
   .base-activity {
     width: min(240px, calc(100% - 20px));
   }
+}
+
+.base-screen:focus {
+  outline: none;
 }

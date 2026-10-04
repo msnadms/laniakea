@@ -1,18 +1,28 @@
 import type { BaseAddress } from '../game/base';
-import { surfaceBlockers, surfaceSeed, type SurfaceBlocker } from '../game/baseSurface';
+import { encodeBlockers, surfaceSeed, surfaceWorld, type SurfaceWorld } from '../game/baseSurface';
 import { paintBaseTerrain, type TerrainRegion } from './baseTerrain';
 
-export type TerrainTileRequest = { key: string; address: BaseAddress; region: TerrainRegion; cellPx: number };
-export type TerrainTileResult = { key: string; width: number; height: number; pixels: Uint8ClampedArray<ArrayBuffer> };
+export type TerrainTileRequest = { key: string; address: BaseAddress; region: TerrainRegion; cellPx: number; withBlockers: boolean };
+export type TerrainTileResult = {
+  key: string;
+  seed: number;
+  width: number;
+  height: number;
+  pixels: Uint8ClampedArray<ArrayBuffer>;
+  blockers: Uint8Array<ArrayBuffer> | null;
+};
 
-let world: { seed: number; blockers: SurfaceBlocker[] } | null = null;
+let world: { seed: number; surface: SurfaceWorld } | null = null;
 
 self.onmessage = (event: MessageEvent<TerrainTileRequest>) => {
-  const { key, address, region, cellPx } = event.data;
+  const { key, address, region, cellPx, withBlockers } = event.data;
   const seed = surfaceSeed(address);
-  if (world?.seed !== seed) world = { seed, blockers: surfaceBlockers(address) };
-  const job = paintBaseTerrain(seed, world.blockers, region, cellPx);
+  if (world?.seed !== seed) world = { seed, surface: surfaceWorld(address) };
+  const blockers = withBlockers ? encodeBlockers(world.surface.blockers) : null;
+  const job = paintBaseTerrain(seed, world.surface, region, cellPx);
   while (!job.step(Infinity));
-  const result: TerrainTileResult = { key, width: job.image.width, height: job.image.height, pixels: job.image.data };
-  self.postMessage(result, { transfer: [job.image.data.buffer] });
+  const result: TerrainTileResult = { key, seed, width: job.image.width, height: job.image.height, pixels: job.image.data, blockers };
+  const transfer: ArrayBuffer[] = [job.image.data.buffer];
+  if (blockers) transfer.push(blockers.buffer);
+  self.postMessage(result, { transfer });
 };

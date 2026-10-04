@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   baseAlloyCapacity,
   baseCondensateCapacity,
@@ -52,6 +52,10 @@ const TABS: { id: BaseTab; label: string }[] = [
 
 const NUMERALS = ['0', 'I', 'II', 'III', 'IV', 'V'];
 
+const COLLECTED_NOTE_MS = 4000;
+
+const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
 const DEFENCE_GLYPHS: Record<DefenceKind, string> = { pointDefence: '✦', missile: '◆', railgun: '▲', shield: '⬡' };
 
 function whole(value: number): string {
@@ -103,6 +107,12 @@ function ResourceBar({ base, technology }: { base: Base; technology: number }) {
   const docked = ship !== null && home !== null && isDocked(ship, home);
   const { busy, error, run } = useAction();
   const [collected, setCollected] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (collected === null) return;
+    const timer = setTimeout(() => setCollected(null), COLLECTED_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [collected]);
 
   const collect = () => run(async () => setCollected(await collectCondensate()));
 
@@ -255,7 +265,7 @@ function SlotDetail({ base, slot, technology, now }: { base: Base; slot: SlotRef
             </div>
             <Cost cost={defenceCost(kind, 0)!} />
             <button type="button" className="base-action" disabled={refusal !== null || busy} onClick={() => run(() => placeDefence(slot, kind))}>
-              {refusal ?? 'Place'}
+              {busy ? 'Ordering…' : refusal ?? 'Place'}
             </button>
           </div>
         );
@@ -268,16 +278,24 @@ function SlotDetail({ base, slot, technology, now }: { base: Base; slot: SlotRef
 function Defences({ base, technology, now }: { base: Base; technology: number; now: number }) {
   const [selected, setSelected] = useState<SlotRef | null>(null);
   const [moving, setMoving] = useState(false);
+  const [arriving, setArriving] = useState<SlotRef | null>(null);
   const { error, run } = useAction();
   const selectedPlatform = selected ? platformAt(base.defences, selected) : undefined;
+  const awaitingMove = selected !== null && !selectedPlatform && sameSlot(arriving, selected);
 
   const pick = (slot: SlotRef) => {
     const occupant = platformAt(base.defences, slot);
+    setArriving(null);
     if (moving && selected && selectedPlatform && !occupant) {
       const from = selected;
       setMoving(false);
       setSelected(slot);
-      run(() => moveDefence(from, slot));
+      setArriving(slot);
+      run(() => moveDefence(from, slot).catch((err) => {
+        setArriving(null);
+        setSelected(from);
+        throw err;
+      }));
       return;
     }
     setMoving(false);
@@ -327,7 +345,13 @@ function Defences({ base, technology, now }: { base: Base; technology: number; n
             moving={moving} onMove={() => setMoving(!moving)}
           />
         )}
-        {selected && !selectedPlatform && <SlotDetail key={`${selected.orbit}-${selected.slot}`} base={base} slot={selected} technology={technology} now={now} />}
+        {awaitingMove && (
+          <div className="base-defence-detail">
+            <div className="base-card-name">{ORBIT_NAMES[selected.orbit]}, slot {selected.slot + 1}</div>
+            <div className="base-card-status">Moving platform…</div>
+          </div>
+        )}
+        {selected && !selectedPlatform && !awaitingMove && <SlotDetail key={`${selected.orbit}-${selected.slot}`} base={base} slot={selected} technology={technology} now={now} />}
         {error && <div className="base-error" role="alert">{error}</div>}
       </div>
     </div>
@@ -351,6 +375,8 @@ export function BasePanel() {
   const setTab = useBaseStore((s) => s.setTab);
   const technology = useTechStore((s) => s.technology);
   const live = useBase();
+  const screenRef = useRef<HTMLDivElement>(null);
+  const shown = open && live !== null;
 
   useEffect(() => {
     if (!open) return;
@@ -361,11 +387,42 @@ export function BasePanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, setOpen]);
 
+  useEffect(() => {
+    if (!shown) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    screenRef.current?.focus();
+    return () => previous?.focus();
+  }, [shown]);
+
   if (!open || !live) return null;
   const { base, now } = live;
 
+  const trapFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === event.currentTarget)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
-    <div className="base-screen" role="dialog" aria-modal="true" aria-label="Base">
+    <div
+      ref={screenRef}
+      className="base-screen"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Base"
+      tabIndex={-1}
+      onKeyDown={trapFocus}
+    >
       <header className="base-header">
         <div className="base-heading">
           <div className="base-title">{base.planetName}</div>
