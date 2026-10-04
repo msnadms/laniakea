@@ -152,7 +152,7 @@ export function SuperclusterWorld() {
     const [x, y, z] = getSuperclusterCoords(scSeed);
     pushAddress(buildAddressComponent(scName, x, y, z, 'supercluster'));
 
-    // Read dots directly from store — position/brightness never change, only the
+    // Read dots directly from store: position/brightness never change, only the
     // visited flag does, and the overlay below redraws that from its own ref.
     const initialDots = useGameStore.getState().supercluster.dots;
     const count = initialDots.length;

@@ -175,7 +175,7 @@ function CodexDrawer({ onClose }: { onClose: () => void }) {
       ) : (
         <>
           {deleteMode ? (
-            <div className="codex-forget-banner">Select entries to forget — this cannot be undone.</div>
+            <div className="codex-forget-banner">Select entries to forget. This cannot be undone.</div>
           ) : (
             <div className="codex-search">
               <input

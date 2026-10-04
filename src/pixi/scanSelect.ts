@@ -102,10 +102,10 @@ export function createScanSelect(app: Application, handlers: ScanSelectHandlers)
     drawMarker(centreX, centreY, color);
 
     label.text = aim === null
-      ? `${anchor.name} — drag out to set the sweep`
+      ? `Drag out from ${anchor.name} to set the sweep`
       : affordable
         ? `${aim.cost} negative-energy condensate`
-        : `${aim.cost} negative-energy condensate — insufficient`;
+        : `${aim.cost} negative-energy condensate, not enough`;
     label.style.fill = color;
     label.position.set(centreX, centreY - (aim?.screenRadius ?? TICK_PX) - 10);
     label.visible = true;

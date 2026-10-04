@@ -198,7 +198,7 @@ export function createNeutronStarTexture(seed: number): Texture {
   ctx.fillStyle = coreGrad;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  // Pulsar jets — two opposing beams at a seeded angle
+  // Pulsar jets: two opposing beams at a seeded angle
   const jetAngle = rng() * Math.PI;
   ctx.globalCompositeOperation = 'lighter';
   for (let d = 0; d < 2; d++) {

@@ -93,7 +93,7 @@ export function initAuth(): () => void {
           loadAllDiscoveries(user.uid),
           loadAnomalies(user.uid),
         ]);
-        // localStorage nav is more recent than Firebase's debounced write — prefer
+        // localStorage nav is more recent than Firebase's debounced write, so prefer
         // it for galaxy/system/view when the entry is fresh (< 30s old).
         const localNav = loadNav(user.uid);
         const settings = localNav ? { ...userDoc.settings, ...localNav } : userDoc.settings;

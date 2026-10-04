@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Base } from '../game/base';
 
-export type BaseTab = 'overview' | 'buildings' | 'shipyard' | 'defences';
+export type BaseTab = 'surface' | 'defences';
 
 interface BaseState {
   base: Base | null;
@@ -20,13 +20,13 @@ export const useBaseStore = create<BaseState>((set) => ({
   base: null,
   loaded: false,
   open: false,
-  tab: 'overview',
+  tab: 'surface',
   claimed: {},
   setBase: (base) => set({ base, loaded: true }),
   setOpen: (open) => set({ open }),
   setTab: (tab) => set({ tab }),
   setClaimed: (systemKey, rings) => set((s) => ({ claimed: { ...s.claimed, [systemKey]: rings } })),
-  reset: () => set({ base: null, loaded: false, open: false, tab: 'overview', claimed: {} }),
+  reset: () => set({ base: null, loaded: false, open: false, tab: 'surface', claimed: {} }),
 }));
 
 export function systemKey(superclusterSeed: number, galaxySeed: number, systemId: number): string {

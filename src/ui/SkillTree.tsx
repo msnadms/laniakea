@@ -53,13 +53,13 @@ function effectLines(path: TechPath, index: number): string[] {
   const to = index + 1;
   switch (path) {
     case 'capacity':
-      return [`Tank ${tankCapacity(from)} → ${tankCapacity(to)} negative-energy condensate`];
+      return [`Tank ${tankCapacity(from)} to ${tankCapacity(to)} negative-energy condensate`];
     case 'speed':
-      return [`Top cruise ${topSpeed(from)} → ${topSpeed(to)} megaparsecs / s`];
+      return [`Top cruise ${topSpeed(from)} to ${topSpeed(to)} megaparsecs / s`];
     case 'scanning':
       return [
-        `Contact spread ${percent(scanPrecisionFactor(from))} → ${percent(scanPrecisionFactor(to))}`,
-        `False readings ${percent(scanDecoyFactor(from))} → ${percent(scanDecoyFactor(to))}`,
+        `Contact spread ${percent(scanPrecisionFactor(from))} to ${percent(scanPrecisionFactor(to))}`,
+        `False readings ${percent(scanDecoyFactor(from))} to ${percent(scanDecoyFactor(to))}`,
       ];
   }
 }
@@ -108,7 +108,7 @@ function Detail({ selection, levels, technology }: { selection: Selection; level
 
   return (
     <div className={`skill-detail skill-detail--${state}`}>
-      <div className="skill-detail-kicker">{TECH_TREE[path].title} · {NUMERALS[index]}</div>
+      <div className="skill-detail-kicker">{TECH_TREE[path].title} {NUMERALS[index]}</div>
       <div className="skill-detail-name">{node.name}</div>
       <p className="skill-detail-blurb">{node.blurb}</p>
       <ul className="skill-detail-effects">

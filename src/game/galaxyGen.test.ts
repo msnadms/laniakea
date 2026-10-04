@@ -4,8 +4,8 @@ import { GALAXY_RADIUS, POPULATION_SCALE_HEIGHT } from './constants';
 
 // [seed, star count, identity digest, geometry digest].
 //
-// The identity digest covers every field the seed-to-galaxy contract fixes — id,
-// name, star type, size, per-system seed and arm — and is carried over unchanged
+// The identity digest covers every field the seed-to-galaxy contract fixes (id,
+// name, star type, size, per-system seed and arm) and is carried over unchanged
 // from the build before the projected view, so a shift in the primary RNG
 // sequence fails here. The geometry digest covers x, y and the sampled height,
 // and is re-baselined whenever the tilt, the ellipticity range or the population

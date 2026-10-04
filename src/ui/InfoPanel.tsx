@@ -37,7 +37,7 @@ const STAR_TYPES: StarTypeEntry[] = [
     mass: '1.0-1.4 M☉',
     lifetime: '2-7 Gyr',
     abundance: 'Common',
-    lore: 'Slightly more luminous than solar-type stars with elevated UV output. The higher radiation flux may accelerate biological mutation — or sterilize worlds entirely.',
+    lore: 'Slightly more luminous than solar-type stars with elevated UV output. The higher radiation flux may accelerate biological mutation, or sterilize worlds entirely.',
   },
   {
     key: 'G',
@@ -47,7 +47,7 @@ const STAR_TYPES: StarTypeEntry[] = [
     mass: '0.8-1.1 M☉',
     lifetime: '8-12 Gyr',
     abundance: 'Common',
-    lore: 'The archetype of stable, habitable-zone stars. Long-lived and consistent across their main sequence — the most surveyed class for life-bearing worlds.',
+    lore: 'The archetype of stable, habitable-zone stars. Long-lived and consistent across their main sequence, and the most surveyed class for life-bearing worlds.',
   },
   {
     key: 'K',
@@ -67,7 +67,7 @@ const STAR_TYPES: StarTypeEntry[] = [
     mass: '0.08-0.45 M☉',
     lifetime: '>100 Gyr',
     abundance: 'Abundant',
-    lore: 'The most common stellar class — over 70% of all stars. Trillion-year lifespans, but intense UV flares and tidal locking of the habitable zone impose severe constraints on surface life.',
+    lore: 'The most common stellar class, making up over 70% of all stars. Trillion-year lifespans, but intense UV flares and tidal locking of the habitable zone impose severe constraints on surface life.',
   },
   {
     key: 'L',
@@ -77,9 +77,9 @@ const STAR_TYPES: StarTypeEntry[] = [
     mass: '13-80 MJ',
     lifetime: 'Indefinite',
     abundance: 'Rare',
-    lore: 'Failed stars — objects with enough mass to briefly fuse deuterium, but never sufficient to sustain hydrogen burning. They are not truly stars, nor planets. They cool indefinitely: after billions of years their outer atmospheres layer with iron vapor, silicate dust, and clouds of liquid iron droplets that rain downward through pressure gradients of extreme depth. They emit no visible light — only a dim infrared glow detectable only by spectroscopic survey. Found at the galactic fringe, drifting alone beyond the reach of stellar nurseries, they are among the oldest and coldest objects in the galaxy.',
+    lore: 'Failed stars: objects with enough mass to briefly fuse deuterium, but never sufficient to sustain hydrogen burning. They are not truly stars, nor planets. They cool indefinitely: after billions of years their outer atmospheres layer with iron vapor, silicate dust, and clouds of liquid iron droplets that rain downward through pressure gradients of extreme depth. They emit no visible light, only a dim infrared glow detectable only by spectroscopic survey. Found at the galactic fringe, drifting alone beyond the reach of stellar nurseries, they are among the oldest and coldest objects in the galaxy.',
     notes: [
-      'Invisible to naked-eye observation — infrared only',
+      'Invisible to naked-eye observation, infrared only',
       'Atmospheres stratified with iron cloud decks and silicate rain',
       'Surface gravity 10-100x Earth despite sub-stellar mass',
     ],
@@ -92,7 +92,7 @@ const STAR_TYPES: StarTypeEntry[] = [
     mass: '1.4-2.1 M☉',
     lifetime: '>10 Gyr (cooling)',
     abundance: 'Very Rare',
-    lore: 'The collapsed remnant of a massive star following a core-collapse supernova. When a star exceeding 8 solar masses exhausts its nuclear fuel, the core implodes in milliseconds — the outer layers rebound in a catastrophic explosion, leaving behind an object roughly 20 kilometers in diameter that contains more mass than the Sun.\n\nNeutron star matter is compressed beyond atomic limits: electrons are forced into protons, producing a dense fluid of neutrons packed so tightly that a single teaspoon would mass approximately one billion tonnes. Their surfaces spin hundreds of times per second; focused electromagnetic radiation escapes the magnetic poles as sweeping pulsar beams detectable across the galaxy.',
+    lore: 'The collapsed remnant of a massive star following a core-collapse supernova. When a star exceeding 8 solar masses exhausts its nuclear fuel, the core implodes in milliseconds and the outer layers rebound in a catastrophic explosion, leaving behind an object roughly 20 kilometers in diameter that contains more mass than the Sun.\n\nNeutron star matter is compressed beyond atomic limits: electrons are forced into protons, producing a dense fluid of neutrons packed so tightly that a single teaspoon would mass approximately one billion tonnes. Their surfaces spin hundreds of times per second; focused electromagnetic radiation escapes the magnetic poles as sweeping pulsar beams detectable across the galaxy.',
     notes: [
       'Diameter ~20 km - smaller than most cities',
       'Surface gravity 200 billion times Earth standard',
@@ -139,7 +139,7 @@ function StarTypesView() {
                   <div className="info-star-notes">
                     <div className="info-star-notes-title">Survey Notes</div>
                     {s.notes.map((n, i) => (
-                      <div key={i} className="info-star-note">— {n}</div>
+                      <div key={i} className="info-star-note">{n}</div>
                     ))}
                   </div>
                 )}
@@ -205,13 +205,13 @@ function AnomaliesView() {
                 <div className="info-star-stats">
                   <InfoStat label="Tier" value={lore.tier} />
                   <InfoStat label="Catalogued" value={String(found.length)} />
-                  <InfoStat label="First Found" value={`${first.systemName} · ${first.galaxyName}`} />
+                  <InfoStat label="First Found" value={`${first.systemName}, ${first.galaxyName}`} />
                   <InfoStat label="Supercluster" value={first.superclusterName} />
                 </div>
                 <div className="info-star-notes">
                   <div className="info-star-notes-title">Survey Notes</div>
                   {lore.notes.map((note) => (
-                    <div key={note} className="info-star-note">— {note}</div>
+                    <div key={note} className="info-star-note">{note}</div>
                   ))}
                 </div>
               </div>

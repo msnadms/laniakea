@@ -150,5 +150,5 @@ export function sweepFinding(
 export function sweepOutcome(finding: ScanFinding | null): { text: string; strength: number | null } {
   if (!finding) return { text: 'No contact', strength: null };
   if (finding.sources > 0) return { text: 'Contact', strength: finding.strength };
-  return { text: finding.confidence >= 1 ? 'No contact — volume swept' : 'No contact — volume sampled', strength: null };
+  return { text: finding.confidence >= 1 ? 'No contact in the swept volume' : 'No contact in the sampled volume', strength: null };
 }

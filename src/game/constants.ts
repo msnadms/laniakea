@@ -50,7 +50,7 @@ export const BARRED_TWIST_MIN = 1.1;
 export const BARRED_TWIST_MAX = 1.9;
 
 // A bar is old yellow stars, not a glowing gas lane, so its clouds are sparse and
-// almost never take the white core palette — otherwise they read as a solid white
+// almost never take the white core palette, otherwise they read as a solid white
 // slab lying across the galaxy.
 export const BAR_CLOUD_DENSITY = 0.1;
 export const BAR_CLOUD_NEBULA_CHANCE = 0.95;
@@ -663,6 +663,15 @@ export const BASE_WORLD_POPULATION_PER_RADIUS = 5;
 export const BASE_WORLD_POPULATION_PER_MOON = 15;
 export const BASE_WORLD_SIPHON_BASE = 1;
 export const BASE_WORLD_SIPHON_PER_MOON = 0.5;
+export const BASE_SURFACE_COLS = 128;
+export const BASE_SURFACE_ROWS = 64;
+export const BASE_SURFACE_BLOCKER_CLUSTERS_MIN = 40;
+export const BASE_SURFACE_BLOCKER_CLUSTERS_MAX = 70;
+export const BASE_SURFACE_BLOCKER_CLUSTER_CELLS_MIN = 3;
+export const BASE_SURFACE_BLOCKER_CLUSTER_CELLS_MAX = 14;
+export const BASE_SURFACE_OCEAN_MIN = 0.5;
+export const BASE_SURFACE_OCEAN_MAX = 0.68;
+export const BASE_SURFACE_CONTINENT_SCALE = 24;
 
 export const DEFENCE_ORBIT_SLOTS = [6, 8, 10];
 export const DEFENCE_LEVEL_ALLOY_FACTORS = [1, 2, 4, 8, 16];

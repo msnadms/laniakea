@@ -27,7 +27,7 @@ function failureText(err: unknown): string {
   if (err instanceof ApiError && err.status === 402) return 'Not enough negative-energy condensate';
   if (err instanceof ApiError && err.status === 429) return 'Probes still away';
   console.error('sweep failed:', err);
-  return 'Probes lost — sweep failed';
+  return 'Probes lost, sweep failed';
 }
 
 export function startSweep(scope: ScanScope, sphere: ScanSphere, superclusterSeed: number | null): PendingSweep {

@@ -85,7 +85,7 @@ export function animateZoomTo(
   return () => stopZoomTick(tick);
 }
 
-// startScaleMult < 1 → zoom-in (camera position fixed); > 1 → zoom-out (pinX/Y pinned to screen center).
+// startScaleMult < 1 zooms in (camera position fixed); > 1 zooms out (pinX/Y pinned to screen center).
 export function animateIntro(
   camera: { current: { x: number; y: number; scale: number } },
   world: Container,

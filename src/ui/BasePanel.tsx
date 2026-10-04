@@ -8,10 +8,7 @@ import {
   hangarUsed,
   placeDefence as planPlaceDefence,
   populationCapacity,
-  queueShip as planQueueShip,
-  shipCost,
   siphonRate,
-  upgradeBuilding as planUpgradeBuilding,
   upgradeDefence as planUpgradeDefence,
   type Base,
   type Outcome,
@@ -19,14 +16,12 @@ import {
 import {
   builderSlots,
   BUILDING_KINDS,
-  buildingCost,
   BUILDINGS,
   hangarCapacity,
   platformLimit,
-  type BuildingKind,
   type LevelCost,
 } from '../game/baseBuildings';
-import { BASE_MAX_LEVEL, DEFENCE_ORBIT_SLOTS } from '../game/constants';
+import { DEFENCE_ORBIT_SLOTS } from '../game/constants';
 import {
   DEFENCE_KINDS,
   defenceCost,
@@ -39,20 +34,19 @@ import {
   type SlotRef,
 } from '../game/defences';
 import { isDocked } from '../game/fuel';
-import { SHIP_CLASSES, SHIPS, type ShipClass } from '../game/ships';
+import { SHIP_CLASSES, SHIPS } from '../game/ships';
 import { locateSupercluster } from '../game/universe';
 import { formatDuration, useBase } from '../hooks/useBase';
 import { ApiError } from '../net/api';
-import { collectCondensate, moveDefence, placeDefence, queueShip, upgradeBuilding, upgradeDefence } from '../net/base';
+import { collectCondensate, moveDefence, placeDefence, upgradeDefence } from '../net/base';
 import { useBaseStore, type BaseTab } from '../store/baseStore';
 import { useFuelStore } from '../store/fuelStore';
 import { useTechStore } from '../store/techStore';
+import { SurfaceMap } from './BaseSurfaceMap';
 import './BasePanel.css';
 
 const TABS: { id: BaseTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'buildings', label: 'Buildings' },
-  { id: 'shipyard', label: 'Shipyard' },
+  { id: 'surface', label: 'Surface' },
   { id: 'defences', label: 'Defences' },
 ];
 
@@ -92,195 +86,100 @@ function Cost({ cost }: { cost: LevelCost }) {
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+function Stat({ label, value, sub, children }: { label: string; value: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
     <div className="base-stat">
-      <div className="base-stat-label">{label}</div>
-      <div className="base-stat-value">{value}</div>
-      {sub && <div className="base-stat-sub">{sub}</div>}
+      <span className="base-stat-label">{label}</span>
+      <span className="base-stat-value">{value}</span>
+      {sub && <span className="base-stat-sub">{sub}</span>}
+      {children}
     </div>
   );
 }
 
-function Overview({ base, now }: { base: Base; now: number }) {
+function ResourceBar({ base, technology }: { base: Base; technology: number }) {
   const ship = useFuelStore((s) => s.ship);
   const home = locateSupercluster(base.superclusterSeed);
   const docked = ship !== null && home !== null && isDocked(ship, home);
   const { busy, error, run } = useAction();
   const [collected, setCollected] = useState<number | null>(null);
-  const building = BUILDING_KINDS.filter((kind) => base.buildings[kind].readyAt !== null);
-  const platforms = base.defences.filter((platform) => platform.readyAt !== null);
 
   const collect = () => run(async () => setCollected(await collectCondensate()));
 
   return (
-    <div className="base-overview">
-      <div className="base-stats">
-        <Stat label="Alloys" value={`${whole(base.alloys)} / ${whole(baseAlloyCapacity(base))}`} sub={`+${whole(alloyRate(base))} per hour`} />
-        <Stat
-          label="Negative-energy condensate"
-          value={`${base.condensate.toFixed(1)} / ${baseCondensateCapacity(base)}`}
-          sub={`+${siphonRate(base).toFixed(1)} per hour`}
-        />
-        <Stat label="Population" value={`${whole(base.population)} / ${populationCapacity(base)}`} sub={`World carries ${base.quality.populationCap}`} />
-        <Stat label="Crew assigned" value={`${crewUsed(base)} / ${whole(base.population)}`} />
-        <Stat label="Construction crews" value={`${buildersBusy(base)} / ${builderSlots(base.buildings.command.level)} busy`} />
-        <Stat label="Hangar" value={`${hangarUsed(base)} / ${hangarCapacity(base.buildings.hangar.level)} hull units`} />
-      </div>
-
-      <section className="base-section">
-        <div className="base-section-title">Collect</div>
-        <p className="base-note">
-          Negative-energy condensate from the siphon waits in the vault until the ship docks at {base.superclusterName} to take it aboard.
-        </p>
-        <button type="button" className="base-action" disabled={!docked || busy || base.condensate < 0.1} onClick={collect}>
-          {docked ? busy ? 'Transferring…' : 'Transfer to ship' : `Dock at ${base.superclusterName} to collect`}
+    <div className="base-resources">
+      <Stat label="Alloys" value={`${whole(base.alloys)} / ${whole(baseAlloyCapacity(base))}`} sub={`+${whole(alloyRate(base))}/h`} />
+      <Stat
+        label="Negative-energy condensate"
+        value={`${base.condensate.toFixed(1)} / ${baseCondensateCapacity(base)}`}
+        sub={`+${siphonRate(base).toFixed(1)}/h`}
+      >
+        <button
+          type="button"
+          className="base-collect"
+          disabled={!docked || busy || base.condensate < 0.1}
+          onClick={collect}
+          title={docked ? 'Take the vault’s negative-energy condensate aboard the ship' : `Dock at ${base.superclusterName} to collect`}
+        >
+          {busy ? 'Transferring…' : 'Transfer to ship'}
         </button>
-        {collected !== null && <div className="base-note">{collected.toFixed(1)} negative-energy condensate taken aboard.</div>}
-        {error && <div className="base-error" role="alert">{error}</div>}
-      </section>
-
-      <section className="base-section">
-        <div className="base-section-title">Under construction</div>
-        {building.length === 0 && platforms.length === 0 && base.shipQueue.length === 0 && <p className="base-note">Nothing is being built.</p>}
-        <ul className="base-list">
-          {building.map((kind) => (
-            <li key={kind}>
-              <span>{BUILDINGS[kind].name} {NUMERALS[base.buildings[kind].level + 1]}</span>
-              <span>{formatDuration(base.buildings[kind].readyAt! - now)}</span>
-            </li>
-          ))}
-          {platforms.map((platform) => (
-            <li key={`${platform.orbit}-${platform.slot}`}>
-              <span>{DEFENCES[platform.kind].name} {NUMERALS[platform.level + 1]}</span>
-              <span>{formatDuration(platform.readyAt! - now)}</span>
-            </li>
-          ))}
-          {base.shipQueue.map((queued, i) => (
-            <li key={i}>
-              <span>{SHIPS[queued.shipClass].name}</span>
-              <span>{formatDuration(queued.readyAt - now)}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="base-section">
-        <div className="base-section-title">Fleet</div>
-        <ul className="base-list">
-          {SHIP_CLASSES.map((shipClass) => (
-            <li key={shipClass}><span>{SHIPS[shipClass].name}s</span><span>{base.fleet[shipClass]}</span></li>
-          ))}
-        </ul>
-      </section>
+        {collected !== null && <span className="base-stat-sub">+{collected.toFixed(1)} aboard</span>}
+        {error && <span className="base-error" role="alert">{error}</span>}
+      </Stat>
+      <Stat label="Advanced technology" value={technology} />
+      <Stat label="Population" value={`${whole(base.population)} / ${populationCapacity(base)}`} />
+      <Stat label="Crew" value={`${crewUsed(base)} / ${whole(base.population)}`} />
+      <Stat label="Construction crews" value={`${buildersBusy(base)} / ${builderSlots(base.buildings.command.level)}`} />
+      <Stat label="Hangar" value={`${hangarUsed(base)} / ${hangarCapacity(base.buildings.hangar.level)}`} />
     </div>
   );
 }
 
-function effectLine(base: Base, kind: BuildingKind): string {
-  const level = base.buildings[kind].level;
-  const next = Math.min(level + 1, BASE_MAX_LEVEL);
-  switch (kind) {
-    case 'command':
-      return `Crews ${builderSlots(level)} → ${builderSlots(next)} · Platforms ${platformLimit(level)} → ${platformLimit(next)}`;
-    case 'refinery':
-      return `Alloys ${base.quality.alloyRate * level} → ${base.quality.alloyRate * next} per hour`;
-    case 'siphon':
-      return `Condensate ${(base.quality.siphonRate * level).toFixed(1)} → ${(base.quality.siphonRate * next).toFixed(1)} per hour`;
-    case 'vault':
-      return 'Holds more alloys and negative-energy condensate';
-    case 'habitat':
-      return `Room for more people, up to the world's ${base.quality.populationCap}`;
-    case 'shipyard':
-      return next >= 4 ? 'Cruisers from level IV' : next >= 2 ? 'Destroyers from level II' : 'Corvettes from level I';
-    case 'hangar':
-      return `${hangarCapacity(level)} → ${hangarCapacity(next)} hull units`;
-  }
-}
+function Activity({ base, now }: { base: Base; now: number }) {
+  const building = BUILDING_KINDS.filter((kind) => base.buildings[kind].readyAt !== null);
+  const platforms = base.defences.filter((platform) => platform.readyAt !== null);
+  const fleet = SHIP_CLASSES.filter((shipClass) => base.fleet[shipClass] > 0);
+  const constructing = building.length > 0 || platforms.length > 0 || base.shipQueue.length > 0;
+  if (!constructing && fleet.length === 0) return null;
 
-function BuildingCard({ base, kind, technology, now }: { base: Base; kind: BuildingKind; technology: number; now: number }) {
-  const { busy, error, run } = useAction();
-  const construction = base.buildings[kind];
-  const cost = buildingCost(kind, construction.level);
-  const refusal = refusalOf(planUpgradeBuilding(base, kind, technology, now));
   return (
-    <div className="base-card">
-      <div className="base-card-head">
-        <span className="base-card-name">{BUILDINGS[kind].name}</span>
-        <span className="base-card-level">{NUMERALS[construction.level]}</span>
-      </div>
-      <p className="base-card-blurb">{BUILDINGS[kind].blurb}</p>
-      {cost && <div className="base-card-effect">{effectLine(base, kind)}</div>}
-      {construction.readyAt !== null ? (
-        <div className="base-card-status">Building {NUMERALS[construction.level + 1]} · {formatDuration(construction.readyAt - now)}</div>
-      ) : cost ? (
-        <>
-          <Cost cost={cost} />
-          <button type="button" className="base-action" disabled={refusal !== null || busy} onClick={() => run(() => upgradeBuilding(kind))}>
-            {busy ? 'Ordering…' : refusal ?? `Build ${NUMERALS[construction.level + 1]}`}
-          </button>
-        </>
-      ) : (
-        <div className="base-card-status">Fully built</div>
+    <div className="base-activity" onPointerDown={(event) => event.stopPropagation()}>
+      {constructing && (
+        <section>
+          <div className="base-section-title">Under construction</div>
+          <ul className="base-list">
+            {building.map((kind) => (
+              <li key={kind}>
+                <span>{BUILDINGS[kind].name} {NUMERALS[base.buildings[kind].level + 1]}</span>
+                <span>{formatDuration(base.buildings[kind].readyAt! - now)}</span>
+              </li>
+            ))}
+            {platforms.map((platform) => (
+              <li key={`${platform.orbit}-${platform.slot}`}>
+                <span>{DEFENCES[platform.kind].name} {NUMERALS[platform.level + 1]}</span>
+                <span>{formatDuration(platform.readyAt! - now)}</span>
+              </li>
+            ))}
+            {base.shipQueue.map((queued, i) => (
+              <li key={i}>
+                <span>{SHIPS[queued.shipClass].name}</span>
+                <span>{formatDuration(queued.readyAt - now)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-      {error && <div className="base-error" role="alert">{error}</div>}
+      {fleet.length > 0 && (
+        <section>
+          <div className="base-section-title">Fleet</div>
+          <ul className="base-list">
+            {fleet.map((shipClass) => (
+              <li key={shipClass}><span>{SHIPS[shipClass].name}s</span><span>{base.fleet[shipClass]}</span></li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
-  );
-}
-
-function Buildings({ base, technology, now }: { base: Base; technology: number; now: number }) {
-  return (
-    <div className="base-grid">
-      {BUILDING_KINDS.map((kind) => <BuildingCard key={kind} base={base} kind={kind} technology={technology} now={now} />)}
-    </div>
-  );
-}
-
-function ShipCard({ base, shipClass, technology, now }: { base: Base; shipClass: ShipClass; technology: number; now: number }) {
-  const { busy, error, run } = useAction();
-  const spec = SHIPS[shipClass];
-  const refusal = refusalOf(planQueueShip(base, shipClass, technology, now));
-  return (
-    <div className="base-card">
-      <div className="base-card-head">
-        <span className="base-card-name">{spec.name}</span>
-        <span className="base-card-level">{base.fleet[shipClass]}</span>
-      </div>
-      <p className="base-card-blurb">{spec.blurb}</p>
-      <dl className="base-ship-stats">
-        <dt>Hull</dt><dd>{spec.hull}</dd>
-        <dt>Damage</dt><dd>{spec.damage}</dd>
-        <dt>Range</dt><dd>{spec.range}</dd>
-        <dt>Speed</dt><dd>{spec.speed}</dd>
-        <dt>Hull units</dt><dd>{spec.hullUnits}</dd>
-      </dl>
-      <Cost cost={shipCost(shipClass)} />
-      <button type="button" className="base-action" disabled={refusal !== null || busy} onClick={() => run(() => queueShip(shipClass))}>
-        {busy ? 'Ordering…' : refusal ?? 'Lay down hull'}
-      </button>
-      {error && <div className="base-error" role="alert">{error}</div>}
-    </div>
-  );
-}
-
-function Shipyard({ base, technology, now }: { base: Base; technology: number; now: number }) {
-  return (
-    <>
-      <div className="base-grid base-grid--three">
-        {SHIP_CLASSES.map((shipClass) => <ShipCard key={shipClass} base={base} shipClass={shipClass} technology={technology} now={now} />)}
-      </div>
-      <section className="base-section">
-        <div className="base-section-title">
-          Queue · {base.shipQueue.length} / {base.buildings.shipyard.level} · Hangar {hangarUsed(base)} / {hangarCapacity(base.buildings.hangar.level)}
-        </div>
-        {base.shipQueue.length === 0 && <p className="base-note">The slipways are empty.</p>}
-        <ul className="base-list">
-          {base.shipQueue.map((queued, i) => (
-            <li key={i}><span>{SHIPS[queued.shipClass].name}</span><span>{formatDuration(queued.readyAt - now)}</span></li>
-          ))}
-        </ul>
-      </section>
-    </>
   );
 }
 
@@ -322,7 +221,7 @@ function PlatformDetail({ base, platform, technology, now, moving, onMove }: {
         {stats.shield > 0 && <><dt>Shield</dt><dd>{stats.shield}</dd></>}
       </dl>
       {platform.readyAt !== null ? (
-        <div className="base-card-status">Building {NUMERALS[platform.level + 1]} · {formatDuration(platform.readyAt - now)}</div>
+        <div className="base-card-status">Building {NUMERALS[platform.level + 1]}, {formatDuration(platform.readyAt - now)} left</div>
       ) : (
         <>
           {cost && <Cost cost={cost} />}
@@ -466,21 +365,12 @@ export function BasePanel() {
   const { base, now } = live;
 
   return (
-    <div className="base-overlay" role="dialog" aria-modal="true" aria-label="Base" onClick={() => setOpen(false)}>
-      <div className="base-panel" onClick={(event) => event.stopPropagation()}>
-        <header className="base-header">
-          <div>
-            <div className="base-title">{base.planetName}</div>
-            <div className="base-subtitle">{base.systemName} · {base.galaxyName} · {base.superclusterName}</div>
-          </div>
-          <div className="base-balance">
-            <span className="base-balance-value">{whole(base.alloys)}</span>
-            <span className="base-balance-label">Alloys</span>
-            <span className="base-balance-value">{technology}</span>
-            <span className="base-balance-label">Advanced technology</span>
-          </div>
-          <button type="button" className="base-close" onClick={() => setOpen(false)} aria-label="Close base">✕</button>
-        </header>
+    <div className="base-screen" role="dialog" aria-modal="true" aria-label="Base">
+      <header className="base-header">
+        <div className="base-heading">
+          <div className="base-title">{base.planetName}</div>
+          <div className="base-subtitle">{base.systemName}, {base.galaxyName}, {base.superclusterName}</div>
+        </div>
         <nav className="base-tabs">
           {TABS.map(({ id, label }) => (
             <button key={id} type="button" className={`base-tab${tab === id ? ' base-tab--active' : ''}`} onClick={() => setTab(id)}>
@@ -488,12 +378,12 @@ export function BasePanel() {
             </button>
           ))}
         </nav>
-        <div className="base-body">
-          {tab === 'overview' && <Overview base={base} now={now} />}
-          {tab === 'buildings' && <Buildings base={base} technology={technology} now={now} />}
-          {tab === 'shipyard' && <Shipyard base={base} technology={technology} now={now} />}
-          {tab === 'defences' && <Defences base={base} technology={technology} now={now} />}
-        </div>
+        <button type="button" className="base-close" onClick={() => setOpen(false)} aria-label="Close base">✕</button>
+      </header>
+      <ResourceBar base={base} technology={technology} />
+      <div className="base-body">
+        {tab === 'surface' && <SurfaceMap base={base}><Activity base={base} now={now} /></SurfaceMap>}
+        {tab === 'defences' && <Defences base={base} technology={technology} now={now} />}
       </div>
     </div>
   );

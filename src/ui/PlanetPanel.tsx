@@ -53,7 +53,7 @@ export function PlanetPanel() {
         )}
 
         <div className="planet-panel-section-label">
-          {planet.moons.length > 0 ? `MOONS — ${planet.moons.length}` : 'NO MOONS'}
+          {planet.moons.length > 0 ? `${planet.moons.length} ${planet.moons.length === 1 ? 'MOON' : 'MOONS'}` : 'NO MOONS'}
         </div>
         {planet.moons.length > 0 && (
           <ul className="planet-panel-moons">

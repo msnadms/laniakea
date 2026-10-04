@@ -84,7 +84,7 @@ export function ProbePanel() {
         {progress ? (
           <div className="probe-panel-row">
             <span className="probe-panel-label">Probes away</span>
-            <span className="probe-panel-value">Surveying · {Math.round(progress.fraction * 100)}%</span>
+            <span className="probe-panel-value">Surveying {Math.round(progress.fraction * 100)}%</span>
             <div className="probe-panel-bar">
               <div
                 className="probe-panel-bar-fill"
