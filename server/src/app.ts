@@ -4,15 +4,14 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { CONDENSATE_PER_HOMEWORLD, SC_WORLD_HALF, SCAN_UNIVERSE_MAX_RADIUS, TECH_NODE_COSTS } from '../../src/game/constants';
 import { scanCost, type ScanScope } from '../../src/game/scan';
 import { sweepFinding } from '../../src/game/scanSurvey';
-import { moveDefence, placeDefence, queueShip, upgradeBuilding, upgradeDefence } from '../../src/game/base';
-import { isBuildingKind } from '../../src/game/baseBuildings';
+import { moveDefence, placeDefence, placeExtractor, removeDefence, removeExtractor } from '../../src/game/base';
+import type { SurfaceCell } from '../../src/game/baseSurface';
 import { isDefenceKind, type SlotRef } from '../../src/game/defences';
-import { isShipClass } from '../../src/game/ships';
 import { isTechPath, scanDecoyFactor, scanPrecisionFactor } from '../../src/game/tech';
 import { locateSupercluster } from '../../src/game/universe';
 import { deriveAnomalySeeds, galaxyInSupercluster, type AnomalyKey } from './anomalyKey';
 import { requireUser, type AuthedLocals } from './auth';
-import { act, claimedRings, collect, found, grantAlloys } from './base';
+import { act, claimedRings, found, surfaceDepositAt } from './base';
 import { catalogue, surveyGalaxy } from './catalogue';
 import { superclusterMark } from './debug';
 import { discover } from './discovery';
@@ -47,7 +46,6 @@ const TRAVEL_BUCKET = { capacity: 20, refillPerSecond: 1 };
 const RESEARCH_BUCKET = { capacity: 10, refillPerSecond: 0.5 };
 const BASE_BUCKET = { capacity: 20, refillPerSecond: 0.5 };
 const CLAIMED_BUCKET = { capacity: 10, refillPerSecond: 0.1 };
-const DEBUG_ALLOYS = 1000;
 
 function newScanId(): string {
   return `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
@@ -57,6 +55,12 @@ function slotParam(value: unknown, name: string): SlotRef {
   const raw = (value ?? {}) as { orbit?: unknown; slot?: unknown };
   if (!Number.isInteger(raw.orbit) || !Number.isInteger(raw.slot)) throw new HttpError(400, `${name} must have integer orbit and slot`);
   return { orbit: raw.orbit as number, slot: raw.slot as number };
+}
+
+function cellParam(value: unknown): SurfaceCell {
+  const raw = (value ?? {}) as { col?: unknown; row?: unknown };
+  if (!Number.isInteger(raw.col) || !Number.isInteger(raw.row)) throw new HttpError(400, 'col and row must be integers');
+  return { col: raw.col as number, row: raw.row as number };
 }
 
 function parseScope(value: unknown): ScanScope {
@@ -127,44 +131,37 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
     }));
   });
 
-  api.post('/base/build', async (req, res: Authed) => {
-    const kind = req.body?.kind;
-    if (!isBuildingKind(kind)) throw new HttpError(400, 'kind must be a building');
-    throttle(baseBuckets, res, 'Too many base requests');
-    res.json(await act(res.locals.uid, 'build', (base, technology, now) => upgradeBuilding(base, kind, technology, now)));
-  });
-
   api.post('/base/defence', async (req, res: Authed) => {
     const kind = req.body?.kind;
     if (!isDefenceKind(kind)) throw new HttpError(400, 'kind must be a defence');
     const slot = slotParam(req.body, 'slot');
     throttle(baseBuckets, res, 'Too many base requests');
-    res.json(await act(res.locals.uid, 'defence', (base, technology, now) => placeDefence(base, slot, kind, technology, now)));
+    res.json(await act(res.locals.uid, (base) => placeDefence(base, slot, kind)));
   });
 
-  api.post('/base/defence/upgrade', async (req, res: Authed) => {
+  api.post('/base/defence/remove', async (req, res: Authed) => {
     const slot = slotParam(req.body, 'slot');
     throttle(baseBuckets, res, 'Too many base requests');
-    res.json(await act(res.locals.uid, 'defenceUpgrade', (base, technology, now) => upgradeDefence(base, slot, technology, now)));
+    res.json(await act(res.locals.uid, (base) => removeDefence(base, slot)));
   });
 
   api.post('/base/defence/move', async (req, res: Authed) => {
     const from = slotParam(req.body?.from, 'from');
     const to = slotParam(req.body?.to, 'to');
     throttle(baseBuckets, res, 'Too many base requests');
-    res.json(await act(res.locals.uid, 'defenceMove', (base) => moveDefence(base, from, to)));
+    res.json(await act(res.locals.uid, (base) => moveDefence(base, from, to)));
   });
 
-  api.post('/base/ship', async (req, res: Authed) => {
-    const shipClass = req.body?.shipClass;
-    if (!isShipClass(shipClass)) throw new HttpError(400, 'shipClass must be corvette, destroyer or cruiser');
+  api.post('/base/extractor', async (req, res: Authed) => {
+    const cell = cellParam(req.body);
     throttle(baseBuckets, res, 'Too many base requests');
-    res.json(await act(res.locals.uid, 'ship', (base, technology, now) => queueShip(base, shipClass, technology, now)));
+    res.json(await act(res.locals.uid, (base) => placeExtractor(base, cell, surfaceDepositAt(base, cell), Date.now())));
   });
 
-  api.post('/base/collect', async (_req, res: Authed) => {
+  api.post('/base/extractor/remove', async (req, res: Authed) => {
+    const cell = cellParam(req.body);
     throttle(baseBuckets, res, 'Too many base requests');
-    res.json(await collect(res.locals.uid));
+    res.json(await act(res.locals.uid, (base) => removeExtractor(base, cell)));
   });
 
   api.get('/base/claimed/:superclusterSeed/:galaxySeed/:systemId', async (req, res: Authed) => {
@@ -291,10 +288,6 @@ export function createApp({ key, pool, devRoutes, corsOrigins }: AppOptions) {
 
     api.post('/debug/grant-technology', async (_req, res: Authed) => {
       res.json(await grantTechnology(res.locals.uid, TECH_NODE_COSTS[TECH_NODE_COSTS.length - 1]));
-    });
-
-    api.post('/debug/grant-alloys', async (_req, res: Authed) => {
-      res.json({ base: await grantAlloys(res.locals.uid, DEBUG_ALLOYS) });
     });
 
     api.post('/debug/marks', (req, res: Authed) => {

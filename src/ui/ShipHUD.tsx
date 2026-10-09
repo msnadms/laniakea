@@ -115,7 +115,42 @@ function AnomalyReadout() {
   );
 }
 
-function HudOutline() {
+const BUTTON_WIDTH = 78;
+const BUTTON_OVERLAP = 20;
+const PROBE_BUTTON_OFFSET = 38;
+const LEFT_BUTTON_EDGE = PROBE_BUTTON_OFFSET + BUTTON_WIDTH;
+const RIGHT_BUTTON_EDGE = BUTTON_WIDTH - BUTTON_OVERLAP;
+const LEFT_BUTTON_FOOT = LEFT_BUTTON_EDGE - BUTTON_WIDTH * 0.35;
+const RIGHT_BUTTON_FOOT = BUTTON_WIDTH * 0.65 - BUTTON_OVERLAP;
+const POD_GAP = 48;
+const POD_SIZE = 116;
+const BEZEL_RADIUS = 66;
+const INSET_PX = 5;
+const INSET_START_RATIO = 0.4;
+const CORNER_PX = 16;
+const TAB_HALF_PX = 46;
+const TAB_SLANT_PX = 8;
+const TAB_DEPTH_PX = 5;
+const RULER_STEP_PX = 12;
+const RULER_MAJOR_EVERY = 5;
+
+function bezelChord(dy: number): number {
+  return Math.sqrt(Math.max(0, BEZEL_RADIUS * BEZEL_RADIUS - dy * dy));
+}
+
+function rulerPath(from: number, to: number, y: number): string {
+  const center = (from + to) / 2;
+  const steps = Math.floor((to - from) / 2 / RULER_STEP_PX);
+  const marks: string[] = [];
+  for (let i = -steps; i <= steps; i++) {
+    const x = center + i * RULER_STEP_PX;
+    const length = i % RULER_MAJOR_EVERY === 0 ? 4 : 2;
+    marks.push(`M ${x} ${y} V ${y - length}`);
+  }
+  return marks.join(' ');
+}
+
+function HudFrame() {
   const ref = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
@@ -132,24 +167,89 @@ function HudOutline() {
   const w = Math.max(size.w, 1);
   const h = Math.max(size.h, 1);
   const top = h * HUD_TOP_RATIO;
+  const mid = h / 2;
+
+  const slantLength = Math.hypot(HUD_SLANT_PX, h - top);
+  const normalX = (h - top) / slantLength;
+  const normalY = -HUD_SLANT_PX / slantLength;
+  const innerLeft = (y: number) => INSET_PX * normalX + (y - top - INSET_PX * normalY) / (h - top) * HUD_SLANT_PX;
+  const innerTop = top + (h - top) * INSET_START_RATIO;
+  const innerBottom = h - INSET_PX;
+  const inner = [
+    `${innerLeft(innerTop)},${innerTop}`,
+    `${innerLeft(innerBottom)},${innerBottom}`,
+    `${w - innerLeft(innerBottom)},${innerBottom}`,
+    `${w - innerLeft(innerTop)},${innerTop}`,
+  ].join(' ');
+
+  const cornerUpX = HUD_SLANT_PX / slantLength * CORNER_PX;
+  const cornerUpY = (h - top) / slantLength * CORNER_PX;
+  const corners = [
+    `M ${HUD_SLANT_PX - cornerUpX} ${h - cornerUpY} L ${HUD_SLANT_PX} ${h} H ${HUD_SLANT_PX + CORNER_PX}`,
+    `M ${w - HUD_SLANT_PX + cornerUpX} ${h - cornerUpY} L ${w - HUD_SLANT_PX} ${h} H ${w - HUD_SLANT_PX - CORNER_PX}`,
+  ].join(' ');
+
+  const tab = [
+    `${w / 2 - TAB_HALF_PX},${h}`,
+    `${w / 2 - TAB_HALF_PX + TAB_SLANT_PX},${h + TAB_DEPTH_PX}`,
+    `${w / 2 + TAB_HALF_PX - TAB_SLANT_PX},${h + TAB_DEPTH_PX}`,
+    `${w / 2 + TAB_HALF_PX},${h}`,
+  ].join(' ');
+
+  const leftPod = -(LEFT_BUTTON_EDGE + POD_GAP + POD_SIZE / 2);
+  const rightPod = w + RIGHT_BUTTON_EDGE + POD_GAP + POD_SIZE / 2;
+  const topChord = bezelChord(mid - top);
+  const footChord = bezelChord(h - mid);
+  const conduits = [
+    `M ${-LEFT_BUTTON_EDGE} ${top} H ${leftPod + topChord}`,
+    `M ${-LEFT_BUTTON_FOOT} ${h} H ${leftPod + footChord}`,
+    `M ${w + RIGHT_BUTTON_EDGE} ${top} H ${rightPod - topChord}`,
+    `M ${w + RIGHT_BUTTON_FOOT} ${h} H ${rightPod - footChord}`,
+  ].join(' ');
+  const joints = [
+    [leftPod + topChord, top], [leftPod + footChord, h],
+    [rightPod - topChord, top], [rightPod - footChord, h],
+  ];
 
   return (
-    <svg ref={ref} className="hud-outline" viewBox={`0 0 ${w} ${h}`} xmlns="http://www.w3.org/2000/svg">
+    <svg ref={ref} className="hud-frame" viewBox={`0 0 ${w} ${h}`} xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      {[leftPod, rightPod].map((cx, i) => (
+        <g key={i}>
+          <circle className="hud-bezel hud-draw" cx={cx} cy={mid} r={BEZEL_RADIUS} pathLength={1} />
+          <path
+            className="hud-bezel-accent hud-draw"
+            pathLength={1}
+            d={`M ${cx - BEZEL_RADIUS * 0.5} ${mid - BEZEL_RADIUS * 0.866} A ${BEZEL_RADIUS} ${BEZEL_RADIUS} 0 0 1 ${cx + BEZEL_RADIUS * 0.5} ${mid - BEZEL_RADIUS * 0.866}`}
+          />
+          <path
+            className="hud-bezel-ticks"
+            d={`M ${cx} ${mid - BEZEL_RADIUS - 4} V ${mid - BEZEL_RADIUS} M ${cx} ${mid + BEZEL_RADIUS} V ${mid + BEZEL_RADIUS + 4} M ${cx - BEZEL_RADIUS - 4} ${mid} H ${cx - BEZEL_RADIUS} M ${cx + BEZEL_RADIUS} ${mid} H ${cx + BEZEL_RADIUS + 4}`}
+          />
+        </g>
+      ))}
+      <path className="hud-conduit hud-draw" d={conduits} pathLength={1} />
+      {joints.map(([x, y], i) => <circle key={i} className="hud-joint" cx={x} cy={y} r={1.5} />)}
+      <polyline className="hud-inner hud-draw" points={inner} pathLength={1} />
+      <path className="hud-ruler hud-draw" d={rulerPath(innerLeft(innerBottom) + CORNER_PX, w - innerLeft(innerBottom) - CORNER_PX, innerBottom)} pathLength={1} />
       <polyline
+        className="hud-edge hud-draw"
         points={`0,${top} ${HUD_SLANT_PX},${h} ${w - HUD_SLANT_PX},${h} ${w},${top}`}
-        fill="none"
-        stroke="rgba(0, 190, 230, 0.55)"
-        strokeWidth="1"
+        pathLength={1}
       />
-      <line x1="0" y1={top} x2={HUD_TICK_PX} y2={top} stroke="rgba(0, 210, 255, 0.7)" strokeWidth="1" />
-      <line x1={w} y1={top} x2={w - HUD_TICK_PX} y2={top} stroke="rgba(0, 210, 255, 0.7)" strokeWidth="1" />
+      <polyline className="hud-tab hud-draw" points={tab} pathLength={1} />
+      <path className="hud-corner hud-draw" d={corners} pathLength={1} />
+      <path className="hud-corner hud-draw" d={`M 0 ${top} H ${HUD_TICK_PX} M ${w} ${top} H ${w - HUD_TICK_PX}`} pathLength={1} />
     </svg>
   );
 }
 
 function HudPod({ side, children }: { side: 'left' | 'right'; children: ReactNode }) {
+  const offset = (side === 'left' ? LEFT_BUTTON_EDGE : RIGHT_BUTTON_EDGE) + POD_GAP;
   return (
-    <div className={`hud-pod hud-pod--${side}`}>
+    <div
+      className={`hud-pod hud-pod--${side}`}
+      style={side === 'left' ? { right: `calc(100% + ${offset}px)` } : { left: `calc(100% + ${offset}px)` }}
+    >
       {children}
     </div>
   );
@@ -158,6 +258,8 @@ function HudPod({ side, children }: { side: 'left' | 'right'; children: ReactNod
 export function ShipHUD() {
   return (
     <div className="ship-hud">
+      <div className="hud-glass" />
+      <HudFrame />
       <HudPod side="left">
         <FuelGauge />
       </HudPod>
@@ -167,7 +269,6 @@ export function ShipHUD() {
       <Codex />
       <ProbeButton />
       <NavBack />
-      <HudOutline />
       <div className="hud-header">Navigation</div>
       <AddressReadout />
       <AnomalyReadout />

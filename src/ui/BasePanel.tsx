@@ -1,31 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import {
-  baseAlloyCapacity,
-  baseCondensateCapacity,
-  alloyRate,
-  buildersBusy,
-  crewUsed,
-  hangarUsed,
-  placeDefence as planPlaceDefence,
-  populationCapacity,
-  siphonRate,
-  upgradeDefence as planUpgradeDefence,
-  type Base,
-  type Outcome,
-} from '../game/base';
-import {
-  builderSlots,
-  BUILDING_KINDS,
-  BUILDINGS,
-  hangarCapacity,
-  platformLimit,
-  type LevelCost,
-} from '../game/baseBuildings';
-import { DEFENCE_ORBIT_SLOTS } from '../game/constants';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { placeDefence as planPlaceDefence, type Base, type Outcome } from '../game/base';
+import { BASE_PLATFORM_LIMIT, DEFENCE_ORBIT_SLOTS } from '../game/constants';
 import {
   DEFENCE_KINDS,
-  defenceCost,
-  defenceStats,
   DEFENCES,
   ORBIT_NAMES,
   platformAt,
@@ -33,15 +10,9 @@ import {
   type Platform,
   type SlotRef,
 } from '../game/defences';
-import { isDocked } from '../game/fuel';
-import { SHIP_CLASSES, SHIPS } from '../game/ships';
-import { locateSupercluster } from '../game/universe';
-import { formatDuration, useBase } from '../hooks/useBase';
 import { ApiError } from '../net/api';
-import { collectCondensate, moveDefence, placeDefence, upgradeDefence } from '../net/base';
+import { moveDefence, placeDefence, removeDefence } from '../net/base';
 import { useBaseStore, type BaseTab } from '../store/baseStore';
-import { useFuelStore } from '../store/fuelStore';
-import { useTechStore } from '../store/techStore';
 import { SurfaceMap } from './BaseSurfaceMap';
 import './BasePanel.css';
 
@@ -50,17 +21,9 @@ const TABS: { id: BaseTab; label: string }[] = [
   { id: 'defences', label: 'Defences' },
 ];
 
-const NUMERALS = ['0', 'I', 'II', 'III', 'IV', 'V'];
-
-const COLLECTED_NOTE_MS = 4000;
-
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 const DEFENCE_GLYPHS: Record<DefenceKind, string> = { pointDefence: '✦', missile: '◆', railgun: '▲', shield: '⬡' };
-
-function whole(value: number): string {
-  return Math.floor(value).toLocaleString('en-US');
-}
 
 function refusalOf(outcome: Outcome): string | null {
   return outcome.ok ? null : outcome.refusal.message;
@@ -79,120 +42,6 @@ function useAction() {
   return { busy, error, run };
 }
 
-function Cost({ cost }: { cost: LevelCost }) {
-  return (
-    <div className="base-cost">
-      <span>{whole(cost.alloys)} alloys</span>
-      {cost.technology > 0 && <span>{cost.technology} advanced technology</span>}
-      {cost.crew > 0 && <span>{cost.crew} crew</span>}
-      <span>{formatDuration(cost.seconds * 1000)}</span>
-    </div>
-  );
-}
-
-function Stat({ label, value, sub, children }: { label: string; value: ReactNode; sub?: ReactNode; children?: ReactNode }) {
-  return (
-    <div className="base-stat">
-      <span className="base-stat-label">{label}</span>
-      <span className="base-stat-value">{value}</span>
-      {sub && <span className="base-stat-sub">{sub}</span>}
-      {children}
-    </div>
-  );
-}
-
-function ResourceBar({ base, technology }: { base: Base; technology: number }) {
-  const ship = useFuelStore((s) => s.ship);
-  const home = locateSupercluster(base.superclusterSeed);
-  const docked = ship !== null && home !== null && isDocked(ship, home);
-  const { busy, error, run } = useAction();
-  const [collected, setCollected] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (collected === null) return;
-    const timer = setTimeout(() => setCollected(null), COLLECTED_NOTE_MS);
-    return () => clearTimeout(timer);
-  }, [collected]);
-
-  const collect = () => run(async () => setCollected(await collectCondensate()));
-
-  return (
-    <div className="base-resources">
-      <Stat label="Alloys" value={`${whole(base.alloys)} / ${whole(baseAlloyCapacity(base))}`} sub={`+${whole(alloyRate(base))}/h`} />
-      <Stat
-        label="Negative-energy condensate"
-        value={`${base.condensate.toFixed(1)} / ${baseCondensateCapacity(base)}`}
-        sub={`+${siphonRate(base).toFixed(1)}/h`}
-      >
-        <button
-          type="button"
-          className="base-collect"
-          disabled={!docked || busy || base.condensate < 0.1}
-          onClick={collect}
-          title={docked ? 'Take the vault’s negative-energy condensate aboard the ship' : `Dock at ${base.superclusterName} to collect`}
-        >
-          {busy ? 'Transferring…' : 'Transfer to ship'}
-        </button>
-        {collected !== null && <span className="base-stat-sub">+{collected.toFixed(1)} aboard</span>}
-        {error && <span className="base-error" role="alert">{error}</span>}
-      </Stat>
-      <Stat label="Advanced technology" value={technology} />
-      <Stat label="Population" value={`${whole(base.population)} / ${populationCapacity(base)}`} />
-      <Stat label="Crew" value={`${crewUsed(base)} / ${whole(base.population)}`} />
-      <Stat label="Construction crews" value={`${buildersBusy(base)} / ${builderSlots(base.buildings.command.level)}`} />
-      <Stat label="Hangar" value={`${hangarUsed(base)} / ${hangarCapacity(base.buildings.hangar.level)}`} />
-    </div>
-  );
-}
-
-function Activity({ base, now }: { base: Base; now: number }) {
-  const building = BUILDING_KINDS.filter((kind) => base.buildings[kind].readyAt !== null);
-  const platforms = base.defences.filter((platform) => platform.readyAt !== null);
-  const fleet = SHIP_CLASSES.filter((shipClass) => base.fleet[shipClass] > 0);
-  const constructing = building.length > 0 || platforms.length > 0 || base.shipQueue.length > 0;
-  if (!constructing && fleet.length === 0) return null;
-
-  return (
-    <div className="base-activity" onPointerDown={(event) => event.stopPropagation()}>
-      {constructing && (
-        <section>
-          <div className="base-section-title">Under construction</div>
-          <ul className="base-list">
-            {building.map((kind) => (
-              <li key={kind}>
-                <span>{BUILDINGS[kind].name} {NUMERALS[base.buildings[kind].level + 1]}</span>
-                <span>{formatDuration(base.buildings[kind].readyAt! - now)}</span>
-              </li>
-            ))}
-            {platforms.map((platform) => (
-              <li key={`${platform.orbit}-${platform.slot}`}>
-                <span>{DEFENCES[platform.kind].name} {NUMERALS[platform.level + 1]}</span>
-                <span>{formatDuration(platform.readyAt! - now)}</span>
-              </li>
-            ))}
-            {base.shipQueue.map((queued, i) => (
-              <li key={i}>
-                <span>{SHIPS[queued.shipClass].name}</span>
-                <span>{formatDuration(queued.readyAt - now)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {fleet.length > 0 && (
-        <section>
-          <div className="base-section-title">Fleet</div>
-          <ul className="base-list">
-            {fleet.map((shipClass) => (
-              <li key={shipClass}><span>{SHIPS[shipClass].name}s</span><span>{base.fleet[shipClass]}</span></li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
-  );
-}
-
 const ORBIT_RADII = [30, 40, 48];
 
 function slotPosition({ orbit, slot }: SlotRef): { x: number; y: number } {
@@ -204,66 +53,44 @@ function sameSlot(a: SlotRef | null, b: SlotRef): boolean {
   return a !== null && a.orbit === b.orbit && a.slot === b.slot;
 }
 
-function PlatformDetail({ base, platform, technology, now, moving, onMove }: {
-  base: Base;
-  platform: Platform;
-  technology: number;
-  now: number;
-  moving: boolean;
-  onMove: () => void;
-}) {
+function PlatformDetail({ platform, moving, onMove }: { platform: Platform; moving: boolean; onMove: () => void }) {
   const { busy, error, run } = useAction();
-  const stats = defenceStats(platform.kind, Math.max(1, platform.level));
-  const cost = defenceCost(platform.kind, platform.level);
-  const refusal = refusalOf(planUpgradeDefence(base, platform, technology, now));
+  const spec = DEFENCES[platform.kind];
   return (
     <div className="base-defence-detail">
-      <div className="base-card-head">
-        <span className="base-card-name">{DEFENCES[platform.kind].name}</span>
-        <span className="base-card-level">{NUMERALS[platform.level]}</span>
-      </div>
+      <div className="base-card-name">{spec.name}</div>
       <div className="base-note">{ORBIT_NAMES[platform.orbit]}, slot {platform.slot + 1}</div>
-      <p className="base-card-blurb">{DEFENCES[platform.kind].blurb}</p>
+      <p className="base-card-blurb">{spec.blurb}</p>
       <dl className="base-ship-stats">
-        <dt>Hull</dt><dd>{stats.hull}</dd>
-        {stats.damage > 0 && <><dt>Damage</dt><dd>{stats.damage}</dd></>}
-        {stats.range > 0 && <><dt>Range</dt><dd>{stats.range}</dd></>}
-        {stats.shield > 0 && <><dt>Shield</dt><dd>{stats.shield}</dd></>}
+        <dt>Hull</dt><dd>{spec.hull}</dd>
+        {spec.damage > 0 && <><dt>Damage</dt><dd>{spec.damage}</dd></>}
+        {spec.range > 0 && <><dt>Range</dt><dd>{spec.range}</dd></>}
+        {spec.shield > 0 && <><dt>Shield</dt><dd>{spec.shield}</dd></>}
       </dl>
-      {platform.readyAt !== null ? (
-        <div className="base-card-status">Building {NUMERALS[platform.level + 1]}, {formatDuration(platform.readyAt - now)} left</div>
-      ) : (
-        <>
-          {cost && <Cost cost={cost} />}
-          {cost && (
-            <button type="button" className="base-action" disabled={refusal !== null || busy} onClick={() => run(() => upgradeDefence(platform))}>
-              {busy ? 'Ordering…' : refusal ?? `Upgrade to ${NUMERALS[platform.level + 1]}`}
-            </button>
-          )}
-          <button type="button" className={`base-action base-action--quiet${moving ? ' base-action--active' : ''}`} onClick={onMove}>
-            {moving ? 'Choose an empty slot…' : 'Move platform'}
-          </button>
-        </>
-      )}
+      <button type="button" className={`base-action base-action--quiet${moving ? ' base-action--active' : ''}`} onClick={onMove}>
+        {moving ? 'Choose an empty slot…' : 'Move platform'}
+      </button>
+      <button type="button" className="base-action base-action--quiet" disabled={busy} onClick={() => run(() => removeDefence(platform))}>
+        {busy ? 'Removing…' : 'Remove platform'}
+      </button>
       {error && <div className="base-error" role="alert">{error}</div>}
     </div>
   );
 }
 
-function SlotDetail({ base, slot, technology, now }: { base: Base; slot: SlotRef; technology: number; now: number }) {
+function SlotDetail({ base, slot }: { base: Base; slot: SlotRef }) {
   const { busy, error, run } = useAction();
   return (
     <div className="base-defence-detail">
       <div className="base-card-name">{ORBIT_NAMES[slot.orbit]}, slot {slot.slot + 1}</div>
-      <div className="base-note">{base.defences.length} / {platformLimit(base.buildings.command.level)} platforms</div>
+      <div className="base-note">{base.defences.length} / {BASE_PLATFORM_LIMIT} platforms</div>
       {DEFENCE_KINDS.map((kind) => {
-        const refusal = refusalOf(planPlaceDefence(base, slot, kind, technology, now));
+        const refusal = refusalOf(planPlaceDefence(base, slot, kind));
         return (
           <div key={kind} className="base-defence-option">
             <div className="base-card-head">
               <span className="base-card-name">{DEFENCE_GLYPHS[kind]} {DEFENCES[kind].name}</span>
             </div>
-            <Cost cost={defenceCost(kind, 0)!} />
             <button type="button" className="base-action" disabled={refusal !== null || busy} onClick={() => run(() => placeDefence(slot, kind))}>
               {busy ? 'Ordering…' : refusal ?? 'Place'}
             </button>
@@ -275,7 +102,7 @@ function SlotDetail({ base, slot, technology, now }: { base: Base; slot: SlotRef
   );
 }
 
-function Defences({ base, technology, now }: { base: Base; technology: number; now: number }) {
+function Defences({ base }: { base: Base }) {
   const [selected, setSelected] = useState<SlotRef | null>(null);
   const [moving, setMoving] = useState(false);
   const [arriving, setArriving] = useState<SlotRef | null>(null);
@@ -315,7 +142,6 @@ function Defences({ base, technology, now }: { base: Base; technology: number; n
           const classes = [
             'base-slot',
             platform ? `base-slot--${platform.kind}` : 'base-slot--empty',
-            platform && platform.readyAt !== null ? 'base-slot--building' : '',
             sameSlot(selected, ref) ? 'base-slot--selected' : '',
             moving && !platform ? 'base-slot--target' : '',
           ].filter(Boolean).join(' ');
@@ -332,16 +158,15 @@ function Defences({ base, technology, now }: { base: Base; technology: number; n
           <div className="base-defence-detail">
             <div className="base-card-name">Orbital layout</div>
             <p className="base-card-blurb">
-              Platforms hold three orbits around {base.planetName}. Select an empty slot to place one, or a platform to upgrade or move it.
-              Moving a finished platform costs nothing, so the layout can change as often as you like.
+              Platforms hold three orbits around {base.planetName}. Select an empty slot to place one, or a platform to move or remove it.
             </p>
-            <div className="base-note">{base.defences.length} / {platformLimit(base.buildings.command.level)} platforms</div>
+            <div className="base-note">{base.defences.length} / {BASE_PLATFORM_LIMIT} platforms</div>
           </div>
         )}
         {selected && selectedPlatform && (
           <PlatformDetail
             key={`${selected.orbit}-${selected.slot}`}
-            base={base} platform={selectedPlatform} technology={technology} now={now}
+            platform={selectedPlatform}
             moving={moving} onMove={() => setMoving(!moving)}
           />
         )}
@@ -351,7 +176,7 @@ function Defences({ base, technology, now }: { base: Base; technology: number; n
             <div className="base-card-status">Moving platform…</div>
           </div>
         )}
-        {selected && !selectedPlatform && !awaitingMove && <SlotDetail key={`${selected.orbit}-${selected.slot}`} base={base} slot={selected} technology={technology} now={now} />}
+        {selected && !selectedPlatform && !awaitingMove && <SlotDetail key={`${selected.orbit}-${selected.slot}`} base={base} slot={selected} />}
         {error && <div className="base-error" role="alert">{error}</div>}
       </div>
     </div>
@@ -373,10 +198,9 @@ export function BasePanel() {
   const tab = useBaseStore((s) => s.tab);
   const setOpen = useBaseStore((s) => s.setOpen);
   const setTab = useBaseStore((s) => s.setTab);
-  const technology = useTechStore((s) => s.technology);
-  const live = useBase();
+  const base = useBaseStore((s) => s.base);
   const screenRef = useRef<HTMLDivElement>(null);
-  const shown = open && live !== null;
+  const shown = open && base !== null;
 
   useEffect(() => {
     if (!open) return;
@@ -394,8 +218,7 @@ export function BasePanel() {
     return () => previous?.focus();
   }, [shown]);
 
-  if (!open || !live) return null;
-  const { base, now } = live;
+  if (!open || !base) return null;
 
   const trapFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Tab') return;
@@ -437,10 +260,9 @@ export function BasePanel() {
         </nav>
         <button type="button" className="base-close" onClick={() => setOpen(false)} aria-label="Close base">✕</button>
       </header>
-      <ResourceBar base={base} technology={technology} />
       <div className="base-body">
-        {tab === 'surface' && <SurfaceMap base={base}><Activity base={base} now={now} /></SurfaceMap>}
-        {tab === 'defences' && <Defences base={base} technology={technology} now={now} />}
+        {tab === 'surface' && <SurfaceMap base={base} />}
+        {tab === 'defences' && <Defences base={base} />}
       </div>
     </div>
   );

@@ -36,6 +36,15 @@
   stroke-width: 0.75;
 }
 
+.minimap-sweep {
+  fill: #00d8ff;
+}
+
+.minimap-sweep-edge {
+  stroke: rgba(0, 232, 255, 0.55);
+  stroke-width: 1;
+}
+
 .minimap-origin {
   fill: rgba(0, 190, 230, 0.6);
 }
@@ -71,4 +80,14 @@
 @keyframes minimap-pulse {
   from { transform: scale(0.75); opacity: 0.15; }
   to   { transform: scale(1.25); opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .minimap-sweep {
+    display: none;
+  }
+
+  .minimap-pulse {
+    animation: none;
+  }
 }

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { blockerGrid, cellIndex, decodeBlockers, encodeBlockers, surfaceBlockers, surfaceWorld } from './baseSurface';
-import { BASE_SURFACE_COLS, BASE_SURFACE_ROWS, BASE_SURFACE_OCEAN_MAX, BASE_SURFACE_OCEAN_MIN } from './constants';
+import { blockerGrid, cellIndex, decodeBlockers, depositGrid, encodeBlockers, surfaceBlockers, surfaceWorld } from './baseSurface';
+import {
+  BASE_DEPOSIT_CELLS_MAX,
+  BASE_DEPOSIT_COUNTS,
+  BASE_SURFACE_COLS,
+  BASE_SURFACE_ROWS,
+  BASE_SURFACE_OCEAN_MAX,
+  BASE_SURFACE_OCEAN_MIN,
+} from './constants';
+import { DEPOSIT_GRADES, DEPOSIT_RATE_PER_HOUR, gradeForScore, RESOURCE_KINDS } from './resources';
 
 const CELLS = BASE_SURFACE_COLS * BASE_SURFACE_ROWS;
 const WORLD = { superclusterSeed: 123456, galaxySeed: 98765, systemId: 42, ring: 2 };
@@ -86,5 +94,59 @@ describe('base surface', () => {
       }
       expect(largest / land).toBeGreaterThan(0.25);
     }
+  });
+
+  it('places the same deposits for the same world', () => {
+    expect(surfaceWorld(WORLD).deposits).toEqual(surfaceWorld({ ...WORLD }).deposits);
+  });
+
+  it('keeps every deposit on open ground, one deposit per cell', () => {
+    for (let systemId = 0; systemId < 30; systemId++) {
+      const { blockers, deposits } = surfaceWorld({ ...WORLD, systemId });
+      const blocked = blockerGrid(blockers);
+      const seen = new Set<number>();
+      for (const deposit of deposits) {
+        expect(deposit.cells.length).toBeGreaterThan(0);
+        expect(deposit.cells.length).toBeLessThanOrEqual(BASE_DEPOSIT_CELLS_MAX);
+        for (const cell of deposit.cells) {
+          const index = cellIndex(cell);
+          expect(blocked[index]).toBeNull();
+          expect(seen.has(index)).toBe(false);
+          seen.add(index);
+        }
+      }
+      const grid = depositGrid(deposits);
+      expect(Array.from(grid).filter((id) => id >= 0).length).toBe(seen.size);
+    }
+  });
+
+  it('gives every world each resource, within its count', () => {
+    for (let systemId = 0; systemId < 30; systemId++) {
+      const { deposits } = surfaceWorld({ ...WORLD, systemId });
+      for (const resource of RESOURCE_KINDS) {
+        const count = deposits.filter((deposit) => deposit.resource === resource).length;
+        expect(count).toBeGreaterThan(0);
+        expect(count).toBeLessThanOrEqual(BASE_DEPOSIT_COUNTS[resource][1]);
+      }
+    }
+  });
+
+  it('makes high grades rarer than low ones', () => {
+    const tally = Object.fromEntries(DEPOSIT_GRADES.map((grade) => [grade, 0]));
+    for (let systemId = 0; systemId < 60; systemId++) {
+      for (const { grade } of surfaceWorld({ ...WORLD, systemId }).deposits) tally[grade]++;
+    }
+    expect(tally.S).toBeGreaterThan(0);
+    expect(tally.S).toBeLessThan(tally.A);
+    expect(tally.A).toBeLessThan(tally.C);
+    expect(tally.C).toBeLessThan(tally.F);
+  });
+
+  it('pays more per hour the higher the grade', () => {
+    for (let at = 1; at < DEPOSIT_GRADES.length; at++) {
+      expect(DEPOSIT_RATE_PER_HOUR[DEPOSIT_GRADES[at - 1]]).toBeGreaterThan(DEPOSIT_RATE_PER_HOUR[DEPOSIT_GRADES[at]]);
+    }
+    expect(gradeForScore(1)).toBe('S');
+    expect(gradeForScore(0)).toBe('F');
   });
 });

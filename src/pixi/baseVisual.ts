@@ -7,7 +7,6 @@ import { addSystemPoints, orbitPoint, projectSystemPointWithBasis, type Point3D,
 const ORBIT_FACTORS = [1.9, 2.35, 2.8];
 const ORBIT_SPEEDS = [0.22, 0.16, 0.11];
 const PLATFORM_SIZE = 3.2;
-const BUILDING_ALPHA = 0.45;
 const NO_PLATFORMS: readonly Platform[] = [];
 
 const PLATFORM_COLORS: Record<DefenceKind, number> = {
@@ -19,7 +18,6 @@ const PLATFORM_COLORS: Record<DefenceKind, number> = {
 
 interface PlatformNode {
   node: Graphics;
-  readyAt: number | null;
   orbit: number;
   slot: number;
   local: Point3D;
@@ -66,7 +64,6 @@ export function createBaseVisual(scene: Container, planetRadius: number): BaseVi
       scene.addChild(node);
       return {
         node,
-        readyAt: platform.readyAt,
         orbit: platform.orbit,
         slot: platform.slot,
         local: { x: 0, y: 0, z: 0 },
@@ -81,9 +78,7 @@ export function createBaseVisual(scene: Container, planetRadius: number): BaseVi
     update(planet, basis, elapsed) {
       const defences = useBaseStore.getState().base?.defences ?? NO_PLATFORMS;
       if (defences !== shown) rebuild(defences);
-      const now = Date.now();
       for (const platform of nodes) {
-        platform.node.alpha = platform.readyAt !== null && platform.readyAt > now ? BUILDING_ALPHA : 1;
         const radius = planetRadius * ORBIT_FACTORS[platform.orbit];
         const angle = (platform.slot / DEFENCE_ORBIT_SLOTS[platform.orbit]) * Math.PI * 2 + elapsed * ORBIT_SPEEDS[platform.orbit];
         orbitPoint(angle, radius, 0, platform.local);

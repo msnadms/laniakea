@@ -76,6 +76,21 @@ export function fbm(noise: Noise3, x: number, y: number, z: number, octaves: num
   return sum / total;
 }
 
+export function bandLimitedFbm(noise: Noise3, x: number, y: number, z: number, octaves: number, maxFrequency: number) {
+  let sum = 0;
+  let amplitude = 0.5;
+  let total = 0;
+  let frequency = 1;
+  for (let octave = 0; octave < octaves; octave++) {
+    const keep = Math.min(1, Math.max(0, 2 - frequency / maxFrequency));
+    sum += (keep > 0 ? 0.5 + (noise(x * frequency, y * frequency, z * frequency) - 0.5) * keep : 0.5) * amplitude;
+    total += amplitude;
+    amplitude *= 0.5;
+    frequency *= 2.03;
+  }
+  return sum / total;
+}
+
 export function mix(a: Rgb, b: Rgb, t: number): Rgb {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }

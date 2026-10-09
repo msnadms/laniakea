@@ -1,5 +1,10 @@
 import type { BaseAddress } from './base';
 import {
+  BASE_DEPOSIT_CELLS_MAX,
+  BASE_DEPOSIT_CELLS_MIN,
+  BASE_DEPOSIT_COUNTS,
+  BASE_DEPOSIT_MIN_FAVOUR,
+  BASE_DEPOSIT_SPACING,
   BASE_SURFACE_COLS,
   BASE_SURFACE_HOTSPOTS_MAX,
   BASE_SURFACE_LAKE_MAX_FRACTION,
@@ -13,6 +18,7 @@ import {
   BASE_SURFACE_ROWS,
 } from './constants';
 import { createRng } from './galaxyGen';
+import { gradeForScore, RESOURCE_KINDS, type DepositGrade, type ResourceKind } from './resources';
 import type { Rng } from './types';
 
 export type BlockerKind = 'ocean' | 'ridge' | 'lake';
@@ -26,12 +32,26 @@ export interface SurfaceBlocker extends SurfaceCell {
   kind: BlockerKind;
 }
 
+export interface SurfaceDeposit {
+  resource: ResourceKind;
+  grade: DepositGrade;
+  cells: SurfaceCell[];
+}
+
 export interface SurfaceWorld {
   elevation: Float32Array;
   moisture: Float32Array;
   flow: Float32Array;
   downstream: Int32Array;
   blockers: SurfaceBlocker[];
+  deposits: SurfaceDeposit[];
+}
+
+interface Tectonics {
+  uplift: Float32Array;
+  boundaryDistance: Float64Array;
+  volcanic: Float32Array;
+  rift: Float32Array;
 }
 
 interface Plate {
@@ -245,7 +265,7 @@ function chooseContinents(rng: Rng, plates: Plate[], owner: Int32Array, landFrac
   }
 }
 
-function tectonicUplift(rng: Rng, plates: Plate[], owner: Int32Array): Float32Array {
+function tectonicUplift(rng: Rng, plates: Plate[], owner: Int32Array): Tectonics {
   const convergence = new Float32Array(CELLS);
   const other = new Int32Array(CELLS).fill(-1);
   const distance = new Float64Array(CELLS).fill(Infinity);
@@ -280,6 +300,8 @@ function tectonicUplift(rng: Rng, plates: Plate[], owner: Int32Array): Float32Ar
 
   const arcs = valueNoise(rng, 3);
   const uplift = new Float32Array(CELLS);
+  const volcanic = new Float32Array(CELLS);
+  const rift = new Float32Array(CELLS);
   for (let index = 0; index < CELLS; index++) {
     if (other[index] === -1) continue;
     const self = plates[owner[index]];
@@ -293,23 +315,26 @@ function tectonicUplift(rng: Rng, plates: Plate[], owner: Int32Array): Float32Ar
         uplift[index] = push * (0.9 * kernel(d - 1, 4) + 0.3 * kernel(d, 10));
       } else if (self.continental) {
         uplift[index] = push * 0.85 * kernel(d - 2.5, 3.2);
+        volcanic[index] = push * kernel(d - 3.5, 4);
       } else if (them.continental) {
         uplift[index] = -push * 0.35 * kernel(d, 2.5);
       } else if (owner[index] < other[index]) {
         uplift[index] = push * 0.75 * kernel(d - 2, 2) * (0.35 + arcs(col, row) * 1.1);
+        volcanic[index] = push * kernel(d - 2, 2.5);
       } else {
         uplift[index] = -push * 0.3 * kernel(d, 2);
       }
     } else if (self.continental && them.continental) {
       uplift[index] = push * 0.4 * kernel(d, 2.2);
+      rift[index] = -push * kernel(d, 6);
     } else if (!self.continental) {
       uplift[index] = -push * 0.22 * kernel(d, 3.5);
     }
   }
-  return uplift;
+  return { uplift, boundaryDistance: distance, volcanic, rift };
 }
 
-function hotspots(rng: Rng, plates: Plate[], owner: Int32Array, elevation: Float32Array) {
+function hotspots(rng: Rng, plates: Plate[], owner: Int32Array, elevation: Float32Array, volcanic: Float32Array) {
   const count = between(rng, 0, BASE_SURFACE_HOTSPOTS_MAX);
   for (let spot = 0; spot < count; spot++) {
     const x = rng() * COLS;
@@ -326,7 +351,9 @@ function hotspots(rng: Rng, plates: Plate[], owner: Int32Array, elevation: Float
         for (let col = Math.max(0, Math.floor(cx - 3)); col < Math.min(COLS, cx + 3); col++) {
           const dx = col + 0.5 - cx;
           const dy = row + 0.5 - cy;
-          elevation[row * COLS + col] += peak * kernel(Math.sqrt(dx * dx + dy * dy), 1.6);
+          const lift = peak * kernel(Math.sqrt(dx * dx + dy * dy), 1.6);
+          elevation[row * COLS + col] += lift;
+          volcanic[row * COLS + col] += lift * 1.5;
         }
       }
     }
@@ -408,6 +435,140 @@ function drainage(elevation: Float32Array, moisture: Float32Array) {
   return { filled, downstream, flow };
 }
 
+interface DepositGeology {
+  elevation: Float32Array;
+  moisture: Float32Array;
+  flow: Float32Array;
+  crust: Float32Array;
+  open: Uint8Array;
+  tectonics: Tectonics;
+}
+
+type Favour = Record<ResourceKind, Float32Array>;
+
+function coastDistance(elevation: Float32Array): Int32Array {
+  const distance = new Int32Array(CELLS).fill(-1);
+  const queue: number[] = [];
+  for (let index = 0; index < CELLS; index++) {
+    if (elevation[index] >= 0) continue;
+    distance[index] = 0;
+    queue.push(index);
+  }
+  for (let at = 0; at < queue.length; at++) {
+    const index = queue[at];
+    eachNeighbour(index, (next) => {
+      if (distance[next] !== -1) return;
+      distance[next] = distance[index] + 1;
+      queue.push(next);
+    });
+  }
+  return distance;
+}
+
+function depositFavour(rng: Rng, { elevation, moisture, flow, crust, open, tectonics }: DepositGeology): Favour {
+  const { boundaryDistance, volcanic, rift } = tectonics;
+  const coast = coastDistance(elevation);
+  const patches = Object.fromEntries(RESOURCE_KINDS.map((resource) => [resource, valueNoise(rng, 5)])) as Record<ResourceKind, ReturnType<typeof valueNoise>>;
+  const favour = Object.fromEntries(RESOURCE_KINDS.map((resource) => [resource, new Float32Array(CELLS)])) as Favour;
+  for (let index = 0; index < CELLS; index++) {
+    if (!open[index]) continue;
+    const col = index % COLS;
+    const row = (index - col) / COLS;
+    const height = elevation[index];
+    const shore = coast[index] === -1 ? 0 : smooth(1 - (coast[index] - 1) / 7);
+    const lowland = 1 - smooth(height / 0.35);
+    favour.iron[index] = crust[index] * smooth((boundaryDistance[index] - 3) / 12) * (1 - smooth(height / 0.6));
+    favour.copper[index] = volcanic[index];
+    favour.oil[index] = lowland * Math.max(shore * 0.8, Math.min(1, rift[index]));
+    favour.silica[index] = Math.max(
+      1 - smooth(moisture[index] / 0.4),
+      coast[index] === 1 ? 0.6 : 0,
+      smooth((flow[index] - 5) / 25) * 0.6,
+    );
+    for (const resource of RESOURCE_KINDS) favour[resource][index] *= 0.4 + patches[resource](col, row);
+  }
+  for (const resource of RESOURCE_KINDS) {
+    const field = favour[resource];
+    let highest = 1e-6;
+    for (const value of field) if (value > highest) highest = value;
+    for (let index = 0; index < CELLS; index++) field[index] /= highest;
+  }
+  return favour;
+}
+
+function lowerBound(sorted: readonly number[], value: number): number {
+  let low = 0;
+  let high = sorted.length - 1;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (sorted[mid] < value) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function growPatch(rng: Rng, start: number, field: Float32Array, open: Uint8Array, taken: Uint8Array): SurfaceCell[] {
+  const size = between(rng, BASE_DEPOSIT_CELLS_MIN, BASE_DEPOSIT_CELLS_MAX);
+  const patch = [start];
+  taken[start] = 1;
+  while (patch.length < size) {
+    let best = -1;
+    let bestScore = -Infinity;
+    for (const index of patch) {
+      const col = index % COLS;
+      for (const next of [col > 0 ? index - 1 : -1, col < COLS - 1 ? index + 1 : -1, index - COLS, index + COLS]) {
+        if (next < 0 || next >= CELLS || !open[next] || taken[next]) continue;
+        const score = field[next] + rng() * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          best = next;
+        }
+      }
+    }
+    if (best === -1) break;
+    taken[best] = 1;
+    patch.push(best);
+  }
+  return patch.map((index) => ({ col: index % COLS, row: Math.floor(index / COLS) }));
+}
+
+function placeDeposits(rng: Rng, favour: Favour, open: Uint8Array): SurfaceDeposit[] {
+  const taken = new Uint8Array(CELLS);
+  const deposits: SurfaceDeposit[] = [];
+  const spacing = BASE_DEPOSIT_SPACING * BASE_DEPOSIT_SPACING;
+  for (const resource of RESOURCE_KINDS) {
+    const field = favour[resource];
+    const candidates: number[] = [];
+    const cumulative: number[] = [];
+    let total = 0;
+    for (let index = 0; index < CELLS; index++) {
+      if (!open[index] || field[index] < BASE_DEPOSIT_MIN_FAVOUR) continue;
+      total += field[index] * field[index] * field[index];
+      candidates.push(index);
+      cumulative.push(total);
+    }
+    if (candidates.length === 0) continue;
+    const [min, max] = BASE_DEPOSIT_COUNTS[resource];
+    const count = between(rng, min, max);
+    let placed = 0;
+    for (let tries = 0; placed < count && tries < count * 30; tries++) {
+      const start = candidates[lowerBound(cumulative, rng() * total)];
+      const col = start % COLS;
+      const row = (start - col) / COLS;
+      const crowded = taken[start] || deposits.some(({ cells: [centre] }) => {
+        const dc = centre.col - col;
+        const dr = centre.row - row;
+        return dc * dc + dr * dr < spacing;
+      });
+      if (crowded) continue;
+      const grade = gradeForScore(field[start] * 0.6 + rng() * 0.4);
+      deposits.push({ resource, grade, cells: growPatch(rng, start, field, open, taken) });
+      placed++;
+    }
+  }
+  return deposits;
+}
+
 export function surfaceWorld(address: BaseAddress): SurfaceWorld {
   const rng = createRng(surfaceSeed(address));
   const fraction = BASE_SURFACE_OCEAN_MIN + rng() * (BASE_SURFACE_OCEAN_MAX - BASE_SURFACE_OCEAN_MIN);
@@ -424,7 +585,8 @@ export function surfaceWorld(address: BaseAddress): SurfaceWorld {
   const owner = growPlates(rng, plates);
   chooseContinents(rng, plates, owner, 1 - fraction);
   const crust = boxBlur(boxBlur(Float32Array.from(owner, (id) => (plates[id].continental ? 1 : 0)), 3), 3);
-  const uplift = tectonicUplift(rng, plates, owner);
+  const tectonics = tectonicUplift(rng, plates, owner);
+  const { uplift } = tectonics;
   const octaves = [
     { amplitude: 0.55, noise: valueNoise(rng, 20) },
     { amplitude: 0.3, noise: valueNoise(rng, 10) },
@@ -439,7 +601,7 @@ export function surfaceWorld(address: BaseAddress): SurfaceWorld {
     for (const { amplitude, noise } of octaves) height += (noise(col, row) - 0.5) * amplitude;
     elevation[index] = height;
   }
-  hotspots(rng, plates, owner, elevation);
+  hotspots(rng, plates, owner, elevation, tectonics.volcanic);
 
   const seaLevel = quantile(elevation, fraction);
   let highest = 1e-6;
@@ -472,7 +634,11 @@ export function surfaceWorld(address: BaseAddress): SurfaceWorld {
     const kind: BlockerKind | null = elevation[index] < 0 ? 'ocean' : lakes.has(index) ? 'lake' : elevation[index] >= ridgeLevel ? 'ridge' : null;
     if (kind) blockers.push({ col, row, kind });
   }
-  return { elevation, moisture, flow, downstream, blockers };
+  const open = new Uint8Array(CELLS).fill(1);
+  for (const blocker of blockers) open[cellIndex(blocker)] = 0;
+  const favour = depositFavour(rng, { elevation, moisture, flow, crust, open, tectonics });
+  const deposits = placeDeposits(rng, favour, open);
+  return { elevation, moisture, flow, downstream, blockers, deposits };
 }
 
 export function surfaceBlockers(address: BaseAddress): SurfaceBlocker[] {
@@ -495,4 +661,16 @@ export function encodeBlockers(blockers: readonly SurfaceBlocker[]): Uint8Array<
 
 export function decodeBlockers(codes: Uint8Array): (BlockerKind | null)[] {
   return Array.from(codes, (code) => BLOCKER_CODES[code]);
+}
+
+export function depositGrid(deposits: readonly SurfaceDeposit[]): Int16Array {
+  const grid = new Int16Array(CELLS).fill(-1);
+  deposits.forEach((deposit, id) => {
+    for (const cell of deposit.cells) grid[cellIndex(cell)] = id;
+  });
+  return grid;
+}
+
+export function depositAt(deposits: readonly SurfaceDeposit[], { col, row }: SurfaceCell): SurfaceDeposit | null {
+  return deposits.find((deposit) => deposit.cells.some((cell) => cell.col === col && cell.row === row)) ?? null;
 }

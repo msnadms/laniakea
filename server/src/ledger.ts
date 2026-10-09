@@ -11,14 +11,12 @@ export type LedgerEntry =
   | { type: 'grant' }
   | { type: 'harvest'; x: number; y: number; z: number }
   | { type: 'travel'; distance: number; harvested: number; superclusterSeed: number | null }
-  | { type: 'collect'; key: string }
   | { type: 'found'; key: string };
 
 export type TechEntry =
   | { type: 'technology'; key: string; stage: number; living: boolean }
   | { type: 'research'; path: TechPath; level: number }
-  | { type: 'technologyGrant' }
-  | { type: 'base'; action: string };
+  | { type: 'technologyGrant' };
 
 export interface Ledger {
   condensate: number;

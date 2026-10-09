@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useFuelStore } from '../store/fuelStore';
-import { harvestPerHour } from '../game/fuel';
+import { harvestPerHour, travelReach } from '../game/fuel';
+import { fuelAtShip } from '../net/ship';
 import { tankCapacity } from '../game/tech';
 import { useTechStore } from '../store/techStore';
 import { formatCondensate, useFuel } from '../hooks/useFuel';
@@ -10,6 +11,8 @@ const NOTICE_MS = 5000;
 const SIZE = 116;
 const CENTER = SIZE / 2;
 const RING_RADIUS = 58;
+const SPIN_RADIUS = 61.5;
+const MLY_PER_GLY = 1000;
 const ARC_RADIUS = 46;
 const TICK_OUTER = 52;
 const TICK_MAJOR_INNER = 46;
@@ -40,6 +43,11 @@ function gaugeTicks(capacity: number) {
   });
 }
 
+function formatRange(mly: number): string {
+  if (mly >= MLY_PER_GLY) return `${(mly / MLY_PER_GLY).toFixed(1)} Gly`;
+  return `${Math.floor(mly)} Mly`;
+}
+
 export function FuelGauge() {
   const ship = useFuelStore((s) => s.ship);
   const notice = useFuelStore((s) => s.notice);
@@ -58,6 +66,7 @@ export function FuelGauge() {
   if (!ship) return null;
 
   const fraction = Math.min(1, Math.max(0, fuel / capacity));
+  const burn = Math.min(1 - fraction, Math.max(0, (fuelAtShip() - fuel) / capacity));
   const harvest = harvestPerHour(ship);
   const harvesting = fuel < capacity;
   const low = fuel < 1;
@@ -73,6 +82,10 @@ export function FuelGauge() {
       >
         <svg className="fuel-gauge-dial" width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
           <circle className="fuel-gauge-ring" cx={CENTER} cy={CENTER} r={RING_RADIUS - 0.5} />
+          <circle
+            className={harvesting ? 'fuel-gauge-spin fuel-gauge-spin--harvesting' : 'fuel-gauge-spin'}
+            cx={CENTER} cy={CENTER} r={SPIN_RADIUS}
+          />
           {ticks.map((tick, i) => (
             <line
               key={i}
@@ -86,9 +99,15 @@ export function FuelGauge() {
             d={ARC_PATH}
             strokeDasharray={`${ARC_LENGTH * fraction} ${ARC_LENGTH}`}
           />
+          <path
+            className="fuel-gauge-burn"
+            d={ARC_PATH}
+            strokeDasharray={`0 ${ARC_LENGTH * fraction} ${ARC_LENGTH * burn} ${ARC_LENGTH}`}
+          />
         </svg>
         <span className="fuel-gauge-readout" role="status" aria-label={`${formatCondensate(fuel)} negative-energy condensate`}>
           <span className="fuel-gauge-value">{formatCondensate(fuel)}</span>
+          <span className="fuel-gauge-range">Range {formatRange(travelReach(fuel))}</span>
           <span className={harvesting ? 'fuel-gauge-harvest' : 'fuel-gauge-harvest fuel-gauge-harvest--full'}>
             +{harvest.toFixed(1)} / h
           </span>

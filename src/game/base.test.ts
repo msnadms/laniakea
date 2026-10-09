@@ -1,42 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import {
-  baseAlloyCapacity,
-  foundBase,
-  freeCrew,
-  moveDefence,
-  placeDefence,
-  populationCapacity,
-  queueShip,
-  settleBase,
-  upgradeBuilding,
-  upgradeDefence,
-  worldQuality,
-  type Base,
-  type Outcome,
-} from './base';
-import { BUILDING_KINDS, buildingCost, platformLimit } from './baseBuildings';
-import { BASE_MAX_LEVEL, BASE_START_POPULATION } from './constants';
+import { baseOf, foundBase, moveDefence, placeDefence, placeExtractor, removeDefence, removeExtractor, type Base, type Outcome } from './base';
+import type { SurfaceDeposit } from './baseSurface';
+import { BASE_EXTRACTOR_LIMIT, BASE_PLATFORM_LIMIT, DEFENCE_ORBIT_SLOTS, EXTRACTOR_STORAGE } from './constants';
 import { DEFENCE_KINDS, validateLayout, type Platform } from './defences';
-import { generateSystemLayout, type PlanetLayout } from './planetGen';
-import { SHIPS } from './ships';
-import type { StarType } from './types';
+import { extractorStock, settleExtractor, stockByResource } from './extractors';
+import { DEPOSIT_RATE_PER_HOUR } from './resources';
 
-const HOUR = 3_600_000;
 const T0 = 1_700_000_000_000;
 
-function world(radius: number, moons: number): PlanetLayout {
-  return {
-    zone: 'habitable',
-    radius,
-    color: 0,
-    angle: 0,
-    orbitRadius: 500,
-    hasRings: false,
-    moons: Array.from({ length: moons }, () => ({ dist: 100, angle: 0, radius: 5, color: 0 })),
-  };
-}
-
-function newBase(radius = 32, moons = 1, starType: StarType = 'G'): Base {
+function newBase(): Base {
   return foundBase({
     superclusterSeed: 1,
     galaxySeed: 2,
@@ -46,7 +18,6 @@ function newBase(radius = 32, moons = 1, starType: StarType = 'G'): Base {
     systemName: 'Sys',
     galaxyName: 'Gal',
     superclusterName: 'Sc',
-    quality: worldQuality(world(radius, moons), starType),
   }, T0);
 }
 
@@ -55,164 +26,85 @@ function done(outcome: Outcome): Base {
   return outcome.base;
 }
 
-function rich(base: Base): Base {
-  return { ...base, alloys: 1e9, population: 1e4 };
+function slots(): { orbit: number; slot: number }[] {
+  return DEFENCE_ORBIT_SLOTS.flatMap((count, orbit) => Array.from({ length: count }, (_, slot) => ({ orbit, slot })));
 }
-
-function commanded(base: Base, level = 3): Base {
-  return { ...base, buildings: { ...base.buildings, command: { level, readyAt: null } } };
-}
-
-describe('world quality', () => {
-  it('rewards larger worlds, more moons and kinder stars', () => {
-    expect(worldQuality(world(40, 0), 'G').populationCap).toBeGreaterThan(worldQuality(world(24, 0), 'G').populationCap);
-    expect(worldQuality(world(30, 2), 'G').populationCap).toBeGreaterThan(worldQuality(world(30, 0), 'G').populationCap);
-    expect(worldQuality(world(30, 0), 'G').alloyRate).toBeGreaterThan(worldQuality(world(30, 0), 'K').alloyRate);
-    expect(worldQuality(world(30, 0), 'K').alloyRate).toBeGreaterThan(worldQuality(world(30, 0), 'M').alloyRate);
-    expect(worldQuality(world(30, 2), 'G').siphonRate).toBeGreaterThan(worldQuality(world(30, 0), 'G').siphonRate);
-  });
-
-  it('scores every generated habitable world within bounds', () => {
-    let seen = 0;
-    for (let seed = 1; seed < 4000 && seen < 50; seed++) {
-      for (const planet of generateSystemLayout(seed, 'G').planets) {
-        if (planet.zone !== 'habitable') continue;
-        seen++;
-        const quality = worldQuality(planet, 'G');
-        expect(quality.populationCap).toBeGreaterThanOrEqual(40);
-        expect(quality.populationCap).toBeLessThanOrEqual(200);
-        expect(quality.siphonRate).toBeGreaterThan(0);
-      }
-    }
-    expect(seen).toBeGreaterThan(0);
-  });
-});
-
-describe('settleBase', () => {
-  it('fills alloys up to the vault and no further', () => {
-    const settled = settleBase(newBase(), T0 + 1000 * HOUR);
-    expect(settled.alloys).toBe(baseAlloyCapacity(settled));
-  });
-
-  it('grows population toward its cap without passing it', () => {
-    const base = newBase();
-    const soon = settleBase(base, T0 + HOUR);
-    expect(soon.population).toBeGreaterThan(BASE_START_POPULATION);
-    const later = settleBase(base, T0 + 10_000 * HOUR);
-    expect(later.population).toBeLessThanOrEqual(populationCapacity(later));
-    expect(later.population).toBeCloseTo(populationCapacity(later), 3);
-  });
-
-  it('gives the same result settled in steps as settled once', () => {
-    let base = commanded(newBase());
-    base = done(upgradeBuilding({ ...base, alloys: 500 }, 'refinery', 0, T0));
-    base = { ...base, alloys: 0 };
-    const once = settleBase(base, T0 + 5 * HOUR);
-    let stepped = base;
-    for (let h = 1; h <= 50; h++) stepped = settleBase(stepped, T0 + h * HOUR / 10);
-    expect(stepped.alloys).toBeCloseTo(once.alloys, 6);
-    expect(stepped.population).toBeCloseTo(once.population, 6);
-    expect(stepped.buildings.refinery.level).toBe(once.buildings.refinery.level);
-  });
-
-  it('completes an upgrade exactly at readyAt and produces at the new rate after', () => {
-    const base = done(upgradeBuilding(commanded(rich(newBase())), 'refinery', 0, T0));
-    const readyAt = base.buildings.refinery.readyAt!;
-    expect(settleBase(base, readyAt - 1).buildings.refinery.level).toBe(1);
-    expect(settleBase(base, readyAt).buildings.refinery.level).toBe(2);
-    expect(settleBase(base, readyAt).buildings.refinery.readyAt).toBeNull();
-  });
-
-  it('launches queued ships in order', () => {
-    let base = rich(newBase());
-    base = { ...base, buildings: { ...base.buildings, shipyard: { level: 2, readyAt: null }, hangar: { level: 3, readyAt: null } } };
-    base = done(queueShip(base, 'corvette', 0, T0));
-    base = done(queueShip(base, 'destroyer', 0, T0));
-    expect(base.shipQueue[1].readyAt).toBe(T0 + (SHIPS.corvette.buildSeconds + SHIPS.destroyer.buildSeconds) * 1000);
-    const mid = settleBase(base, base.shipQueue[0].readyAt);
-    expect(mid.fleet).toEqual({ corvette: 1, destroyer: 0, cruiser: 0 });
-    const end = settleBase(base, base.shipQueue[1].readyAt);
-    expect(end.fleet).toEqual({ corvette: 1, destroyer: 1, cruiser: 0 });
-    expect(end.shipQueue).toHaveLength(0);
-  });
-});
-
-describe('building rules', () => {
-  it('prices every level dearer than the last and stops at the top', () => {
-    for (const kind of BUILDING_KINDS) {
-      for (let level = 1; level < BASE_MAX_LEVEL; level++) {
-        expect(buildingCost(kind, level)!.alloys).toBeGreaterThan(buildingCost(kind, level - 1)!.alloys);
-      }
-      expect(buildingCost(kind, BASE_MAX_LEVEL)).toBeNull();
-    }
-  });
-
-  it('caps buildings at the Command Nexus level', () => {
-    expect(upgradeBuilding(rich(newBase()), 'refinery', 0, T0).ok).toBe(false);
-    const raised = settleBase(done(upgradeBuilding(commanded(rich(newBase()), 2), 'refinery', 0, T0)), T0 + 100 * HOUR);
-    expect(raised.buildings.refinery.level).toBe(2);
-    expect(upgradeBuilding(raised, 'refinery', 0, T0 + 100 * HOUR).ok).toBe(false);
-  });
-
-  it('refuses when every builder is busy, or alloys run short', () => {
-    const busy = done(upgradeBuilding(rich(newBase()), 'command', 0, T0));
-    expect(upgradeBuilding(busy, 'vault', 0, T0).ok).toBe(false);
-    const poor = upgradeBuilding({ ...newBase(), alloys: 0 }, 'command', 0, T0);
-    expect(poor.ok).toBe(false);
-    if (!poor.ok) expect(poor.refusal.status).toBe(402);
-  });
-
-  it('needs crew for what it builds', () => {
-    const base = { ...commanded(rich(newBase())), population: 7 };
-    expect(freeCrew(base)).toBe(1);
-    expect(upgradeBuilding(base, 'refinery', 0, T0).ok).toBe(false);
-  });
-
-  it('refuses a cruiser without the shipyard, hangar and advanced technology', () => {
-    let base = rich(newBase());
-    expect(queueShip(base, 'cruiser', 5, T0).ok).toBe(false);
-    base = { ...base, buildings: { ...base.buildings, shipyard: { level: 4, readyAt: null }, hangar: { level: 2, readyAt: null } } };
-    expect(queueShip(base, 'cruiser', 0, T0).ok).toBe(false);
-    expect(queueShip(base, 'cruiser', 5, T0).ok).toBe(true);
-    const full = { ...base, fleet: { corvette: 5, destroyer: 0, cruiser: 0 } };
-    expect(queueShip(full, 'cruiser', 5, T0).ok).toBe(false);
-  });
-});
 
 describe('defences', () => {
-  it('places, upgrades and moves platforms', () => {
-    let base = rich(newBase());
-    base = done(placeDefence(base, { orbit: 0, slot: 2 }, 'pointDefence', 0, T0));
-    expect(placeDefence(base, { orbit: 0, slot: 2 }, 'missile', 0, T0).ok).toBe(false);
-    expect(moveDefence(base, { orbit: 0, slot: 2 }, { orbit: 1, slot: 0 }).ok).toBe(false);
-    base = settleBase(base, T0 + HOUR);
-    expect(base.defences[0].level).toBe(1);
-    expect(upgradeDefence(base, { orbit: 0, slot: 2 }, 0, T0 + HOUR).ok).toBe(false);
+  it('places, moves and removes platforms', () => {
+    let base = done(placeDefence(newBase(), { orbit: 0, slot: 2 }, 'pointDefence'));
+    expect(placeDefence(base, { orbit: 0, slot: 2 }, 'missile').ok).toBe(false);
     base = done(moveDefence(base, { orbit: 0, slot: 2 }, { orbit: 2, slot: 9 }));
-    expect(base.defences[0]).toMatchObject({ orbit: 2, slot: 9 });
-    expect(placeDefence(base, { orbit: 3, slot: 0 }, 'missile', 0, T0).ok).toBe(false);
+    expect(base.defences).toEqual([{ orbit: 2, slot: 9, kind: 'pointDefence' }]);
+    expect(moveDefence(base, { orbit: 0, slot: 2 }, { orbit: 1, slot: 0 }).ok).toBe(false);
+    expect(placeDefence(base, { orbit: 3, slot: 0 }, 'missile').ok).toBe(false);
+    base = done(removeDefence(base, { orbit: 2, slot: 9 }));
+    expect(base.defences).toEqual([]);
+    expect(removeDefence(base, { orbit: 2, slot: 9 }).ok).toBe(false);
   });
 
-  it('holds no more platforms than the Command Nexus allows', () => {
-    let base = rich(newBase());
-    for (let slot = 0; slot < platformLimit(1); slot++) {
-      base = settleBase(done(placeDefence(base, { orbit: 1, slot }, 'missile', 0, T0 + slot * HOUR)), T0 + (slot + 1) * HOUR);
-    }
-    expect(placeDefence(base, { orbit: 2, slot: 0 }, 'missile', 0, T0 + 10 * HOUR).ok).toBe(false);
-    expect(validateLayout(base.defences, platformLimit(1))).toBeNull();
-  });
-
-  it('gates railguns and shields behind the Command Nexus', () => {
-    const base = rich(newBase());
-    expect(placeDefence(base, { orbit: 0, slot: 0 }, 'railgun', 0, T0).ok).toBe(false);
-    expect(placeDefence(base, { orbit: 0, slot: 0 }, 'shield', 0, T0).ok).toBe(false);
+  it('holds no more than the platform limit', () => {
+    let base = newBase();
+    const free = slots();
+    for (let i = 0; i < BASE_PLATFORM_LIMIT; i++) base = done(placeDefence(base, free[i], DEFENCE_KINDS[i % DEFENCE_KINDS.length]));
+    expect(placeDefence(base, free[BASE_PLATFORM_LIMIT], 'missile').ok).toBe(false);
+    expect(validateLayout(base.defences)).toBeNull();
   });
 
   it('rejects bad layouts', () => {
-    const platform = (orbit: number, slot: number): Platform => ({ orbit, slot, kind: DEFENCE_KINDS[0], level: 1, readyAt: null });
-    expect(validateLayout([platform(0, 0), platform(0, 0)], 5)).not.toBeNull();
-    expect(validateLayout([platform(0, 6)], 5)).not.toBeNull();
-    expect(validateLayout([platform(0, 0), platform(1, 0)], 1)).not.toBeNull();
-    expect(validateLayout([platform(0, 5), platform(2, 9)], 2)).toBeNull();
+    const platform = ({ orbit, slot }: { orbit: number; slot: number }): Platform => ({ orbit, slot, kind: DEFENCE_KINDS[0] });
+    expect(validateLayout([platform({ orbit: 0, slot: 0 }), platform({ orbit: 0, slot: 0 })])).not.toBeNull();
+    expect(validateLayout([platform({ orbit: 0, slot: DEFENCE_ORBIT_SLOTS[0] })])).not.toBeNull();
+    expect(validateLayout(slots().slice(0, BASE_PLATFORM_LIMIT + 1).map(platform))).not.toBeNull();
+    expect(validateLayout([platform({ orbit: 0, slot: 5 }), platform({ orbit: 2, slot: 9 })])).toBeNull();
+  });
+
+  it('reads back only what a base holds', () => {
+    const stored = { ...done(placeDefence(newBase(), { orbit: 1, slot: 1 }, 'railgun')), alloys: 5, defences: [{ orbit: 1, slot: 1, kind: 'railgun', level: 2 }] };
+    expect(baseOf(stored)).toEqual({ ...newBase(), defences: [{ orbit: 1, slot: 1, kind: 'railgun' }] });
+  });
+});
+
+const HOUR = 3_600_000;
+const DEPOSIT: SurfaceDeposit = { resource: 'copper', grade: 'B', cells: [{ col: 4, row: 5 }] };
+
+describe('extractors', () => {
+  it('stands only on a free deposit cell', () => {
+    expect(placeExtractor(newBase(), { col: 4, row: 5 }, null, T0).ok).toBe(false);
+    expect(placeExtractor(newBase(), { col: -1, row: 5 }, DEPOSIT, T0).ok).toBe(false);
+    const base = done(placeExtractor(newBase(), { col: 4, row: 5 }, DEPOSIT, T0));
+    expect(base.extractors).toEqual([{ col: 4, row: 5, resource: 'copper', grade: 'B', stored: 0, settledAt: T0 }]);
+    expect(placeExtractor(base, { col: 4, row: 5 }, DEPOSIT, T0).ok).toBe(false);
+    expect(done(removeExtractor(base, { col: 4, row: 5 })).extractors).toEqual([]);
+    expect(removeExtractor(newBase(), { col: 4, row: 5 }).ok).toBe(false);
+  });
+
+  it('holds no more than the extractor limit', () => {
+    let base = newBase();
+    for (let col = 0; col < BASE_EXTRACTOR_LIMIT; col++) base = done(placeExtractor(base, { col, row: 0 }, DEPOSIT, T0));
+    expect(placeExtractor(base, { col: BASE_EXTRACTOR_LIMIT, row: 0 }, DEPOSIT, T0).ok).toBe(false);
+  });
+
+  it('extracts at its grade rate until its storage is full', () => {
+    const [extractor] = done(placeExtractor(newBase(), { col: 4, row: 5 }, DEPOSIT, T0)).extractors;
+    const rate = DEPOSIT_RATE_PER_HOUR.B;
+    expect(extractorStock(extractor, T0 - HOUR)).toBe(0);
+    expect(extractorStock(extractor, T0 + HOUR)).toBe(rate);
+    expect(extractorStock(extractor, T0 + HOUR / 2)).toBe(Math.floor(rate / 2));
+    expect(extractorStock(extractor, T0 + 1000 * HOUR)).toBe(EXTRACTOR_STORAGE);
+    expect(stockByResource([extractor, extractor], T0 + HOUR)).toEqual({ iron: 0, copper: 2 * rate, oil: 0, silica: 0 });
+  });
+
+  it('settles without losing a partial unit', () => {
+    const [extractor] = done(placeExtractor(newBase(), { col: 4, row: 5 }, DEPOSIT, T0)).extractors;
+    let settled = extractor;
+    for (let minute = 1; minute <= 180; minute += 7) settled = settleExtractor(settled, T0 + minute * 60_000);
+    expect(extractorStock(settled, T0 + 3 * HOUR)).toBe(extractorStock(extractor, T0 + 3 * HOUR));
+  });
+
+  it('reads back only well-formed extractors', () => {
+    const base = done(placeExtractor(newBase(), { col: 4, row: 5 }, DEPOSIT, T0));
+    const stored = { ...base, extractors: [...base.extractors, { col: 1, row: 1, resource: 'gold', grade: 'A', stored: 0, settledAt: T0 }] };
+    expect(baseOf(stored)).toEqual(base);
   });
 });

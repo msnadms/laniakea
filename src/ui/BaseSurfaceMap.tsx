@@ -8,9 +8,13 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import type { Base, BaseAddress } from '../game/base';
-import { decodeBlockers, surfaceSeed, type BlockerKind } from '../game/baseSurface';
-import { BASE_SURFACE_COLS, BASE_SURFACE_ROWS } from '../game/constants';
+import { placeExtractor as planPlaceExtractor, type Base, type BaseAddress } from '../game/base';
+import { decodeBlockers, depositGrid, surfaceSeed, type BlockerKind, type SurfaceCell, type SurfaceDeposit } from '../game/baseSurface';
+import { BASE_EXTRACTOR_LIMIT, BASE_SURFACE_COLS, BASE_SURFACE_ROWS, EXTRACTOR_STORAGE } from '../game/constants';
+import { extractorAt, extractorRate, extractorStock, stockByResource, type Extractor } from '../game/extractors';
+import { DEPOSIT_RATE_PER_HOUR, RESOURCE_KINDS, RESOURCE_NAMES } from '../game/resources';
+import { ApiError } from '../net/api';
+import { placeExtractor, removeExtractor } from '../net/base';
 import { WHOLE_MAP, type TerrainRegion } from '../pixi/baseTerrain';
 import type { TerrainTileRequest, TerrainTileResult } from '../pixi/baseTerrain.worker';
 
@@ -21,18 +25,102 @@ const TILE_CELLS = 8;
 const TERRAIN_WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 1));
 const PAINT_SCALE = 0.5;
 const MAX_PIXEL_RATIO = 2;
+const MIN_PAINT_CELL_PX = 24;
 const TILE_CACHE_PIXELS = 16_000_000;
 const ZOOM_MS = 260;
 const WHEEL_STEP_MS = 200;
 const DRAG_THRESHOLD_PX = 4;
 const MENU_WIDTH_PX = 240;
-const MENU_HEIGHT_PX = 180;
+const MENU_HEIGHT_PX = 250;
 const MENU_GAP_PX = 6;
 const MENU_INSET_PX = 8;
+const STOCK_TICK_MS = 1000;
 
 const NO_IMAGES: ReadonlyMap<string, ImageData> = new Map();
 
 type BlockerGrid = readonly (BlockerKind | null)[];
+
+interface Survey {
+  grid: BlockerGrid;
+  deposits: readonly SurfaceDeposit[];
+  depositCells: Int16Array;
+}
+
+function DepositCard({ deposit }: { deposit: SurfaceDeposit }) {
+  return (
+    <dl className={`base-deposit base-deposit--${deposit.resource}`}>
+      <dt>Deposit</dt>
+      <dd>{RESOURCE_NAMES[deposit.resource]}</dd>
+      <dt>Grade</dt>
+      <dd className="base-deposit-grade">{deposit.grade}</dd>
+      <dt>Yield</dt>
+      <dd>{DEPOSIT_RATE_PER_HOUR[deposit.grade]} per hour</dd>
+    </dl>
+  );
+}
+
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), STOCK_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function useOrder() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = (call: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    call()
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'The order could not be given'))
+      .finally(() => setBusy(false));
+  };
+  return { busy, error, run };
+}
+
+function ExtractorCard({ extractor }: { extractor: Extractor }) {
+  const now = useNow();
+  const stock = extractorStock(extractor, now);
+  const full = stock >= EXTRACTOR_STORAGE;
+  return (
+    <dl className={`base-deposit base-deposit--${extractor.resource}`}>
+      <dt>Extracting</dt>
+      <dd>{RESOURCE_NAMES[extractor.resource]}</dd>
+      <dt>Rate</dt>
+      <dd>{extractorRate(extractor)} per hour</dd>
+      <dt>Stored</dt>
+      <dd className={full ? 'base-extractor-full' : undefined}>{stock} / {EXTRACTOR_STORAGE}</dd>
+    </dl>
+  );
+}
+
+function cellOf(index: number): SurfaceCell {
+  return { col: index % BASE_SURFACE_COLS, row: Math.floor(index / BASE_SURFACE_COLS) };
+}
+
+function Stores({ extractors }: { extractors: readonly Extractor[] }) {
+  const now = useNow();
+  const totals = stockByResource(extractors, now);
+  return (
+    <div className="base-stores" data-map-overlay>
+      <div className="base-stores-head">
+        <span>Extractors</span>
+        <span>{extractors.length} / {BASE_EXTRACTOR_LIMIT}</span>
+      </div>
+      <dl className="base-stores-list">
+        {RESOURCE_KINDS.map((kind) => (
+          <div key={kind} className={`base-stores-row base-deposit--${kind}`}>
+            <dt>{RESOURCE_NAMES[kind]}</dt>
+            <dd>{totals[kind]}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 const BLOCKER_NAMES: Record<BlockerKind, string> = { ocean: 'Ocean', ridge: 'Mountain range', lake: 'Inland sea' };
 
@@ -133,7 +221,7 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
   const wantedRef = useRef(wanted);
   const syncRef = useRef<() => void>(() => {});
   const [painted, setPainted] = useState<{ seed: number; images: ReadonlyMap<string, ImageData> } | null>(null);
-  const [surveyed, setSurveyed] = useState<{ seed: number; grid: BlockerGrid } | null>(null);
+  const [surveyed, setSurveyed] = useState<{ seed: number; survey: Survey } | null>(null);
 
   useLayoutEffect(() => {
     wantedRef.current = wanted;
@@ -191,9 +279,11 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
     const workers = Array.from({ length: TERRAIN_WORKERS }, () => {
       const worker = new Worker(new URL('../pixi/baseTerrain.worker.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<TerrainTileResult>) => {
-        const { key, width, height, pixels, blockers } = event.data;
+        const { key, width, height, pixels, blockers, deposits } = event.data;
         inFlight.delete(key);
-        if (blockers) setSurveyed({ seed, grid: decodeBlockers(blockers) });
+        if (blockers && deposits) {
+          setSurveyed({ seed, survey: { grid: decodeBlockers(blockers), deposits, depositCells: depositGrid(deposits) } });
+        }
         store(key, new ImageData(pixels, width, height));
         idle.push(worker);
         dispatch();
@@ -215,7 +305,7 @@ function useTerrainTiles(address: BaseAddress, seed: number, wanted: readonly Ti
 
   return {
     images: painted?.seed === seed ? painted.images : NO_IMAGES,
-    grid: surveyed?.seed === seed ? surveyed.grid : null,
+    survey: surveyed?.seed === seed ? surveyed.survey : null,
   };
 }
 
@@ -239,7 +329,22 @@ function TerrainImage({ image, style }: { image: ImageData; style: CSSProperties
   return <canvas ref={ref} className="base-map-image" width={image.width} height={image.height} style={style} />;
 }
 
-function FactoryMenu({ index, left, top, onClose }: { index: number; left: number; top: number; onClose: () => void }) {
+function SectorMenu({ base, index, deposit, left, top, onClose }: {
+  base: Base;
+  index: number;
+  deposit: SurfaceDeposit | null;
+  left: number;
+  top: number;
+  onClose: () => void;
+}) {
+  const { busy, error, run } = useOrder();
+  const now = useNow();
+  const cell = cellOf(index);
+  const extractor = extractorAt(base.extractors, cell);
+  const refusal = extractor || !deposit ? null : planPlaceExtractor(base, cell, deposit, now);
+  let title = 'Place factory';
+  if (extractor) title = 'Extractor';
+  else if (deposit) title = 'Place extractor';
   return (
     <div
       className="base-factory-menu"
@@ -250,16 +355,30 @@ function FactoryMenu({ index, left, top, onClose }: { index: number; left: numbe
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="base-card-head">
-        <span className="base-card-name">Place factory</span>
+        <span className="base-card-name">{title}</span>
         <button type="button" className="base-factory-close" onClick={onClose} aria-label="Close menu">✕</button>
       </div>
       <div className="base-note">Sector {sectorName(index)}</div>
-      <div className="base-factory-body" />
+      {extractor && <ExtractorCard extractor={extractor} />}
+      {!extractor && deposit && <DepositCard deposit={deposit} />}
+      <div className="base-factory-body">
+        {extractor && (
+          <button type="button" className="base-action base-action--quiet" disabled={busy} onClick={() => run(() => removeExtractor(cell))}>
+            {busy ? 'Dismantling…' : 'Dismantle extractor'}
+          </button>
+        )}
+        {refusal && (
+          <button type="button" className="base-action" disabled={!refusal.ok || busy} onClick={() => run(() => placeExtractor(cell))}>
+            {busy ? 'Ordering…' : refusal.ok ? 'Build extractor' : refusal.refusal.message}
+          </button>
+        )}
+      </div>
+      {error && <div className="base-error" role="alert">{error}</div>}
     </div>
   );
 }
 
-export function SurfaceMap({ base, children }: { base: Base; children?: ReactNode }) {
+export function SurfaceMap({ base }: { base: Base }) {
   const { superclusterSeed, galaxySeed, systemId, ring } = base;
   const seed = useMemo(() => surfaceSeed({ superclusterSeed, galaxySeed, systemId, ring }), [superclusterSeed, galaxySeed, systemId, ring]);
   const [size, setSize] = useState<Size | null>(null);
@@ -285,10 +404,17 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
   });
 
   const pixelRatio = Math.min(MAX_PIXEL_RATIO, window.devicePixelRatio || 1);
-  const paintPx = Math.round(Math.max(ZOOM_STAGES[stage], size ? coverPx(size) : 0) * PAINT_SCALE * pixelRatio);
+  const displayPx = Math.max(ZOOM_STAGES[stage], size ? coverPx(size) : 0) * pixelRatio;
+  const paintPx = Math.round(Math.min(displayPx, Math.max(displayPx * PAINT_SCALE, MIN_PAINT_CELL_PX)));
   const visible = useMemo(() => (size ? visibleTiles(view, size, paintPx) : []), [view, size, paintPx]);
   const wanted = useMemo(() => [{ key: OVERVIEW_KEY, region: WHOLE_MAP, cellPx: OVERVIEW_CELL_PX }, ...visible], [visible]);
-  const { images, grid } = useTerrainTiles(base, seed, wanted);
+  const { images, survey } = useTerrainTiles(base, seed, wanted);
+  const grid = survey?.grid ?? null;
+  const depositOf = (index: number | null) => {
+    if (index === null || !survey) return null;
+    const id = survey.depositCells[index];
+    return id < 0 ? null : survey.deposits[id];
+  };
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -448,10 +574,12 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
     const beside = right + MENU_WIDTH_PX > width ? offsetX + col * px - MENU_GAP_PX - MENU_WIDTH_PX : right;
     const left = Math.min(Math.max(MENU_INSET_PX, width - MENU_WIDTH_PX - MENU_INSET_PX), Math.max(MENU_INSET_PX, beside));
     const top = Math.min(Math.max(MENU_INSET_PX, height - MENU_HEIGHT_PX - MENU_INSET_PX), Math.max(MENU_INSET_PX, offsetY + row * px));
-    menu = <FactoryMenu index={selected} left={left} top={top} onClose={() => setSelected(null)} />;
+    menu = <SectorMenu base={base} index={selected} deposit={depositOf(selected)} left={left} top={top} onClose={() => setSelected(null)} />;
   }
 
   const hoveredKind = hovered === null || !grid ? null : grid[hovered];
+  let hoveredName = hoveredKind ? BLOCKER_NAMES[hoveredKind] : 'Open ground';
+  if (hovered !== null && extractorAt(base.extractors, cellOf(hovered))) hoveredName = 'Extractor';
   const layerStyle = {
     width: BASE_SURFACE_COLS * px,
     height: BASE_SURFACE_ROWS * px,
@@ -483,13 +611,21 @@ export function SurfaceMap({ base, children }: { base: Base; children?: ReactNod
         {hovered !== null && hovered !== selected && (
           <div className={`base-map-marker base-map-marker--hover${hoveredKind ? ' base-map-marker--blocked' : ''}`} style={marker(hovered)} />
         )}
+        {base.extractors.map((extractor) => (
+          <div
+            key={`${extractor.col}:${extractor.row}`}
+            className={`base-map-extractor base-deposit--${extractor.resource}`}
+            style={marker(extractor.row * BASE_SURFACE_COLS + extractor.col)}
+          />
+        ))}
         {selected !== null && <div className="base-map-marker base-map-marker--selected" style={marker(selected)} />}
       </div>
-      <div className="base-map-overlays" data-map-overlay>{children}</div>
+      {base.extractors.length > 0 && <Stores extractors={base.extractors} />}
       {menu}
       {hovered !== null && (
         <div className="base-map-readout" data-map-overlay>
-          Sector {sectorName(hovered)} · {grid ? (hoveredKind ? BLOCKER_NAMES[hoveredKind] : 'Open ground') : 'Surveying…'}
+          <span>Sector {sectorName(hovered)}</span>
+          <span>{grid ? hoveredName : 'Surveying…'}</span>
         </div>
       )}
       <div className="base-zoom" data-map-overlay onPointerDown={(event) => event.stopPropagation()}>

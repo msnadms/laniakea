@@ -13,6 +13,9 @@ const SIN_ELEVATION = Math.sin(ELEVATION);
 const COS_ELEVATION = Math.cos(ELEVATION);
 const RING_SEGMENTS = 48;
 const HEADING_PX = 14;
+const SWEEP_SECTORS = 14;
+const SWEEP_SECTOR_DEGREES = 4;
+const SWEEP_SECONDS = 6;
 
 function mapX(x: number): number {
   return x / UNIVERSE_RADIUS * RADIUS_PX;
@@ -30,6 +33,18 @@ function equatorPath(from: number, to: number): string {
     return `${s === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
   }).join(' ');
 }
+
+function sectorPath(fromDegrees: number, toDegrees: number): string {
+  const from = fromDegrees * Math.PI / 180;
+  const to = toDegrees * Math.PI / 180;
+  const r = RADIUS_PX;
+  return `M 0 0 L ${(Math.cos(from) * r).toFixed(2)} ${(Math.sin(from) * r).toFixed(2)} A ${r} ${r} 0 0 1 ${(Math.cos(to) * r).toFixed(2)} ${(Math.sin(to) * r).toFixed(2)} Z`;
+}
+
+const SWEEP = Array.from({ length: SWEEP_SECTORS }, (_, i) => ({
+  d: sectorPath(-(i + 1) * SWEEP_SECTOR_DEGREES, -i * SWEEP_SECTOR_DEGREES),
+  opacity: 0.22 * (1 - i / SWEEP_SECTORS),
+}));
 
 const EQUATOR_BACK = equatorPath(0, Math.PI);
 const EQUATOR_FRONT = equatorPath(Math.PI, Math.PI * 2);
@@ -114,6 +129,13 @@ export function Minimap() {
         className="minimap-axes"
         d={`M ${-RADIUS_PX} 0 H ${RADIUS_PX} M 0 ${-RADIUS_PX * SIN_ELEVATION} V ${RADIUS_PX * SIN_ELEVATION}`}
       />
+      <g className="minimap-sweep" transform={`scale(1 ${SIN_ELEVATION})`}>
+        <g>
+          {SWEEP.map((sector, i) => <path key={i} d={sector.d} fillOpacity={sector.opacity} />)}
+          <line className="minimap-sweep-edge" x2={RADIUS_PX} vectorEffect="non-scaling-stroke" />
+          <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur={`${SWEEP_SECONDS}s`} repeatCount="indefinite" />
+        </g>
+      </g>
       <circle className="minimap-origin" r={1.5} />
       <g ref={markerRef} visibility="hidden">
         <ellipse ref={footRef} className="minimap-foot" rx={3} ry={3 * SIN_ELEVATION} />
